@@ -9,12 +9,18 @@ settings:
     SWIFT_VERSION: "6.0"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_STYLE: Automatic
+packages:
+  AIKitSwift:
+    path: ../aikitswift
 targets:
   HealthChat:
     type: application
     platform: iOS
     sources:
       - path: HealthChat
+    dependencies:
+      - package: AIKitSwift
+        product: AIKit
     entitlements:
       path: HealthChat/HealthChat.entitlements
       properties:

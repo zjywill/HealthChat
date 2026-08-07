@@ -16,6 +16,10 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
 
 模拟器安装运行用 iOS Simulator MCP 的 build/launch(bundle id `com.junyizhang.HealthChat`),先 attach 让用户看到面板。
 
+## 依赖
+
+云端 LLM 请求走 AIKit(`zjywill/aikitswift`),以本地包 `../aikitswift` 引入——构建这个项目需要旁边有 aikitswift 的 checkout。
+
 ## 约定
 
 - iOS 26 only,不写旧版本可用性分支。
