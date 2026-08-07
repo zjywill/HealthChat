@@ -1,94 +1,201 @@
-# HealthChat 计划
+# HealthChat 计划与任务拆分
 
 一句话:iOS SwiftUI 聊天 app,agent 自己决定去查 Apple Health 里的什么数据(步数/睡眠/心率…),用对话的形式给你分析。
 
-## 产品形态(首版)
+本文档是执行清单:任务按 T 编号严格排序,每个任务自包含(目标/改动文件/API 要点/验收)。执行者(Codex 或任何 agent)从「给执行者的须知」读起,一次做一个任务。
 
-- 打开就是聊天界面,没有仪表盘。你问"我最近睡得怎么样",agent 调用睡眠查询工具拿到近 7 天聚合数据,流式回复分析。
-- 回复气泡上方用小字标注这轮调用了哪些健康查询("查询了最近 7 天睡眠"),让数据来源透明。
-- 双引擎:
-  - **端上模型(默认)**:iOS 26 FoundationModels,免 key、数据不出设备。
-  - **云端引擎(AIKit)**:设置里填 API key 后可切换,分析更强,只上传聚合摘要。走自家 [aikitswift](https://github.com/zjywill/aikitswift) 统一 provider 层,默认 anthropic/claude-sonnet-5,catalog 里 49 个 provider 都可选。
+## 给执行者的须知
+
+**仓库现状**:M0 骨架已完成——xcodegen 工程、聊天 UI、`AgentEngine` 协议、三个引擎壳(Echo 占位可跑)、`HealthStore` 空壳、设置页空壳,模拟器编译通过。你从 T1.1 开始。
+
+**工作方式**:
+- 严格按编号顺序,一次一个任务。做完一个:构建通过 → 按该任务「验收」验证 → commit(message 以任务号开头,如 `T2.1: …`)→ 再进下一个。
+- `project.yml` 是工程唯一事实来源,**不要手改 xcodeproj**;增删文件后跑 `xcodegen` 重新生成。
+- 不新增第三方依赖(唯一依赖是本地包 `../aikitswift`,已挂好)。AIKit 的 API 拿不准就直接读 `../aikitswift/Sources/AIKit/Spec/` 的源码,别猜。
+- iOS 26 only,不写 OS 版本可用性分支(FoundationModels 的**运行时**可用性检查除外,那是另一回事)。
+- UI 文案用中文。写码风格跟随现有文件(注释密度低、中文注释)。
+- 本文档里的 SDK 签名凭印象写就,细节以编译器报错为准;意图不变,签名可调。
+
+**构建/运行命令**:
+
+```bash
+xcodegen   # 仅在增删文件后需要
+xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build -quiet
+```
+
+装进模拟器手测:
+
+```bash
+APP=$(xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+  -destination 'platform=iOS Simulator,name=iPhone 17' -showBuildSettings 2>/dev/null \
+  | awk '/ BUILT_PRODUCTS_DIR =/{d=$3} / FULL_PRODUCT_NAME =/{n=$3} END{print d"/"n}')
+xcrun simctl install booted "$APP"
+xcrun simctl launch booted com.junyizhang.HealthChat
+```
+
+**已配好、不要重复配**:HealthKit read entitlement、`NSHealthShareUsageDescription`、bundle id `com.junyizhang.HealthChat`。
+
+## 产品形态
+
+- 打开就是聊天界面,没有仪表盘。你问"我最近睡得怎么样",agent 调用睡眠查询工具拿近 7 天聚合数据,流式回复分析。
+- 回复气泡上方小字标注这轮调用了哪些查询("查询了最近 7 天睡眠"),数据来源透明。UI 已在 M0 做好(`ChatMessage.toolNotes`)。
+- 双引擎:**端上 FoundationModels(默认,数据不出设备)** 和 **云端 AIKit(填 key 后可用,默认 anthropic/claude-sonnet-5,49 个 provider 可选)**。
 
 ## 架构
 
 ```
-ChatView / ChatViewModel        聊天 UI + 消息流转
+ChatView / ChatViewModel        聊天 UI + 消息流转(M0 已有)
         │  reply(to:) → AsyncThrowingStream<AgentEvent>
         ▼
-AgentEngine(协议)
- ├─ EchoEngine                  M0 占位,跑通 UI 后删除
- ├─ FoundationModelsEngine      M3:LanguageModelSession + Tool 协议
- └─ AIKitEngine                 M4:AIKit 统一 provider 层(流式 + tool loop 现成)
-        │  两个引擎共用同一套工具语义
+AgentEngine(协议,M0 已有)
+ ├─ EchoEngine                  占位,T4.5 删除
+ ├─ FoundationModelsEngine      T3.x
+ └─ AIKitEngine                 T4.x
         ▼
-HealthTools                     工具定义(名称/参数/返回格式)一处声明,两边适配
+HealthToolSpec × 5              工具语义一处声明(T3.1),两边适配
         ▼
-HealthStore                     HealthKit 只读封装:授权 + 聚合查询
+HealthStore                     HealthKit 只读聚合查询(T1–T2)
 ```
 
-骨架文件对照:
+## 工具集契约
 
-| 文件 | 职责 |
-|---|---|
-| `HealthChat/HealthChatApp.swift` | 入口 |
-| `HealthChat/Models/ChatMessage.swift` | 消息模型(role + 文本 + 工具调用备注) |
-| `HealthChat/Chat/ChatView.swift` | 聊天界面(气泡列表 + 输入栏 + 设置入口) |
-| `HealthChat/Chat/ChatViewModel.swift` | 发消息、消费引擎事件流 |
-| `HealthChat/Engine/AgentEngine.swift` | 引擎协议 + `AgentEvent`(textDelta / toolCall)+ 错误 |
-| `HealthChat/Engine/EchoEngine.swift` | 占位引擎 |
-| `HealthChat/Engine/FoundationModelsEngine.swift` | 端上引擎(M3 实现) |
-| `HealthChat/Engine/AIKitEngine.swift` | 云端引擎,走 AIKit(M4 实现) |
-| `HealthChat/Engine/HealthTools.swift` | 工具集定义(M3/M4 实现) |
-| `HealthChat/Health/HealthStore.swift` | HealthKit 读取层(M2 实现) |
-| `HealthChat/Settings/SettingsView.swift` | 引擎选择 + API key(M4 实现) |
+五个工具,参数统一只有 `days`(整数 1–90,默认 7)。所有工具返回**紧凑中文文本**(不是 JSON):按天聚合值,不含原始样本——省 token,也是云端路径的数据最小化。description 必须写明触发条件("当用户问及步数/活动量时调用"),这是模型肯不肯用工具的主要杠杆。
 
-## 工具集设计(M3/M4 共用语义)
-
-所有工具只返回**聚合值**(按天汇总),不返回原始样本——既省 token 也是云端路径的数据最小化。语义一处声明,两边适配:FoundationModels 用 `Tool` 协议,AIKit 用 `ToolDefinition`(JSON Schema)。
-
-| 工具 | 参数 | 返回 |
+| 工具名 | 数据 | 输出要点 |
 |---|---|---|
-| `daily_steps` | days (1–90) | 每日步数 + 均值 |
-| `sleep_summary` | days | 每晚时长/入睡起床时间 + 均值 |
-| `heart_rate_summary` | days | 每日静息心率、HRV、心率区间 |
-| `workouts` | days | 锻炼列表(类型/时长/消耗) |
-| `body_metrics` | days | 体重/体脂趋势 |
+| `daily_steps` | 每日步数 | 逐日列表 + 均值,`08-01 8,432 步` 风格 |
+| `sleep_summary` | 每晚睡眠 | 逐晚时长/入睡/起床 + 均值时长 |
+| `heart_rate_summary` | 静息心率 + HRV | 逐日静息心率、HRV(SDNN)+ 区间 |
+| `workouts` | 锻炼记录 | 逐条:日期/类型/时长/消耗 kcal |
+| `body_metrics` | 体重/体脂 | 逐日(有记录的天)+ 首尾变化 |
 
-## 引擎选择策略
+## 引擎选择策略(T4.5 实现)
 
-启动时自动选:端上模型可用(`SystemLanguageModel.default.availability`)→ 端上;不可用但有 API key → 云端(AIKit);都没有 → 聊天区显示引导。设置里可手动覆盖。
+每次发送时现算:设置为「自动」→ 端上可用用端上,否则有 key 用云端,都没有则回复引导文案;设置强制指定则用指定的。
 
-## 关键决定
+---
 
-- **iOS 26 only**,单 target iPhone。FoundationModels 需要 26,不做旧版本兼容,代码干净。
-- **HealthKit 只读**,不申请写权限(DEBUG 种子数据除外,见风险)。
-- **API key 存 Keychain**,不进 UserDefaults。
-- 云端请求不手写:用自家 AIKit(本地包 `../aikitswift`),流式事件、tool loop、多轮 replay 都是现成的。默认 anthropic/`claude-sonnet-5`,provider 和模型设置里可换。
-- 两个引擎都走流式,UI 层只认 `AgentEvent`,不感知引擎差异。
+## 任务列表
 
-## 里程碑
+### M1 授权流
 
-- **M0 骨架(本次)**:xcodegen 工程 + 全部 stub 文件编译通过,Echo 引擎跑通聊天 UI。✅ 验收:模拟器能聊天回显。
-- **M1 权限与授权流**:首次进入请求 HealthKit 读权限,拒绝态的引导 UI。
-- **M2 HealthStore 查询**:五个聚合查询实现 + 模拟器样本数据方案。
-- **M3 端上 agent**:FoundationModels 接入,Tool 协议实现五个工具,系统 instructions(健康分析人设、单位、克制不诊断)。
-- **M4 云端引擎(AIKit)+ 设置页**:`AIClient.stream` 接入、`ToolDefinition` 映射、`pendingToolCalls` 续轮循环、Keychain 存 key、provider/模型/引擎切换。
-- **M5 打磨**:回复 Markdown 渲染、对话历史持久化、必要时 Swift Charts 小图表嵌入回答。
+**T1.1 HealthStore:类型集合与授权请求**
+- 文件:`HealthChat/Health/HealthStore.swift`
+- 读类型集合:`HKQuantityType(.stepCount)`、`.restingHeartRate`、`.heartRateVariabilitySDNN`、`.activeEnergyBurned`、`.bodyMass`、`.bodyFatPercentage`,`HKCategoryType(.sleepAnalysis)`,`HKObjectType.workoutType()`。
+- `requestAuthorization()`:先 `HKHealthStore.isHealthDataAvailable()`,再 `try await store.requestAuthorization(toShare: [], read: readTypes)`。
+- **坑**:HealthKit 隐私设计决定**读权限的拒绝状态不可查询**(`authorizationStatus` 只反映写权限)。不要试图判断"用户拒绝了读";统一用"查询结果为空 → 提示去 设置 > 隐私与安全性 > 健康 检查授权"。
+- 验收:见 T1.2(一起手测)。
 
-每个里程碑在模拟器跑通 + 截图验证后再进下一个(一次一个可见改动)。
+**T1.2 启动请求授权 + 空态欢迎卡**
+- 文件:`ChatView.swift`、`ChatViewModel.swift`
+- `ChatView` 出现时(`.task`)调 `HealthStore.shared.requestAuthorization()`,失败静默(console 打印即可)。
+- `messages` 为空时聊天区显示欢迎卡:app 是干嘛的、会读哪些数据、给 3 个示例问题(点击即填入输入框发送)。
+- 验收:删掉 app 重装(`xcrun simctl uninstall booted com.junyizhang.HealthChat`),首启弹 HealthKit 授权面板,全选允许;空态卡片显示,点示例问题能发出去(Echo 回显)。
 
-## 风险与对策
+### M2 查询层(先做种子数据,后面每个查询都能立即验证)
 
-- **模拟器上 FoundationModels**:需要宿主 Mac 开启 Apple Intelligence;不可用时引擎自动回落到云端/引导,不能 crash。
-- **本地包依赖**:AIKit 以 `../aikitswift` 同级 checkout 引入,克隆 HealthChat 需要旁边有 aikitswift;aikitswift 打 tag 后可改成远程依赖。
-- **模拟器 Health 没数据**:方案 A 在模拟器 Health app 里手动加样本;方案 B DEBUG-only 种子写入(需临时申请写权限,仅 DEBUG 编译)。M2 时定。
-- **FoundationModels 上下文小(约 4k token)**:对话历史裁剪 + 工具返回保持紧凑(这也是只返回聚合值的原因之一)。
-- **真机部署**:需要签名 team + HealthKit capability;真机才有真实健康数据,M3 后建议真机跑。
-- **健康分析的边界**:instructions 里明确不做医疗诊断,异常数据建议就医。
+**T2.1 DEBUG 种子数据 + 自检面板**
+- 文件:新建 `HealthChat/Health/DebugSeeder.swift`,`SettingsView.swift` 加入口
+- 整个文件 `#if DEBUG` 包裹。`seed()`:额外请求这些类型的**写**权限(仅种子用),写入最近 30 天合理假数据:步数(4k–15k/天)、睡眠(23:00±1h 入睡、7±1h 时长,拆 core/deep/REM 段)、静息心率(55–70)、HRV(30–80ms)、每周 3 次锻炼(跑步/骑行,30–60min,含 activeEnergyBurned 关联样本)、体重(70±0.5kg 缓慢下降)、体脂(20±1%)。
+- 设置页 DEBUG section:「写入种子数据」和「自检查询」按钮;自检跑通全部查询并把结果 `print` 到 console(T2.2 起逐个补)。
+- 验收:模拟器点种子 → iOS 健康 app 里能看到数据;重复点不崩(允许重复写入)。
 
-## 未定问题(不阻塞骨架)
+**T2.2 dailySteps**
+- 文件:`HealthStore.swift`
+- `func dailySteps(days: Int) async throws -> [DayValue]`,`DayValue { date: Date; value: Double }`。
+- 用 `HKStatisticsCollectionQueryDescriptor`(cumulativeSum,anchor 当天 `startOfDay`,interval 1 天),`try await descriptor.result(for: store)`,遍历取 `sumQuantity()?.doubleValue(for: .count())`。
+- 验收:自检打印 7 天步数,与健康 app 对得上。
 
-- App 名字:暂用 HealthChat,随时可改。
-- 是否要对话历史持久化、图表:M5 再定。
-- 测试 target:M2 引入(HealthStore 聚合逻辑值得测),M0 不建。
+**T2.3 sleepSummary**
+- `func sleepSummary(days: Int) async throws -> [NightSleep]`,`NightSleep { night: Date; asleep: TimeInterval; bedtime: Date?; wake: Date? }`。
+- `HKSampleQueryDescriptor` 取 `sleepAnalysis` 样本;**按晚分桶用中午 12 点为界**(样本跨午夜);`asleep` 只累加 `asleepCore/asleepDeep/asleepREM/asleepUnspecified`(`inBed` 不算);bedtime = 当晚最早样本 start,wake = 最晚样本 end。
+- 验收:自检打印 7 晚,时长 6–8h 合理。
+
+**T2.4 heartRateSummary**
+- `func heartRateSummary(days: Int) async throws -> [DayHeart]`,`DayHeart { date; restingHR: Double?; hrv: Double? }`。
+- 两个 `HKStatisticsCollectionQueryDescriptor`(discreteAverage):restingHeartRate 单位 `HKUnit.count().unitDivided(by: .minute())`,HRV 单位 `.secondUnit(with: .milli)`。
+- 验收:自检打印,数值在种子范围内。
+
+**T2.5 workouts + bodyMetrics**
+- `func workouts(days: Int) async throws -> [WorkoutItem]`:`HKSampleQueryDescriptor` 取 `HKWorkout`,输出类型名(`workoutActivityType` 映射中文:跑步/骑行/步行/力量…default 其它)、时长、消耗。**坑**:`workout.totalEnergyBurned` 已废弃,用 `workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()`。
+- `func bodyMetrics(days: Int) async throws -> [DayBody]`:bodyMass(kg)、bodyFatPercentage(%),discreteAverage 按天,无记录的天跳过。
+- 验收:自检打印锻炼列表和体重曲线。
+
+### M3 端上引擎(FoundationModels)
+
+**T3.1 HealthToolSpec:中立工具定义**
+- 文件:重写 `HealthChat/Engine/HealthTools.swift`
+- ```swift
+  struct HealthToolSpec: Sendable {
+      let name: String          // "daily_steps"
+      let description: String   // 含触发条件
+      let run: @Sendable (_ days: Int) async throws -> String  // 紧凑中文文本
+  }
+  ```
+- `HealthTools.all: [HealthToolSpec]` 五个实例,`run` 调 HealthStore 并渲染文本(日期 `MM-dd`,时长 `x小时x分`,千分位步数)。渲染函数放同文件。空结果返回"最近 N 天没有××记录"。
+- 验收:自检面板改为遍历 `HealthTools.all` 逐个 `run(7)` 打印,肉眼检查文本紧凑可读。
+
+**T3.2 FoundationModelsEngine:无工具对话跑通**
+- 文件:`FoundationModelsEngine.swift`、`ChatViewModel.swift`(临时把引擎换成它)
+- `import FoundationModels`。可用性:`SystemLanguageModel.default.availability`,非 `.available` 抛 `AgentError.modelUnavailable`。
+- 会话:`LanguageModelSession(instructions:)`。**引擎持有 session 作实例状态**(它自带 transcript,多轮只发新消息),所以 `FoundationModelsEngine` 改成 `final class`,`reply` 只取 `history` 最后一条 user 文本。
+- 流式:`session.streamResponse(to: text)` 迭代出的是**累积快照不是增量**——保留上一份,发 `textDelta(新内容去掉已发前缀)`。
+- 错误:`exceededContextWindowSize` → 重建 session(带 instructions,不带旧史)重试一次;guardrail 拒绝 → 友好文案。
+- 验收:模拟器(宿主 Mac 需开 Apple Intelligence)问"你好,你能干什么",流式出中文回复。不可用的机器上显示 modelUnavailable 文案、不崩。
+
+**T3.3 挂上五个工具**
+- 文件:`FoundationModelsEngine.swift`
+- 每个 spec 包一个 FoundationModels `Tool`:`name`/`description` 来自 spec;`Arguments` 用 `@Generable struct { @Guide(description: "查询最近多少天,1-90") var days: Int }`;`call` 里执行 `spec.run(days)` 返回 `ToolOutput`,并通过注入的回调把"查询了最近 N 天××"发成 `AgentEvent.toolCall`(回调在每次 `reply` 开始时指向当前 continuation)。
+- session 用 `LanguageModelSession(tools: …, instructions: …)` 创建。
+- 验收:问"我最近一周睡得怎么样",气泡上方出现工具备注,回复内容引用了种子数据的真实数字(对照自检输出)。
+- **上下文预算**:端上模型窗口约 4k token,这也是工具输出必须紧凑的原因;`days` 大时截断输出行数(>30 天改为只给周汇总)。
+
+**T3.4 instructions 定稿**
+- 中文健康助手人设:回答基于工具返回的真实数据,不编造数字;单位习惯(步/小时分钟/次每分/kg);语气克制,**不做医疗诊断**,数据异常建议就医;回答先结论后数据。
+- 验收:三个问题走查(睡眠/步数/综合"我最近状态怎么样"),回复引用真实数字、不越界诊断。
+
+### M4 云端引擎(AIKit)+ 设置页
+
+**T4.1 KeychainStore**
+- 新建 `HealthChat/Settings/KeychainStore.swift`:`kSecClassGenericPassword`,service `com.junyizhang.HealthChat`,`get/set/delete(account:)`,set 用先删后加实现 upsert。只存 API key;provider id / model 名不是秘密,走 `@AppStorage`。
+- 验收:编译过;T4.4 一起手测。
+
+**T4.2 AIKitEngine:无工具流式跑通**
+- 文件:`AIKitEngine.swift`
+- `import AIKit`(已 import)。key 无 → 抛 `AgentError.needsAPIKey`。
+- `AIClient(providerId: providerId, configuration: .init(apiKey: key))`;`CallOptions(model: model, prompt: prompt)`,prompt 由 `[ChatMessage]` 映射:`[.system(instructions)] + history.map { $0.role == .user ? .user($0.text) : .assistant($0.text) }`(instructions 与 T3.4 同一份,抽到公共位置)。
+- `for try await part in try client.stream(options)`:`case .textDelta(_, let delta, _)` → `AgentEvent.textDelta`;其余 default 忽略。`AIClientError` 的 `errorDescription` 已经人话,直接透出。
+- 验收:设置里填真 key(手测者自己的),强制云端引擎,问答流式正常。
+- 参考:`../aikitswift/README.md` 和 `Sources/AIKit/Spec/`。
+
+**T4.3 AIKitEngine:tool loop**
+- `CallOptions.tools = HealthTools.all.map { ToolDefinition(name:description:inputSchema:) }`,schema 用 `JSONValue`(支持字典/字符串字面量):`.object(["type": "object", "properties": .object(["days": .object(["type": "integer", "description": "查询最近多少天,1-90"])]), "required": .array(["days"])])`。
+- 循环(最多 6 轮):流式转发 `textDelta` 的同时把所有 part 收进数组 → `AIResponse(parts: parts)` → `pendingToolCalls` 为空则结束;否则 `prompt.append(response.assistantMessage)`,逐个 call:发 `AgentEvent.toolCall(中文描述)`,`call.input` 是 **JSON 字符串**,解析出 `days`(缺省 7),`spec.run(days)`,`prompt.append(.toolResult(toolCallId: call.toolCallId, toolName: call.toolName, result: .string(文本)))`,再进下一轮。
+- 验收:云端引擎问"最近一周睡眠和运动怎么样",看到 ≥1 条工具备注,回复引用真实数字。
+- 数据边界:上传的只有工具返回的聚合文本(契约保证),不传原始样本。
+
+**T4.4 SettingsView 定稿**
+- 引擎 Picker:自动/端上/云端(`@AppStorage("engineChoice")`);云端 section:`SecureField` API key(失焦或提交时写 Keychain,显示"已保存"态)、provider id 文本框(默认 `anthropic`,脚注提示 catalog 里的 id)、model 文本框(默认 `claude-sonnet-5`);当前生效引擎的展示行。
+- 验收:填 key → 杀 app 重开还在;改 provider/model 生效。
+
+**T4.5 引擎自动选择 + 删 Echo**
+- `ChatViewModel.send()` 每次现算引擎(策略见上文);删除 `EchoEngine.swift`,欢迎卡在"两个引擎都不可用"时提示去设置填 key 或开 Apple Intelligence。
+- 验收:模拟器上分别验证三种路径(自动→端上;强制云端;清 key + 关 AI → 引导文案)。
+
+### M5 打磨(每个可独立做)
+
+**T5.1 Markdown 渲染**:assistant 气泡用 `Text(AttributedString(markdown:))`(失败回退纯文本),多段落保留空行。
+**T5.2 对话持久化**:`Codable` 存 `Documents/conversation.json`,启动载入、每轮结束落盘;设置页加「清空对话」(同时重建端上 session)。
+**T5.3 交互细节**:`.scrollDismissesKeyboard(.interactively)`;回复中把发送按钮换成停止(取消当前 Task,已收内容保留);错误消息气泡带「重试」。
+**T5.4(可选)真机验证**:真机跑通全流程(真数据、Apple Intelligence),记录签名 team 步骤到 CLAUDE.md。
+
+---
+
+## 风险备忘
+
+- **模拟器 FoundationModels**:需宿主 Mac 开启 Apple Intelligence 且模型下载完成;`availability` 给出的 unavailable 原因要透出到 UI,不能 crash。
+- **端上上下文 ~4k token**:工具输出紧凑(T3.3 预算规则)、对话史不回灌(session 自带 transcript)。
+- **本地包依赖**:构建需要 `../aikitswift` 同级 checkout;aikitswift 打 tag 后可改远程依赖。
+- **健康边界**:instructions 明确不做医疗诊断(T3.4)。
+- **真机**:需要签名 team;真实健康数据只在真机上有。
