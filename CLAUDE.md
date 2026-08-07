@@ -1,0 +1,23 @@
+# HealthChat
+
+iOS 26 SwiftUI 聊天 app:agent 通过工具调用读 Apple Health,对话式分析。整体计划见 PLAN.md(里程碑推进,一次一个可见改动)。
+
+## 构建
+
+`project.yml` 是工程唯一事实来源,增删文件后必须重新生成:
+
+```bash
+xcodegen
+xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+## 运行
+
+模拟器安装运行用 iOS Simulator MCP 的 build/launch(bundle id `com.junyizhang.HealthChat`),先 attach 让用户看到面板。
+
+## 约定
+
+- iOS 26 only,不写旧版本可用性分支。
+- HealthKit 只读;API key 只进 Keychain。
+- 工具只返回按天聚合值,不返回原始样本。
