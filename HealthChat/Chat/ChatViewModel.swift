@@ -7,8 +7,8 @@ final class ChatViewModel {
     var input = ""
     var isReplying = false
 
-    /// M0 用占位引擎;M3 起按「引擎选择策略」自动选(见 PLAN.md)。
-    private let engine: any AgentEngine = EchoEngine()
+    /// T4.5 起改为按「引擎选择策略」自动选(见 PLAN.md)。
+    private let engine: any AgentEngine = FoundationModelsEngine()
 
     func send(_ suggestedQuestion: String? = nil) {
         let text = (suggestedQuestion ?? input).trimmingCharacters(in: .whitespacesAndNewlines)

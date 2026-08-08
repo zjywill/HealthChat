@@ -8,13 +8,13 @@ enum AgentEvent: Sendable {
 
 enum AgentError: LocalizedError {
     case notImplemented
-    case modelUnavailable
+    case modelUnavailable(String)
     case needsAPIKey
 
     var errorDescription: String? {
         switch self {
         case .notImplemented: "这个引擎还没实现"
-        case .modelUnavailable: "端上模型不可用(需要开启 Apple Intelligence)"
+        case .modelUnavailable(let reason): "端上模型不可用：\(reason)"
         case .needsAPIKey: "需要先在设置里填 Claude API key"
         }
     }
