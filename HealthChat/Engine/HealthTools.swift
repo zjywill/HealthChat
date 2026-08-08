@@ -4,7 +4,21 @@ import AIKit
 struct HealthToolSpec: Sendable {
     let name: String
     let description: String
-    let run: @Sendable (_ days: Int) async throws -> String
+    /// 这个工具是否接受锻炼类型筛选(只有 workouts 需要)。
+    let supportsActivityFilter: Bool
+    let run: @Sendable (_ days: Int, _ activity: String?) async throws -> String
+
+    init(
+        name: String,
+        description: String,
+        supportsActivityFilter: Bool = false,
+        run: @escaping @Sendable (_ days: Int, _ activity: String?) async throws -> String
+    ) {
+        self.name = name
+        self.description = description
+        self.supportsActivityFilter = supportsActivityFilter
+        self.run = run
+    }
 }
 
 enum HealthTools {
@@ -12,7 +26,7 @@ enum HealthTools {
         HealthToolSpec(
             name: "daily_steps",
             description: "当用户问及步数、活动量或久坐情况时调用。返回最近若干天的每日步数和均值。"
-        ) { days in
+        ) { days, _ in
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.dailySteps(days: dayCount)
             return renderSteps(values, days: dayCount)
@@ -20,7 +34,7 @@ enum HealthTools {
         HealthToolSpec(
             name: "sleep_summary",
             description: "当用户问及睡眠时长、入睡时间、起床时间或睡眠趋势时调用。返回最近若干晚的聚合睡眠。"
-        ) { days in
+        ) { days, _ in
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.sleepSummary(days: dayCount)
             return renderSleep(values, days: dayCount)
@@ -28,7 +42,7 @@ enum HealthTools {
         HealthToolSpec(
             name: "heart_rate_summary",
             description: "当用户问及静息心率、HRV、恢复或压力趋势时调用。返回最近若干天的静息心率和心率变异性。"
-        ) { days in
+        ) { days, _ in
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.heartRateSummary(days: dayCount)
             return renderHeart(values, days: dayCount)
@@ -36,15 +50,17 @@ enum HealthTools {
         HealthToolSpec(
             name: "workouts",
             description: "当用户问及锻炼、运动频率、运动时长或活动消耗时调用。返回最近若干天的锻炼记录。"
-        ) { days in
+                + "只关心某一种运动时传 activity（如“跑步”），筛选在数据层完成，比自己从全部记录里挑更可靠。",
+            supportsActivityFilter: true
+        ) { days, activity in
             let dayCount = normalizedDays(days)
-            let values = try await HealthStore.shared.workouts(days: dayCount)
-            return renderWorkouts(values, days: dayCount)
+            let values = try await HealthStore.shared.workouts(days: dayCount, activity: activity)
+            return renderWorkouts(values, days: dayCount, activity: activity)
         },
         HealthToolSpec(
             name: "body_metrics",
             description: "当用户问及体重、体脂或身体指标变化时调用。返回最近若干天有记录的体重和体脂趋势。"
-        ) { days in
+        ) { days, _ in
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.bodyMetrics(days: dayCount)
             return renderBody(values, days: dayCount)
@@ -53,7 +69,7 @@ enum HealthTools {
             name: "blood_pressure",
             description: "当用户问及血压、收缩压或舒张压时调用。返回最近若干天有记录的每日血压均值。"
                 + "多数人没有这项数据（需要血压计或第三方 app 写入），没有记录时会明确说明。"
-        ) { days in
+        ) { days, _ in
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.bloodPressureSummary(days: dayCount)
             return renderBloodPressure(values, days: dayCount)
@@ -62,7 +78,7 @@ enum HealthTools {
             name: "vitals",
             description: "当用户问及血氧、呼吸频率或体温时调用。返回最近若干天有记录的每日均值。"
                 + "这些项需要支持的 Apple Watch 或体温计，多数人只有部分数据，没有记录时会明确说明。"
-        ) { days in
+        ) { days, _ in
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.vitalsSummary(days: dayCount)
             return renderVitals(values, days: dayCount)
@@ -78,7 +94,19 @@ enum HealthTools {
         normalizedDays((try? JSONValue.decode(from: input))?["days"]?.intValue ?? 7)
     }
 
-    static func note(for name: String, days: Int) -> String {
+    /// 锻炼类型筛选。只认目录里那几个名字,别的一律当没传。
+    static func activity(fromInput input: String) -> String? {
+        guard let value = (try? JSONValue.decode(from: input))?["activity"]?.stringValue,
+              activityNames.contains(value) else {
+            return nil
+        }
+        return value
+    }
+
+    /// 与 `HealthStore` 给锻炼记录起的名字一致。
+    static let activityNames = ["跑步", "骑行", "步行", "力量训练", "游泳", "徒步", "瑜伽", "高强度间歇训练"]
+
+    static func note(for name: String, days: Int, activity: String? = nil) -> String {
         let label: String
         switch name {
         case "daily_steps":
@@ -88,7 +116,7 @@ enum HealthTools {
         case "heart_rate_summary":
             label = "静息心率与 HRV"
         case "workouts":
-            label = "锻炼"
+            label = activity ?? "锻炼"
         case "body_metrics":
             label = "体重与体脂"
         case "blood_pressure":
@@ -176,8 +204,15 @@ enum HealthTools {
         return (lines + summary).joined(separator: "\n")
     }
 
-    private static func renderWorkouts(_ values: [WorkoutItem], days: Int) -> String {
+    private static func renderWorkouts(
+        _ values: [WorkoutItem],
+        days: Int,
+        activity: String? = nil
+    ) -> String {
         guard !values.isEmpty else {
+            if let activity {
+                return "最近 \(days) 天没有\(activity)记录（其他类型的锻炼可能有，不带筛选再查一次即可）。"
+            }
             return "最近 \(days) 天没有锻炼记录。请在“设置 > 隐私与安全性 > 健康”中检查授权。"
         }
 

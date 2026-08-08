@@ -57,7 +57,7 @@ struct QuestionSuggester: Sendable {
 
         for name in wanted {
             guard let spec = HealthTools.spec(named: name) else { continue }
-            guard let result = try? await spec.run(7) else { continue }
+            guard let result = try? await spec.run(7, nil) else { continue }
             lines.append("[\(name)]\n\(result)")
         }
 

@@ -35,7 +35,13 @@ final class DebugSeeder: Sendable {
             throw HealthStoreError.healthDataUnavailable
         }
 
-        try await store.requestAuthorization(toShare: writeTypes, read: writeTypes)
+        // 同样先问"要不要问",否则每次写种子数据都会闪一下授权面板。
+        if try await store.statusForAuthorizationRequest(
+            toShare: writeTypes,
+            read: writeTypes
+        ) == .shouldRequest {
+            try await store.requestAuthorization(toShare: writeTypes, read: writeTypes)
+        }
         await deletePreviousSeed()
 
         var samples: [HKSample] = []
@@ -121,7 +127,12 @@ final class DebugSeeder: Sendable {
     func selfCheck() async throws {
         for tool in HealthTools.all {
             print("=== \(tool.name) ===")
-            print(try await tool.run(7))
+            // 一个工具报错不该让后面几个都跑不到——自检就是要看清哪个坏了。
+            do {
+                print(try await tool.run(7, nil))
+            } catch {
+                print("失败：\(error)")
+            }
         }
     }
 

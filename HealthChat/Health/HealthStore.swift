@@ -75,12 +75,22 @@ final class HealthStore: Sendable {
         HKQuantityType(.appleSleepingWristTemperature)
     ]
 
-    func requestAuthorization() async throws {
+    /// 需要问的时候才问,返回这次有没有真的弹窗。
+    ///
+    /// 所有类型都已经决定过时再调 `requestAuthorization`,iOS 仍然会把授权面板推上来
+    /// 再立刻收回去——启动时看着就是"闪一下"。`statusForAuthorizationRequest` 能在
+    /// 不弹任何 UI 的情况下问清楚"还需不需要问"。
+    @discardableResult
+    func requestAuthorizationIfNeeded() async throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw HealthStoreError.healthDataUnavailable
         }
 
+        let status = try await store.statusForAuthorizationRequest(toShare: [], read: readTypes)
+        guard status == .shouldRequest else { return false }
+
         try await store.requestAuthorization(toShare: [], read: readTypes)
+        return true
     }
 
     func dailySteps(days: Int) async throws -> [DayValue] {
@@ -224,7 +234,8 @@ final class HealthStore: Sendable {
         }
     }
 
-    func workouts(days: Int) async throws -> [WorkoutItem] {
+    /// `activity` 传了就只返回那一类锻炼。名字用 `workoutName(for:)` 那套中文名。
+    func workouts(days: Int, activity: String? = nil) async throws -> [WorkoutItem] {
         let dayCount = min(max(days, 1), 90)
         let today = calendar.startOfDay(for: Date())
         guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
@@ -243,10 +254,13 @@ final class HealthStore: Sendable {
         )
         let energyType = HKQuantityType(.activeEnergyBurned)
 
-        return try await descriptor.result(for: store).map { workout in
-            WorkoutItem(
+        return try await descriptor.result(for: store).compactMap { workout in
+            let typeName = workoutName(for: workout.workoutActivityType)
+            guard activity == nil || activity == typeName else { return nil }
+
+            return WorkoutItem(
                 date: workout.startDate,
-                typeName: workoutName(for: workout.workoutActivityType),
+                typeName: typeName,
                 duration: workout.duration,
                 activeEnergy: workout
                     .statistics(for: energyType)?
@@ -277,7 +291,14 @@ final class HealthStore: Sendable {
             anchorDate: today
         )
 
-        let (systolic, diastolic) = try await (systolicCollection, diastolicCollection)
+        let systolic: HKStatisticsCollection
+        let diastolic: HKStatisticsCollection
+        do {
+            (systolic, diastolic) = try await (systolicCollection, diastolicCollection)
+        } catch let error as HKError where Self.isAuthorizationIssue(error) {
+            // 没授权和没数据对用户是一回事:渲染层会提示去检查授权,不该抛成"查询失败"。
+            return []
+        }
         let unit = HKUnit.millimeterOfMercury()
 
         return (0..<dayCount).compactMap { offset -> DayBloodPressure? in
@@ -325,9 +346,17 @@ final class HealthStore: Sendable {
             anchorDate: today
         )
 
-        let (oxygen, breathing, wrist, temperature) = try await (
-            oxygenCollection, breathingCollection, wristCollection, bodyTemperatureCollection
-        )
+        let oxygen: HKStatisticsCollection
+        let breathing: HKStatisticsCollection
+        let wrist: HKStatisticsCollection
+        let temperature: HKStatisticsCollection
+        do {
+            (oxygen, breathing, wrist, temperature) = try await (
+                oxygenCollection, breathingCollection, wristCollection, bodyTemperatureCollection
+            )
+        } catch let error as HKError where Self.isAuthorizationIssue(error) {
+            return []
+        }
         let breathingUnit = HKUnit.count().unitDivided(by: .minute())
         let celsius = HKUnit.degreeCelsius()
 
@@ -400,6 +429,12 @@ final class HealthStore: Sendable {
             guard weight != nil || fat != nil else { return nil }
             return DayBody(date: date, weight: weight, bodyFat: fat)
         }
+    }
+
+    /// 用户没授权某个类型时,统计查询会抛错而不是返回空。血压、血氧这些多数人本来就
+    /// 没有,更常见的是压根没允许读——那不该表现成"查询失败"。
+    private static func isAuthorizationIssue(_ error: HKError) -> Bool {
+        error.code == .errorAuthorizationNotDetermined || error.code == .errorAuthorizationDenied
     }
 
     private func dailyAverageCollection(

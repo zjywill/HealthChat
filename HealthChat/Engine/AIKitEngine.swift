@@ -5,20 +5,31 @@ struct AIKitEngine: AgentEngine {
     let name = "云端模型"
 
     private static let toolDefinitions = HealthTools.all.map { spec in
-        ToolDefinition(
+        var properties: [String: JSONValue] = [
+            "days": .object([
+                "type": "integer",
+                "description": "查询最近多少天，范围 1–90，默认 7",
+                "minimum": 1,
+                "maximum": 90,
+                "default": 7
+            ])
+        ]
+        // 只有 workouts 支持按类型筛。用 enum 而不是自由字符串:模型写“跑”或者
+        // “running”都对不上 HealthKit 那套中文名,筛出来会是空的。
+        if spec.supportsActivityFilter {
+            properties["activity"] = .object([
+                "type": "string",
+                "description": "只看某一类锻炼时传，留空表示全部",
+                "enum": .array(HealthTools.activityNames.map { .string($0) })
+            ])
+        }
+
+        return ToolDefinition(
             name: spec.name,
             description: spec.description,
             inputSchema: .object([
                 "type": "object",
-                "properties": .object([
-                    "days": .object([
-                        "type": "integer",
-                        "description": "查询最近多少天，范围 1–90，默认 7",
-                        "minimum": 1,
-                        "maximum": 90,
-                        "default": 7
-                    ])
-                ]),
+                "properties": .object(properties),
                 "required": .array(["days"]),
                 "additionalProperties": false
             ])
@@ -113,7 +124,10 @@ struct AIKitEngine: AgentEngine {
                 let outcome: (output: String, isError: Bool)
                 if let spec = HealthTools.spec(named: call.toolName) {
                     do {
-                        outcome = (try await spec.run(days), false)
+                        outcome = (
+                            try await spec.run(days, HealthTools.activity(fromInput: call.input)),
+                            false
+                        )
                     } catch {
                         outcome = ("健康数据查询失败：\(error.localizedDescription)", true)
                     }
