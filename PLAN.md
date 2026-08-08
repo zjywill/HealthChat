@@ -192,7 +192,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 
 **T5.1 Markdown 渲染**:assistant 气泡用 `Text(AttributedString(markdown:))`(失败回退纯文本),多段落保留空行。用 `.inlineOnlyPreservingWhitespace`——`.full` 会按 CommonMark 折叠单换行,模型列的每日数据会糊成一坨。
 **T5.2 会话持久化**:一条会话一个文件,`Documents/sessions/<id>.json`(`ChatSession`:messages + createdAt/updatedAt,标题取首条用户消息)。启动载入最近一条,每轮结束落盘,空会话不落盘。聊天页工具栏有「会话列表」和「新对话」,列表页可切换、左滑删除;设置页「清空对话」删掉当前这条。
-**T5.5 agent loop 上下文保真**:`ChatMessage.toolCalls` 存下每次工具调用的 id/name/input/output,`makePrompt` 把上几轮的 `tool_use` + `tool_result` 一起回放,模型追问时不必重查;失败的回合整轮不回灌(那段"无法回复：…"是 app 写给用户的,且带一个没有结果的 tool_use 回去 provider 会拒收)。工具行在气泡上方折叠显示,展开看原始聚合数据。
+**T5.5 agent loop 上下文保真**:`ChatMessage.toolCalls` 存下每次工具调用的 id/name/input/output,`makePrompt` 把上几轮的 `tool_use` + `tool_result` 一起回放,模型追问时不必重查;失败的回合整轮不回灌(那段"无法回复：…"是 app 写给用户的,且带一个没有结果的 tool_use 回去 provider 会拒收)。工具行在气泡上方显示,点开看数据(见 T5.11)。
 **T5.7 会话话题**:新会话可以先点一个话题(`ChatTopics`:跑步/骑行/力量训练/游泳/步行徒步/瑜伽拉伸/高强度间歇 + 睡眠/心率与 HRV/日常活动量/体重与体脂/整体状态)。话题只做一件事——把一句 `focus` 写进系统提示,告诉模型这次围绕什么、优先调哪个工具、按什么口径回答;工具本身不变。选中后首屏问题立刻换成该话题的三条(本地文案,不花模型调用)。话题存在 `ChatSession.topicId`(只存 id,文案随版本改),开聊后在输入框上方显示;只在会话还空着时可改——聊到一半换话题上下文就对不上了。
 **T5.6 首屏问题建议**:三级降级,越往上越个性化,任何一级失败都还有下一级顶着。
 1. **时段默认**(`SuggestedQuestions`):早上问昨晚睡眠,下午问活动量与恢复,晚上问今天动够没有。没数据没 key 也有。
@@ -201,6 +201,11 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 
 每条问题限一行(`lineLimit(1)` + `minimumScaleFactor`)。等待首字时气泡显示三点脉冲(`TypingIndicator`),reduce motion 下退成"正在回复…"。
 **T5.3 交互细节**:`.scrollDismissesKeyboard(.interactively)`;回复中把发送按钮换成停止(取消当前 Task,已收内容保留);错误消息气泡带「重试」。
+**T5.11 工具结果:结构化 + 底部面板**:工具不再返回一段文本,而是返回 `HealthReport`(title/columns/rows/summary/notes/series)。喂模型的 `modelText` 由同一份结构生成(表头一行 + `|` 分隔的数据行),面板画的是同一批数字——两边分开写迟早对不上。气泡上方的工具行变成 chip,点开是 `.sheet`(medium/large detent):摘要卡 + 表格(日期列钉住,数值横向滚)+ 日内分布柱状图 + 「模型收到的原文」。`ToolCallRecord.report` 跟着会话落盘,旧会话没有这个字段就退回显示文本。
+顺带补了颗粒度:睡眠给分期(深/核心/REM)、清醒时长、醒来次数、睡眠效率和睡眠期间心率;心率给全天最低/最高/平均;锻炼给距离和平均/最高心率;活动量给距离、爬楼和运动分钟。逐小时序列只进面板不进 `modelText`——24 个点对端上 4k 的窗口太贵,模型要的是结论不是曲线。
+**T5.12 每条回复的操作:复制 / 重新回答 / 分支**:复制按钮直接摆在回复下面(最常用的那个不值得多点一下);重新回答、在新对话里分支,和这条回复的时间收进「…」菜单。
+重新回答对**任意一条**回复都生效,不只是最后一条:从那条开始后面整段丢掉再重新生成。不做"保留旧版本、左右切页"那套——想留着旧的走分支,那本来就是分支的意思。分支把到那条为止的消息拷进一条新会话,原会话原样留在列表里;临时会话分叉出来的还是临时的。
+`ChatMessage.createdAt` 是后加的字段,旧会话里没有(可空),菜单里就不显示时间——比编一个时间强。
 **T5.4(可选)真机验证**:真机跑通全流程(真数据、Apple Intelligence),记录签名 team 步骤到 CLAUDE.md。
 
 ---

@@ -121,23 +121,22 @@ struct AIKitEngine: AgentEngine {
                     input: call.input
                 )))
 
-                let outcome: (output: String, isError: Bool)
+                let outcome: (output: String, report: HealthReport?, isError: Bool)
                 if let spec = HealthTools.spec(named: call.toolName) {
                     do {
-                        outcome = (
-                            try await spec.run(days, HealthTools.activity(fromInput: call.input)),
-                            false
-                        )
+                        let report = try await spec.run(days, HealthTools.activity(fromInput: call.input))
+                        outcome = (report.modelText, report, false)
                     } catch {
-                        outcome = ("健康数据查询失败：\(error.localizedDescription)", true)
+                        outcome = ("健康数据查询失败：\(error.localizedDescription)", nil, true)
                     }
                 } else {
-                    outcome = ("不支持名为 \(call.toolName) 的健康工具。", true)
+                    outcome = ("不支持名为 \(call.toolName) 的健康工具。", nil, true)
                 }
 
                 continuation.yield(.toolCallFinished(
                     id: call.toolCallId,
                     output: outcome.output,
+                    report: outcome.report,
                     isError: outcome.isError
                 ))
                 prompt.append(.toolResult(

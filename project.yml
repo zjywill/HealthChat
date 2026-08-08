@@ -32,6 +32,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.junyizhang.HealthChat
         PRODUCT_NAME: HealthChat
+        # Icon Composer 的 HealthChat/AppIcon.icon,名字要和这里对上。
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: HealthChat
         INFOPLIST_KEY_UILaunchScreen_Generation: YES

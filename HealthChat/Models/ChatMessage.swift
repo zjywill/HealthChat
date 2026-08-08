@@ -10,8 +10,11 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
     let name: String
     /// 参数的 JSON 字符串,保留原样(重新编码一遍不会得到相同的字节)。
     let input: String
-    /// nil 表示还在跑。
+    /// nil 表示还在跑。回放给模型的就是这段文本。
     var output: String?
+    /// 同一次查询的结构化形式,面板拿它画表格。查询失败、或者是旧版本存下来的
+    /// 会话,这里是 nil——面板那时退回显示 `output`。
+    var report: HealthReport?
     var isError: Bool
 
     init(
@@ -19,12 +22,14 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         name: String,
         input: String,
         output: String? = nil,
+        report: HealthReport? = nil,
         isError: Bool = false
     ) {
         self.id = id
         self.name = name
         self.input = input
         self.output = output
+        self.report = report
         self.isError = isError
     }
 }
@@ -40,18 +45,25 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
     var text: String
     var toolCalls: [ToolCallRecord]
     var errorDescription: String?
+    /// 这条消息是什么时候产生的。
+    ///
+    /// 可空:这个字段是后加的,之前存下来的会话里没有——与其编一个时间,不如在菜单里
+    /// 不显示。
+    var createdAt: Date?
 
     init(
         id: UUID = UUID(),
         role: Role,
         text: String,
         toolCalls: [ToolCallRecord] = [],
-        errorDescription: String? = nil
+        errorDescription: String? = nil,
+        createdAt: Date? = Date()
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.toolCalls = toolCalls
         self.errorDescription = errorDescription
+        self.createdAt = createdAt
     }
 }

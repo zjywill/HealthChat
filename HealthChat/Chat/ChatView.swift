@@ -35,11 +35,12 @@ struct ChatView: View {
                             ForEach(model.messages) { message in
                                 MessageBubble(
                                     message: message,
-                                    canRetry: message.id == model.messages.last?.id,
-                                    isWaiting: model.isReplying
-                                        && message.id == model.messages.last?.id
-                                        && message.text.isEmpty,
-                                    onRetry: { model.retry(message.id) }
+                                    isStreaming: model.isReplying
+                                        && message.id == model.messages.last?.id,
+                                    canRetry: model.canRetry(message.id),
+                                    canBranch: !model.isReplying,
+                                    onRetry: { model.retry(message.id) },
+                                    onBranch: { model.branch(from: message.id) }
                                 )
                                     .id(message.id)
                             }
@@ -210,9 +211,14 @@ struct ChatView: View {
 
 private struct MessageBubble: View {
     let message: ChatMessage
+    /// 这条正在生成:生成期间不给操作按钮,retry 一条还没写完的回复没有意义。
+    let isStreaming: Bool
     let canRetry: Bool
-    let isWaiting: Bool
+    let canBranch: Bool
     let onRetry: () -> Void
+    let onBranch: () -> Void
+
+    private var isWaiting: Bool { isStreaming && message.text.isEmpty }
 
     @ViewBuilder
     var body: some View {
@@ -246,7 +252,7 @@ private struct MessageBubble: View {
     private var assistantMessage: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(message.toolCalls) { call in
-                ToolCallRow(call: call)
+                ToolCallChip(call: call)
             }
 
             if isWaiting {
@@ -268,9 +274,50 @@ private struct MessageBubble: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHint("重新发送上一条问题")
+            } else if !isStreaming, !message.text.isEmpty {
+                actions
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 复制放在外面——它是最常用的那个,不值得多点一下。
+    /// 重新回答、分支和这条的时间收进菜单:都是低频操作,平时不该占着屏幕。
+    private var actions: some View {
+        HStack(spacing: 2) {
+            CopyButton(text: message.text)
+
+            Menu {
+                if let createdAt = message.createdAt {
+                    Section(createdAt.formatted(date: .abbreviated, time: .shortened)) {
+                        menuItems
+                    }
+                } else {
+                    menuItems
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("更多操作")
+        }
+        .padding(.top, 2)
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        Button(action: onRetry) {
+            Label("重新回答", systemImage: "arrow.clockwise")
+        }
+        .disabled(!canRetry)
+
+        Button(action: onBranch) {
+            Label("在新对话里分支", systemImage: "arrow.triangle.branch")
+        }
+        .disabled(!canBranch)
     }
 
     private var displayText: AttributedString {
@@ -287,6 +334,32 @@ private struct MessageBubble: View {
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
         )) ?? AttributedString(text)
+    }
+}
+
+/// 复制回复正文。点完图标变对勾,不弹 toast——这种小反馈就地给最省事。
+private struct CopyButton: View {
+    let text: String
+
+    @State private var hasCopied = false
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = text
+            withAnimation(.smooth(duration: 0.15)) { hasCopied = true }
+            Task {
+                try? await Task.sleep(for: .seconds(1.6))
+                withAnimation(.smooth(duration: 0.15)) { hasCopied = false }
+            }
+        } label: {
+            Image(systemName: hasCopied ? "checkmark" : "doc.on.doc")
+                .font(.footnote)
+                .foregroundStyle(hasCopied ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                .frame(width: 32, height: 32)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasCopied ? "已复制" : "复制回复")
     }
 }
 
@@ -323,61 +396,6 @@ private struct TypingIndicator: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: 22)
         .accessibilityLabel("正在回复")
-    }
-}
-
-/// 一次健康查询:默认只显示一句说明,展开能看到工具实际返回的聚合数据。
-///
-/// 数据摆在这里,模型在气泡里就不必逐行复述——它只负责结论。
-private struct ToolCallRow: View {
-    let call: ToolCallRecord
-
-    @State private var isExpanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                guard call.output != nil else { return }
-                withAnimation(.smooth(duration: 0.2)) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: call.isError ? "exclamationmark.triangle" : "heart.text.square")
-                    Text(note)
-                    if call.output == nil {
-                        ProgressView().controlSize(.mini)
-                    } else {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(call.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                .frame(minHeight: 32)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .disabled(call.output == nil)
-            .accessibilityLabel(note)
-            .accessibilityHint(call.output == nil ? "正在查询" : "展开查看查询结果")
-
-            if isExpanded, let output = call.output {
-                Text(output)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            }
-        }
-    }
-
-    private var note: String {
-        HealthTools.note(
-            for: call.name,
-            days: HealthTools.days(fromInput: call.input),
-            activity: HealthTools.activity(fromInput: call.input)
-        )
     }
 }
 

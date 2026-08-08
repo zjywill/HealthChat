@@ -7,7 +7,7 @@ import Foundation
 enum AgentEvent: Sendable {
     case textDelta(String)
     case toolCallStarted(ToolCallRecord)
-    case toolCallFinished(id: String, output: String, isError: Bool)
+    case toolCallFinished(id: String, output: String, report: HealthReport?, isError: Bool)
 }
 
 enum AgentError: LocalizedError {

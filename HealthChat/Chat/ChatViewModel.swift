@@ -38,19 +38,45 @@ final class ChatViewModel {
         currentReplyTask?.cancel()
     }
 
+    /// 重新回答某一条回复。
+    ///
+    /// 中间那条也能重答——从它开始后面整段都丢掉,再重新生成。不做"保留旧版本、左右
+    /// 切换"那套:想留着旧的走分支就行,那本来就是分支的意思。
     func retry(_ messageID: UUID) {
-        guard !isReplying,
-              !isLoadingConversation,
-              let index = session.messages.firstIndex(where: { $0.id == messageID }),
-              index == session.messages.index(before: session.messages.endIndex),
-              session.messages[index].role == .assistant,
-              session.messages[index].errorDescription != nil,
-              session.messages[..<index].last(where: { $0.role == .user }) != nil else {
-            return
-        }
+        guard canRetry(messageID), let index = index(of: messageID) else { return }
 
-        session.messages.remove(at: index)
+        session.messages.removeSubrange(index...)
         startReply()
+    }
+
+    func canRetry(_ messageID: UUID) -> Bool {
+        guard !isReplying, !isLoadingConversation, let index = index(of: messageID) else {
+            return false
+        }
+        return session.messages[index].role == .assistant
+            && session.messages[..<index].contains { $0.role == .user }
+    }
+
+    /// 从某条回复分叉出一条新会话:到这条为止的内容照搬过去,原会话原样留在列表里。
+    ///
+    /// 想试另一个问法又不想毁掉现在这条,走这里;愿意毁掉的走 retry。
+    func branch(from messageID: UUID) {
+        guard !isReplying, !isLoadingConversation, let index = index(of: messageID) else { return }
+
+        let history = Array(session.messages[...index])
+        session = ChatSession(
+            messages: history,
+            topicId: session.topicId,
+            // 临时会话分叉出来的还是临时的——说好不存就不能因为换了条会话就存了。
+            isEphemeral: session.isEphemeral
+        )
+        Task {
+            await saveSession()
+        }
+    }
+
+    private func index(of messageID: UUID) -> Int? {
+        session.messages.firstIndex { $0.id == messageID }
     }
 
     // MARK: - 会话
@@ -199,10 +225,11 @@ final class ChatViewModel {
             session.messages[last].text += delta
         case .toolCallStarted(let record):
             session.messages[last].toolCalls.append(record)
-        case .toolCallFinished(let id, let output, let isError):
+        case .toolCallFinished(let id, let output, let report, let isError):
             guard let index = session.messages[last].toolCalls.firstIndex(where: { $0.id == id })
             else { return }
             session.messages[last].toolCalls[index].output = output
+            session.messages[last].toolCalls[index].report = report
             session.messages[last].toolCalls[index].isError = isError
         }
     }

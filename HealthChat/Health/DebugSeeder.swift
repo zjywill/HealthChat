@@ -10,6 +10,11 @@ final class DebugSeeder: Sendable {
 
     private let writeTypes: Set<HKSampleType> = [
         HKQuantityType(.stepCount),
+        HKQuantityType(.distanceWalkingRunning),
+        HKQuantityType(.flightsClimbed),
+        // 运动分钟(appleExerciseTime)不在这里:那类 app 申请写权限会直接抛异常,
+        // 只有 Apple Watch 能写。读那侧留着,真机上有表就有数据。
+        HKQuantityType(.heartRate),
         HKQuantityType(.restingHeartRate),
         HKQuantityType(.heartRateVariabilitySDNN),
         HKQuantityType(.activeEnergyBurned),
@@ -57,6 +62,8 @@ final class DebugSeeder: Sendable {
             samples.append(contentsOf: dailySamples(for: day, offset: dayOffset))
             samples.append(contentsOf: sleepSamples(wakingOn: day, offset: dayOffset))
         }
+        // 今天的逐小时数据。面板上那条日内分布画的就是今天,只写到此刻为止。
+        samples.append(contentsOf: todaySamples())
 
         var skipped: Set<String> = []
         for (_, group) in Dictionary(grouping: samples, by: { $0.sampleType.identifier }) {
@@ -129,7 +136,7 @@ final class DebugSeeder: Sendable {
             print("=== \(tool.name) ===")
             // 一个工具报错不该让后面几个都跑不到——自检就是要看清哪个坏了。
             do {
-                print(try await tool.run(7, nil))
+                print(try await tool.run(7, nil).modelText)
             } catch {
                 print("失败：\(error)")
             }
@@ -149,6 +156,21 @@ final class DebugSeeder: Sendable {
             quantitySample(
                 type: HKQuantityType(.stepCount),
                 value: steps,
+                unit: .count(),
+                date: sampleDate,
+                metadata: metadata
+            ),
+            // 一步约 0.7 米,跟真实数据里步数和距离的比例对得上。
+            quantitySample(
+                type: HKQuantityType(.distanceWalkingRunning),
+                value: steps * 0.0007,
+                unit: .meterUnit(with: .kilo),
+                date: sampleDate,
+                metadata: metadata
+            ),
+            quantitySample(
+                type: HKQuantityType(.flightsClimbed),
+                value: Double(2 + (offset * 3) % 12),
                 unit: .count(),
                 date: sampleDate,
                 metadata: metadata
@@ -251,7 +273,8 @@ final class DebugSeeder: Sendable {
         let wake = calendar.date(byAdding: .minute, value: durationMinutes, to: bedtime) ?? coreEnd
         let metadata = [HKMetadataKeyWasUserEntered: true]
 
-        return [
+        // 半夜醒一小会:每三晚一次,让"醒来次数"和睡眠效率不是恒定值。
+        var samples: [HKSample] = [
             HKCategorySample(
                 type: sleepType,
                 value: HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
@@ -274,6 +297,98 @@ final class DebugSeeder: Sendable {
                 metadata: metadata
             )
         ]
+
+        if offset.isMultiple(of: 3),
+           let awakeStart = calendar.date(byAdding: .minute, value: -25, to: coreEnd),
+           let awakeEnd = calendar.date(byAdding: .minute, value: 8 + offset % 7, to: awakeStart) {
+            samples.append(HKCategorySample(
+                type: sleepType,
+                value: HKCategoryValueSleepAnalysis.awake.rawValue,
+                start: awakeStart,
+                end: awakeEnd,
+                metadata: metadata
+            ))
+        }
+
+        // 夜间心率:睡下去往下走,天亮前回升,半夜醒那段抬一截。
+        var cursor = bedtime
+        var index = 0
+        while cursor < wake {
+            let progress = cursor.timeIntervalSince(bedtime) / max(wake.timeIntervalSince(bedtime), 1)
+            let dip = 8 * sin(progress * .pi)
+            let value = Double(58 + offset % 5) - dip + Double(index % 3)
+            samples.append(quantitySample(
+                type: HKQuantityType(.heartRate),
+                value: value,
+                unit: HKUnit.count().unitDivided(by: .minute()),
+                date: cursor,
+                metadata: metadata
+            ))
+            guard let next = calendar.date(byAdding: .minute, value: 20, to: cursor) else { break }
+            cursor = next
+            index += 1
+        }
+
+        return samples
+    }
+
+    /// 今天到此刻的逐小时步数和心率。
+    ///
+    /// 其余日子只写一条日总量就够了(工具按天聚合),但面板上的日内分布画的是今天,
+    /// 得有真正分散在各个小时的样本。
+    private func todaySamples() -> [HKSample] {
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let currentHour = calendar.component(.hour, from: now)
+        let metadata = [HKMetadataKeyWasUserEntered: true]
+        let stepUnit = HKUnit.count()
+        let heartUnit = HKUnit.count().unitDivided(by: .minute())
+
+        var samples: [HKSample] = []
+        for hour in 0...currentHour {
+            guard let start = calendar.date(byAdding: .hour, value: hour, to: startOfDay),
+                  let end = calendar.date(byAdding: .minute, value: 55, to: start),
+                  end < now else {
+                continue
+            }
+
+            // 早晚各一个通勤峰,午后一个小坡;夜里基本不动。
+            let shape: Double
+            switch hour {
+            case 8, 9: shape = 1.0
+            case 12, 13: shape = 0.6
+            case 18, 19: shape = 0.9
+            case 7, 10, 11, 14...17, 20, 21: shape = 0.35
+            default: shape = 0.03
+            }
+            let steps = (900 * shape + Double(hour % 4) * 20).rounded()
+            if steps > 0 {
+                samples.append(HKQuantitySample(
+                    type: HKQuantityType(.stepCount),
+                    quantity: HKQuantity(unit: stepUnit, doubleValue: steps),
+                    start: start,
+                    end: end,
+                    metadata: metadata
+                ))
+            }
+
+            samples.append(quantitySample(
+                type: HKQuantityType(.heartRate),
+                value: 58 + 26 * shape + Double(hour % 3),
+                unit: heartUnit,
+                date: start,
+                metadata: metadata
+            ))
+        }
+
+        samples.append(quantitySample(
+            type: HKQuantityType(.restingHeartRate),
+            value: 59,
+            unit: heartUnit,
+            date: startOfDay.addingTimeInterval(3600),
+            metadata: metadata
+        ))
+        return samples
     }
 
     private func saveWorkout(on day: Date, offset: Int) async throws {
@@ -297,16 +412,49 @@ final class DebugSeeder: Sendable {
             configuration: configuration,
             device: .local()
         )
+        let metadata = [HKMetadataKeyWasUserEntered: true]
         let energySample = HKQuantitySample(
             type: HKQuantityType(.activeEnergyBurned),
             quantity: HKQuantity(unit: .kilocalorie(), doubleValue: energy),
             start: start,
             end: end,
-            metadata: [HKMetadataKeyWasUserEntered: true]
+            metadata: metadata
+        )
+        // 距离和心率要挂在 workout 上,不然 workout.statistics 取不到——
+        // 单独写进「健康」只会变成一条孤立样本。
+        let distanceType = activity == .cycling
+            ? HKQuantityType(.distanceCycling)
+            : HKQuantityType(.distanceWalkingRunning)
+        let speed = activity == .cycling ? 0.35 : 0.16
+        let distanceSample = HKQuantitySample(
+            type: distanceType,
+            quantity: HKQuantity(
+                unit: .meterUnit(with: .kilo),
+                doubleValue: Double(durationMinutes) * speed
+            ),
+            start: start,
+            end: end,
+            metadata: metadata
         )
 
+        var heartSamples: [HKSample] = []
+        for minute in stride(from: 0, to: durationMinutes, by: 5) {
+            guard let moment = calendar.date(byAdding: .minute, value: minute, to: start) else { continue }
+            let progress = Double(minute) / Double(max(durationMinutes, 1))
+            heartSamples.append(HKQuantitySample(
+                type: HKQuantityType(.heartRate),
+                quantity: HKQuantity(
+                    unit: HKUnit.count().unitDivided(by: .minute()),
+                    doubleValue: 118 + 34 * sin(progress * .pi) + Double(offset % 6)
+                ),
+                start: moment,
+                end: moment,
+                metadata: metadata
+            ))
+        }
+
         try await builder.beginCollection(at: start)
-        try await builder.addSamples([energySample])
+        try await builder.addSamples([energySample, distanceSample] + heartSamples)
         try await builder.endCollection(at: end)
         _ = try await builder.finishWorkout()
     }

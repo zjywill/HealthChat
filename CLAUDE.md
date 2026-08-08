@@ -24,4 +24,4 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
 
 - iOS 26 only,不写旧版本可用性分支。
 - HealthKit 只读;API key 只进 Keychain。
-- 工具只返回按天聚合值,不返回原始样本。
+- 工具只返回按天(或按晚)聚合值,不返回原始样本。逐小时序列只画在结果面板里,不进模型上下文。
