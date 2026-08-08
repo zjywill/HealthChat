@@ -40,7 +40,8 @@ xcrun simctl launch booted com.junyizhang.HealthChat
 
 - 打开就是聊天界面,没有仪表盘。你问"我最近睡得怎么样",agent 调用睡眠查询工具拿近 7 天聚合数据,流式回复分析。
 - 回复气泡上方小字标注这轮调用了哪些查询("查询了最近 7 天睡眠"),数据来源透明。UI 已在 M0 做好(`ChatMessage.toolNotes`)。
-- 双引擎:**端上 FoundationModels(默认,数据不出设备)** 和 **云端 AIKit(填 key 后可用,默认 anthropic/claude-sonnet-5,49 个 provider 可选)**。
+- 引擎:**云端 AIKit(填 key 后可用,默认 anthropic/claude-sonnet-5,目录里 44 个云端 provider 可选)**。
+- **端上 FoundationModels 引擎已于 2026-08-08 暂时移除**(体验没达到可用标准,先不做卖点):`FoundationModelsEngine.swift` 连同引擎选择 UI 一起删掉,代码在 commit `6dba4fe`(T3.4)里,要加回来直接从那儿取。M3 的任务描述保留在下面备查。
 
 ## 架构
 
@@ -70,9 +71,9 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 | `workouts` | 锻炼记录 | 逐条:日期/类型/时长/消耗 kcal |
 | `body_metrics` | 体重/体脂 | 逐日(有记录的天)+ 首尾变化 |
 
-## 引擎选择策略(T4.5 实现)
+## 引擎选择策略(T4.5 实现,端上移除后简化)
 
-每次发送时现算:设置为「自动」→ 端上可用用端上,否则有 key 用云端,都没有则回复引导文案;设置强制指定则用指定的。
+只剩云端一条路:每次发送时读 Keychain,没 key 抛 `needsAPIKey`、没选模型抛 `needsModelSelection`,欢迎卡提示去设置配置。端上引擎加回来时再恢复「自动/端上/云端」三选。
 
 ---
 
@@ -122,7 +123,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 - `func bodyMetrics(days: Int) async throws -> [DayBody]`:bodyMass(kg)、bodyFatPercentage(%),discreteAverage 按天,无记录的天跳过。
 - 验收:自检打印锻炼列表和体重曲线。
 
-### M3 端上引擎(FoundationModels)
+### M3 端上引擎(FoundationModels)——**已实现后又暂时移除,等要用时按下面的描述从 `6dba4fe` 恢复**
 
 **T3.1 HealthToolSpec:中立工具定义**
 - 文件:重写 `HealthChat/Engine/HealthTools.swift`
@@ -176,7 +177,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 - 数据边界:上传的只有工具返回的聚合文本(契约保证),不传原始样本。
 
 **T4.4 SettingsView 定稿**
-- 引擎 Picker:自动/端上/云端(`@AppStorage("engineChoice")`);云端 section:`SecureField` API key(失焦或提交时写 Keychain,显示"已保存"态)、provider id 文本框(默认 `anthropic`,脚注提示 catalog 里的 id)、model 文本框(默认 `claude-sonnet-5`);当前生效引擎的展示行。
+- 引擎 Picker:自动/端上/云端(`@AppStorage("engineChoice")`);云端 section:`SecureField` API key(失焦或提交时写 Keychain,显示"已保存"态)、provider 与 model **从 AIKit catalog 里选,不让用户手输名字**(`ProviderCatalog.all`,带搜索;只列填 key 就能连的云端 provider——本地部署(Ollama、LM Studio)和目录里没有 `api` 地址的(custom-provider、DimCode OAuth、google)一律过滤掉,44 个;model 只列 `supportsTools` 的;换 provider 自动换成新 provider 的默认模型);catalog 里没有内置模型的 provider(Ollama、各类网关)提供「从服务端获取模型列表」(`AIClient.models()`)和自定义 model ID 兜底;当前生效引擎的展示行。
 - 验收:填 key → 杀 app 重开还在;改 provider/model 生效。
 
 **T4.5 引擎自动选择 + 删 Echo**
@@ -185,8 +186,16 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 
 ### M5 打磨(每个可独立做)
 
-**T5.1 Markdown 渲染**:assistant 气泡用 `Text(AttributedString(markdown:))`(失败回退纯文本),多段落保留空行。
-**T5.2 对话持久化**:`Codable` 存 `Documents/conversation.json`,启动载入、每轮结束落盘;设置页加「清空对话」(同时重建端上 session)。
+**T5.1 Markdown 渲染**:assistant 气泡用 `Text(AttributedString(markdown:))`(失败回退纯文本),多段落保留空行。用 `.inlineOnlyPreservingWhitespace`——`.full` 会按 CommonMark 折叠单换行,模型列的每日数据会糊成一坨。
+**T5.2 会话持久化**:一条会话一个文件,`Documents/sessions/<id>.json`(`ChatSession`:messages + createdAt/updatedAt,标题取首条用户消息)。启动载入最近一条,每轮结束落盘,空会话不落盘。聊天页工具栏有「会话列表」和「新对话」,列表页可切换、左滑删除;设置页「清空对话」删掉当前这条。
+**T5.5 agent loop 上下文保真**:`ChatMessage.toolCalls` 存下每次工具调用的 id/name/input/output,`makePrompt` 把上几轮的 `tool_use` + `tool_result` 一起回放,模型追问时不必重查;失败的回合整轮不回灌(那段"无法回复：…"是 app 写给用户的,且带一个没有结果的 tool_use 回去 provider 会拒收)。工具行在气泡上方折叠显示,展开看原始聚合数据。
+**T5.7 会话话题**:新会话可以先点一个话题(`ChatTopics`:跑步/骑行/力量训练/游泳/步行徒步/瑜伽拉伸/高强度间歇 + 睡眠/心率与 HRV/日常活动量/体重与体脂/整体状态)。话题只做一件事——把一句 `focus` 写进系统提示,告诉模型这次围绕什么、优先调哪个工具、按什么口径回答;工具本身不变。选中后首屏问题立刻换成该话题的三条(本地文案,不花模型调用)。话题存在 `ChatSession.topicId`(只存 id,文案随版本改),开聊后在输入框上方显示;只在会话还空着时可改——聊到一半换话题上下文就对不上了。
+**T5.6 首屏问题建议**:三级降级,越往上越个性化,任何一级失败都还有下一级顶着。
+1. **时段默认**(`SuggestedQuestions`):早上问昨晚睡眠,下午问活动量与恢复,晚上问今天动够没有。没数据没 key 也有。
+2. **本地处境判定**(`HealthSituation.detect()`,纯 HealthKit 查询):刚练完(3 小时内)、昨晚比 14 天常态少睡 45 分钟以上、昨晚无记录、静息心率高出基线 3 次以上、HRV 低于基线 15%、今天 0 步、今天步数超基线 1.5 倍、连续 3 天步数不到基线六成、5 天以上没锻炼、两周体重变化超 1 公斤、入睡时间比上周晚 40 分钟以上、周一早上回顾。按「多可能是此刻打开 app 的原因」排序,时段会调权(早上睡眠优先,晚上活动量优先)。
+3. **模型润色**(`QuestionSuggester`):把排好序的处境和最近 7 天摘要交给模型写成三句人话,每次启动只调一次;解析不出三条就退回第 2 级。生成的用 `sparkles` 图标。
+
+每条问题限一行(`lineLimit(1)` + `minimumScaleFactor`)。等待首字时气泡显示三点脉冲(`TypingIndicator`),reduce motion 下退成"正在回复…"。
 **T5.3 交互细节**:`.scrollDismissesKeyboard(.interactively)`;回复中把发送按钮换成停止(取消当前 Task,已收内容保留);错误消息气泡带「重试」。
 **T5.4(可选)真机验证**:真机跑通全流程(真数据、Apple Intelligence),记录签名 team 步骤到 CLAUDE.md。
 

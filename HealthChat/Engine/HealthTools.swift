@@ -1,4 +1,5 @@
 import Foundation
+import AIKit
 
 struct HealthToolSpec: Sendable {
     let name: String
@@ -47,11 +48,34 @@ enum HealthTools {
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.bodyMetrics(days: dayCount)
             return renderBody(values, days: dayCount)
+        },
+        HealthToolSpec(
+            name: "blood_pressure",
+            description: "当用户问及血压、收缩压或舒张压时调用。返回最近若干天有记录的每日血压均值。"
+                + "多数人没有这项数据（需要血压计或第三方 app 写入），没有记录时会明确说明。"
+        ) { days in
+            let dayCount = normalizedDays(days)
+            let values = try await HealthStore.shared.bloodPressureSummary(days: dayCount)
+            return renderBloodPressure(values, days: dayCount)
+        },
+        HealthToolSpec(
+            name: "vitals",
+            description: "当用户问及血氧、呼吸频率或体温时调用。返回最近若干天有记录的每日均值。"
+                + "这些项需要支持的 Apple Watch 或体温计，多数人只有部分数据，没有记录时会明确说明。"
+        ) { days in
+            let dayCount = normalizedDays(days)
+            let values = try await HealthStore.shared.vitalsSummary(days: dayCount)
+            return renderVitals(values, days: dayCount)
         }
     ]
 
     static func spec(named name: String) -> HealthToolSpec? {
         all.first { $0.name == name }
+    }
+
+    /// 从工具参数的 JSON 字符串里取天数。引擎调用工具和界面显示说明都要用。
+    static func days(fromInput input: String) -> Int {
+        normalizedDays((try? JSONValue.decode(from: input))?["days"]?.intValue ?? 7)
     }
 
     static func note(for name: String, days: Int) -> String {
@@ -67,6 +91,10 @@ enum HealthTools {
             label = "锻炼"
         case "body_metrics":
             label = "体重与体脂"
+        case "blood_pressure":
+            label = "血压"
+        case "vitals":
+            label = "血氧、呼吸与体温"
         default:
             label = "健康数据"
         }
@@ -207,6 +235,66 @@ enum HealthTools {
             lines.append("体脂变化 \(formatSigned(lastFat - firstFat, suffix: " 个百分点"))")
         }
         return lines.joined(separator: "\n")
+    }
+
+    private static func renderBloodPressure(_ values: [DayBloodPressure], days: Int) -> String {
+        let recorded = values.filter { $0.systolic != nil || $0.diastolic != nil }
+        guard !recorded.isEmpty else {
+            // 没数据是常态而不是故障,说清楚原因,别让模型把它当成"读取失败"。
+            return "最近 \(days) 天没有血压记录。血压需要血压计或第三方 app 写入“健康”，"
+                + "Apple Watch 不测血压。如果确认记过，请在“健康”App > 共享 > App 里确认已允许 HealthChat 读取。"
+        }
+
+        let lines = recorded.map { item in
+            "\(formatDate(item.date)) \(formatOptional(item.systolic, suffix: ""))/"
+                + "\(formatOptional(item.diastolic, suffix: "")) mmHg"
+        }
+        var output = ["最近 \(days) 天血压（每日均值）"] + lines
+
+        if let systolic = average(recorded.compactMap(\.systolic)),
+           let diastolic = average(recorded.compactMap(\.diastolic)) {
+            output.append(
+                "均值 \(Int(systolic.rounded()))/\(Int(diastolic.rounded())) mmHg，共 \(recorded.count) 天有记录"
+            )
+        }
+        return output.joined(separator: "\n")
+    }
+
+    private static func renderVitals(_ values: [DayVitals], days: Int) -> String {
+        let recorded = values.filter {
+            $0.oxygen != nil || $0.respiratoryRate != nil
+                || $0.wristTemperature != nil || $0.bodyTemperature != nil
+        }
+        guard !recorded.isEmpty else {
+            return "最近 \(days) 天没有血氧、呼吸频率或体温记录。血氧和睡眠手腕温度需要支持的 Apple Watch "
+                + "并开启对应功能，体温需要体温计写入。如果确认记过，请在“健康”App > 共享 > App 里确认已允许 HealthChat 读取。"
+        }
+
+        let lines = recorded.map { item in
+            var parts: [String] = ["\(formatDate(item.date))"]
+            if let oxygen = item.oxygen {
+                parts.append("血氧 \(formatDecimal(oxygen, suffix: "%"))")
+            }
+            if let breathing = item.respiratoryRate {
+                parts.append("呼吸 \(formatDecimal(breathing, suffix: " 次/分"))")
+            }
+            if let wrist = item.wristTemperature {
+                parts.append("手腕温度 \(formatDecimal(wrist, suffix: "°C"))")
+            }
+            if let temperature = item.bodyTemperature {
+                parts.append("体温 \(formatDecimal(temperature, suffix: "°C"))")
+            }
+            return parts.joined(separator: "，")
+        }
+
+        var output = ["最近 \(days) 天体征（每日均值）"] + lines
+        if let oxygen = average(recorded.compactMap(\.oxygen)) {
+            output.append("血氧均值 \(formatDecimal(oxygen, suffix: "%"))")
+        }
+        if let breathing = average(recorded.compactMap(\.respiratoryRate)) {
+            output.append("呼吸频率均值 \(formatDecimal(breathing, suffix: " 次/分"))")
+        }
+        return output.joined(separator: "\n")
     }
 
     private static func weeklyGroups<Item>(

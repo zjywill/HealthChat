@@ -4,7 +4,6 @@ struct SettingsView: View {
     let canClearConversation: Bool
     let onClearConversation: () -> Void
 
-    @AppStorage(EngineSettings.choiceKey) private var engineChoice = EngineSettings.defaultChoice
     @AppStorage(EngineSettings.providerKey) private var providerId = EngineSettings.defaultProvider
     @AppStorage(EngineSettings.modelKey) private var model = EngineSettings.defaultModel
 
@@ -14,7 +13,10 @@ struct SettingsView: View {
     @State private var hasLoadedAPIKey = false
     @State private var keyStatus = KeyStatus.notSet
     @State private var isShowingClearConfirmation = false
+    @State private var isRequestingHealth = false
+    @State private var healthStatus: HealthAuthStatus?
     @FocusState private var focusedField: Field?
+    @Environment(\.openURL) private var openURL
 
     #if DEBUG
     @State private var debugStatus: DebugStatus?
@@ -33,65 +35,98 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("使用引擎")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                LabeledContent("API key") {
+                    HStack(spacing: 8) {
+                        SecureField("必填", text: $apiKey)
+                            .focused($focusedField, equals: .apiKey)
+                            .multilineTextAlignment(.trailing)
+                            .textContentType(.password)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .privacySensitive()
+                            .onSubmit(saveAPIKey)
+                            .accessibilityLabel("云端 API key")
 
-                    Picker("使用引擎", selection: $engineChoice) {
-                        ForEach(EngineChoice.allCases) { choice in
-                            Text(choice.title).tag(choice.rawValue)
+                        if !apiKey.isEmpty {
+                            Button {
+                                apiKey = ""
+                                focusedField = .apiKey
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("清除 API key")
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
                 }
 
-                LabeledContent("当前生效") {
-                    Label(effectiveEngine.text, systemImage: effectiveEngine.icon)
-                        .foregroundStyle(effectiveEngine.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.primary))
+                Label {
+                    // key 全遮住就没法核对填的是哪一把,露头尾足够认人。
+                    if keyStatus == .saved, let hint = maskedKey(persistedAPIKey) {
+                        Text("\(keyStatus.message) · \(Text(hint).monospaced())")
+                    } else {
+                        Text(keyStatus.message)
+                    }
+                } icon: {
+                    Image(systemName: keyStatus.icon)
                 }
-            } header: {
-                Text("引擎")
-            } footer: {
-                Text("自动模式优先使用端上模型，健康数据留在设备；端上不可用且已保存 API key 时，才会使用云端模型。")
-            }
+                .font(.footnote)
+                .foregroundStyle(keyStatus.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                .privacySensitive()
+                .accessibilityElement(children: .combine)
 
-            Section {
-                LabeledContent("API key") {
-                    SecureField("必填", text: $apiKey)
-                        .focused($focusedField, equals: .apiKey)
-                        .multilineTextAlignment(.trailing)
-                        .textContentType(.password)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .privacySensitive()
-                        .onSubmit(saveAPIKey)
-                        .accessibilityLabel("云端 API key")
-                }
+                if CloudCatalog.isLoaded {
+                    NavigationLink {
+                        ProviderPickerView(selectedId: providerId, onSelect: selectProvider)
+                    } label: {
+                        LabeledContent("Provider", value: CloudCatalog.providerName(for: providerId))
+                    }
 
-                Label(keyStatus.message, systemImage: keyStatus.icon)
-                    .font(.footnote)
-                    .foregroundStyle(keyStatus.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                    .accessibilityElement(children: .combine)
+                    NavigationLink {
+                        ModelPickerView(
+                            providerId: providerId,
+                            selectedId: model,
+                            onSelect: { model = $0 }
+                        )
+                    } label: {
+                        LabeledContent(
+                            "模型",
+                            value: model.isEmpty ? "未选择" : CloudCatalog.modelName(for: model, in: providerId)
+                        )
+                    }
 
-                LabeledContent("Provider ID") {
-                    TextField(EngineSettings.defaultProvider, text: $providerId)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.asciiCapable)
-                        .accessibilityLabel("Provider ID")
-                }
+                    if model.isEmpty {
+                        Label("请先选择模型", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityElement(children: .combine)
+                    }
+                } else {
+                    // catalog 资源没打进 app,退回手输,别把人卡死
+                    LabeledContent("Provider ID") {
+                        TextField(EngineSettings.defaultProvider, text: $providerId)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.asciiCapable)
+                            .accessibilityLabel("Provider ID")
+                    }
 
-                LabeledContent("模型") {
-                    TextField(EngineSettings.defaultModel, text: $model)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.asciiCapable)
-                        .accessibilityLabel("模型")
+                    LabeledContent("模型") {
+                        TextField(EngineSettings.defaultModel, text: $model)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.asciiCapable)
+                            .accessibilityLabel("模型")
+                    }
+
+                    Label("未能载入 AIKit provider 目录，暂时只能手动填写。", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .accessibilityElement(children: .combine)
                 }
 
                 if hasStoredAPIKey {
@@ -105,7 +140,39 @@ struct SettingsView: View {
             } header: {
                 Text("云端模型")
             } footer: {
-                Text("Provider ID 使用 AIKit catalog 中的标识，例如 anthropic。API key 只保存在本机钥匙串。")
+                Text("Provider 和模型都从 AIKit 内置目录里选。API key 只保存在本机钥匙串。")
+            }
+
+            Section {
+                Button {
+                    requestHealthAuthorization()
+                } label: {
+                    Label(
+                        isRequestingHealth ? "正在请求…" : "请求健康数据授权",
+                        systemImage: "heart.text.square"
+                    )
+                }
+                .disabled(isRequestingHealth)
+
+                if let healthStatus {
+                    Label(healthStatus.message, systemImage: healthStatus.icon)
+                        .font(.footnote)
+                        .foregroundStyle(healthStatus.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .accessibilityElement(children: .combine)
+                }
+
+                Button {
+                    openURL(URL(string: "x-apple-health://")!)
+                } label: {
+                    Label("在“健康”App 中管理", systemImage: "arrow.up.forward.app")
+                }
+            } header: {
+                Text("健康数据")
+            } footer: {
+                // iOS 从不告诉 app 读取权限被拒了(拒绝和"没数据"长得一样),所以这里
+                // 不假装能显示授权状态,只说清楚该去哪儿改。
+                Text("新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。"
+                    + "已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > HealthChat。")
             }
 
             Section {
@@ -118,7 +185,7 @@ struct SettingsView: View {
             } header: {
                 Text("对话")
             } footer: {
-                Text("清空会删除本机保存的所有消息，并重置端上模型的对话上下文。")
+                Text("清空会删除本机保存的所有消息，无法撤销。")
             }
 
             #if DEBUG
@@ -183,30 +250,45 @@ struct SettingsView: View {
         }
     }
 
-    private var effectiveEngine: EngineStatus {
-        let choice = EngineChoice(rawValue: engineChoice) ?? .automatic
-        switch choice {
-        case .automatic:
-            if onDeviceModelAvailable {
-                return EngineStatus(text: "端上模型", icon: "cpu", isWarning: false)
-            }
-            if hasStoredAPIKey {
-                return EngineStatus(text: "云端模型", icon: "cloud", isWarning: false)
-            }
-            return EngineStatus(text: "尚未配置", icon: "exclamationmark.triangle", isWarning: true)
-        case .onDevice:
-            return onDeviceModelAvailable
-                ? EngineStatus(text: "端上模型", icon: "cpu", isWarning: false)
-                : EngineStatus(text: "端上模型不可用", icon: "exclamationmark.triangle", isWarning: true)
-        case .cloud:
-            return hasStoredAPIKey
-                ? EngineStatus(text: "云端模型", icon: "cloud", isWarning: false)
-                : EngineStatus(text: "云端模型缺少 API key", icon: "exclamationmark.triangle", isWarning: true)
+    /// 换 provider 时,旧模型多半不属于新 provider,直接换成新 provider 的第一个可用模型。
+    private func selectProvider(_ id: String) {
+        guard id != providerId else { return }
+        providerId = id
+        if CloudCatalog.model(model, in: id) == nil {
+            model = CloudCatalog.defaultModel(for: id) ?? ""
         }
     }
 
-    private var onDeviceModelAvailable: Bool {
-        FoundationModelsEngine.isAvailable
+    /// 再请求一次授权。iOS 只会为"还没问过"的类型弹窗——新增数据类型后靠这个补上,
+    /// 已经拒过的项它不会再问,那种情况只能去「健康」App 改。
+    private func requestHealthAuthorization() {
+        guard !isRequestingHealth else { return }
+        isRequestingHealth = true
+        healthStatus = nil
+
+        Task {
+            defer { isRequestingHealth = false }
+            do {
+                try await HealthStore.shared.requestAuthorization()
+                healthStatus = HealthAuthStatus(
+                    message: "已提交授权请求。没有弹窗说明这些类型你之前已经选择过。",
+                    icon: "checkmark.circle.fill",
+                    isError: false
+                )
+            } catch {
+                healthStatus = HealthAuthStatus(
+                    message: "请求失败：\(error.localizedDescription)",
+                    icon: "exclamationmark.triangle.fill",
+                    isError: true
+                )
+            }
+        }
+    }
+
+    /// "sk-ant…7f2a":露头尾够认出是哪一把 key,又不至于把整串摆在屏幕上。太短的不露。
+    private func maskedKey(_ key: String) -> String? {
+        guard key.count >= 12 else { return nil }
+        return "\(key.prefix(6))…\(key.suffix(4))"
     }
 
     private func loadAPIKey() {
@@ -255,8 +337,14 @@ struct SettingsView: View {
         Task {
             defer { isSeeding = false }
             do {
-                try await DebugSeeder.shared.seed()
-                debugStatus = DebugStatus(message: "已写入最近 30 天的种子数据", icon: "checkmark.circle.fill", isError: false)
+                let skipped = try await DebugSeeder.shared.seed()
+                debugStatus = DebugStatus(
+                    message: skipped.isEmpty
+                        ? "已写入最近 30 天的种子数据"
+                        : "已写入种子数据，跳过未授权：\(skipped.joined(separator: "、"))",
+                    icon: skipped.isEmpty ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
+                    isError: false
+                )
             } catch {
                 debugStatus = DebugStatus(
                     message: "写入失败：\(error.localizedDescription)",
@@ -291,6 +379,12 @@ struct SettingsView: View {
 
 private enum Field: Hashable {
     case apiKey
+}
+
+private struct HealthAuthStatus {
+    let message: String
+    let icon: String
+    let isError: Bool
 }
 
 private enum KeyStatus: Equatable {
@@ -331,12 +425,6 @@ private enum KeyStatus: Equatable {
         }
         return false
     }
-}
-
-private struct EngineStatus {
-    let text: String
-    let icon: String
-    let isWarning: Bool
 }
 
 #if DEBUG

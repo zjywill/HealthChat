@@ -26,6 +26,23 @@ struct WorkoutItem: Sendable, Equatable {
     let activeEnergy: Double?
 }
 
+struct DayBloodPressure: Sendable, Equatable {
+    let date: Date
+    let systolic: Double?
+    let diastolic: Double?
+}
+
+/// 血氧、呼吸频率、体温——都是"有就看看,没有很正常"的项。
+struct DayVitals: Sendable, Equatable {
+    let date: Date
+    /// 百分比,已经乘过 100。
+    let oxygen: Double?
+    let respiratoryRate: Double?
+    /// 睡眠期间的手腕温度(Apple Watch),摄氏度。
+    let wristTemperature: Double?
+    let bodyTemperature: Double?
+}
+
 struct DayBody: Sendable, Equatable {
     let date: Date
     let weight: Double?
@@ -47,7 +64,15 @@ final class HealthStore: Sendable {
         HKQuantityType(.bodyMass),
         HKQuantityType(.bodyFatPercentage),
         HKCategoryType(.sleepAnalysis),
-        HKObjectType.workoutType()
+        HKObjectType.workoutType(),
+        // 下面这几项多数人没有数据(血压要血压计、血氧和手腕温度要够新的 Apple Watch)。
+        // 照样申请:授权本身不要求有数据,等用户以后真的记了就直接能读到。
+        HKQuantityType(.bloodPressureSystolic),
+        HKQuantityType(.bloodPressureDiastolic),
+        HKQuantityType(.oxygenSaturation),
+        HKQuantityType(.respiratoryRate),
+        HKQuantityType(.bodyTemperature),
+        HKQuantityType(.appleSleepingWristTemperature)
     ]
 
     func requestAuthorization() async throws {
@@ -137,8 +162,10 @@ final class HealthStore: Sendable {
             var accumulator = nights[night, default: SleepAccumulator()]
             accumulator.bedtime = minDate(accumulator.bedtime, sample.startDate)
             accumulator.wake = maxDate(accumulator.wake, sample.endDate)
-            if asleepValues.contains(sample.value) {
-                accumulator.asleep += sample.endDate.timeIntervalSince(sample.startDate)
+            if asleepValues.contains(sample.value), sample.endDate > sample.startDate {
+                accumulator.asleepIntervals.append(
+                    DateInterval(start: sample.startDate, end: sample.endDate)
+                )
             }
             nights[night] = accumulator
         }
@@ -147,7 +174,7 @@ final class HealthStore: Sendable {
             guard let value = nights[night] else { return nil }
             return NightSleep(
                 night: night,
-                asleep: value.asleep,
+                asleep: mergedDuration(of: value.asleepIntervals),
                 bedtime: value.bedtime,
                 wake: value.wake
             )
@@ -225,6 +252,110 @@ final class HealthStore: Sendable {
                     .statistics(for: energyType)?
                     .sumQuantity()?
                     .doubleValue(for: .kilocalorie())
+            )
+        }
+    }
+
+    func bloodPressureSummary(days: Int) async throws -> [DayBloodPressure] {
+        let dayCount = min(max(days, 1), 90)
+        let today = calendar.startOfDay(for: Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
+              let endDate = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+
+        async let systolicCollection = dailyAverageCollection(
+            type: HKQuantityType(.bloodPressureSystolic),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+        async let diastolicCollection = dailyAverageCollection(
+            type: HKQuantityType(.bloodPressureDiastolic),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+
+        let (systolic, diastolic) = try await (systolicCollection, diastolicCollection)
+        let unit = HKUnit.millimeterOfMercury()
+
+        return (0..<dayCount).compactMap { offset -> DayBloodPressure? in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
+                return nil
+            }
+            return DayBloodPressure(
+                date: date,
+                systolic: systolic.statistics(for: date)?.averageQuantity()?.doubleValue(for: unit),
+                diastolic: diastolic.statistics(for: date)?.averageQuantity()?.doubleValue(for: unit)
+            )
+        }
+    }
+
+    func vitalsSummary(days: Int) async throws -> [DayVitals] {
+        let dayCount = min(max(days, 1), 90)
+        let today = calendar.startOfDay(for: Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
+              let endDate = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+
+        async let oxygenCollection = dailyAverageCollection(
+            type: HKQuantityType(.oxygenSaturation),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+        async let breathingCollection = dailyAverageCollection(
+            type: HKQuantityType(.respiratoryRate),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+        async let wristCollection = dailyAverageCollection(
+            type: HKQuantityType(.appleSleepingWristTemperature),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+        async let bodyTemperatureCollection = dailyAverageCollection(
+            type: HKQuantityType(.bodyTemperature),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+
+        let (oxygen, breathing, wrist, temperature) = try await (
+            oxygenCollection, breathingCollection, wristCollection, bodyTemperatureCollection
+        )
+        let breathingUnit = HKUnit.count().unitDivided(by: .minute())
+        let celsius = HKUnit.degreeCelsius()
+
+        return (0..<dayCount).compactMap { offset -> DayVitals? in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
+                return nil
+            }
+            let saturation = oxygen
+                .statistics(for: date)?
+                .averageQuantity()?
+                .doubleValue(for: .percent())
+
+            return DayVitals(
+                date: date,
+                // HealthKit 的血氧是 0–1 的比例,展示要的是 96 不是 0.96。
+                oxygen: saturation.map { $0 * 100 },
+                respiratoryRate: breathing
+                    .statistics(for: date)?
+                    .averageQuantity()?
+                    .doubleValue(for: breathingUnit),
+                wristTemperature: wrist
+                    .statistics(for: date)?
+                    .averageQuantity()?
+                    .doubleValue(for: celsius),
+                bodyTemperature: temperature
+                    .statistics(for: date)?
+                    .averageQuantity()?
+                    .doubleValue(for: celsius)
             )
         }
     }
@@ -314,6 +445,29 @@ final class HealthStore: Sendable {
         }
     }
 
+    /// 睡眠样本会重叠:iPhone 和 Apple Watch 同时记录、同一份数据被写入两次、
+    /// 或分期样本(核心/深度/REM)与一条 asleepUnspecified 并存。逐条累加时长会
+    /// 因此翻倍——曾经算出一晚睡 28 小时。合并重叠区间后再求和。
+    private func mergedDuration(of intervals: [DateInterval]) -> TimeInterval {
+        var total: TimeInterval = 0
+        var running: DateInterval?
+
+        for interval in intervals.sorted(by: { $0.start < $1.start }) {
+            guard let current = running else {
+                running = interval
+                continue
+            }
+            if interval.start <= current.end {
+                running = DateInterval(start: current.start, end: max(current.end, interval.end))
+            } else {
+                total += current.duration
+                running = interval
+            }
+        }
+
+        return total + (running?.duration ?? 0)
+    }
+
     private func minDate(_ lhs: Date?, _ rhs: Date) -> Date {
         guard let lhs else { return rhs }
         return min(lhs, rhs)
@@ -337,7 +491,7 @@ enum HealthStoreError: LocalizedError {
 }
 
 private struct SleepAccumulator {
-    var asleep: TimeInterval = 0
+    var asleepIntervals: [DateInterval] = []
     var bedtime: Date?
     var wake: Date?
 }

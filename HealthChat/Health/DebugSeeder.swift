@@ -16,15 +16,27 @@ final class DebugSeeder: Sendable {
         HKQuantityType(.bodyMass),
         HKQuantityType(.bodyFatPercentage),
         HKCategoryType(.sleepAnalysis),
-        HKObjectType.workoutType()
+        HKObjectType.workoutType(),
+        HKQuantityType(.bloodPressureSystolic),
+        HKQuantityType(.bloodPressureDiastolic),
+        HKQuantityType(.oxygenSaturation),
+        HKQuantityType(.respiratoryRate),
+        // 手腕温度只有 Apple Watch 能写,app 申请写权限会直接抛异常;这里改写体温,
+        // 读取那侧两个都留着。
+        HKQuantityType(.bodyTemperature)
     ]
 
-    func seed() async throws {
+    /// 写入种子数据,返回因为没有写权限而跳过的数据类型。
+    ///
+    /// 按类型分开写:用户在授权弹窗里关掉某一项(或者压根没勾),不该让整批数据都写不进去。
+    @discardableResult
+    func seed() async throws -> [String] {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw HealthStoreError.healthDataUnavailable
         }
 
         try await store.requestAuthorization(toShare: writeTypes, read: writeTypes)
+        await deletePreviousSeed()
 
         var samples: [HKSample] = []
         for dayOffset in 1...30 {
@@ -40,7 +52,14 @@ final class DebugSeeder: Sendable {
             samples.append(contentsOf: sleepSamples(wakingOn: day, offset: dayOffset))
         }
 
-        try await store.save(samples)
+        var skipped: Set<String> = []
+        for (_, group) in Dictionary(grouping: samples, by: { $0.sampleType.identifier }) {
+            do {
+                try await store.save(group)
+            } catch let error as HKError where Self.isAuthorizationIssue(error) {
+                skipped.insert(Self.friendlyName(for: group[0].sampleType))
+            }
+        }
 
         for dayOffset in stride(from: 2, through: 29, by: 3) {
             guard let day = calendar.date(
@@ -50,7 +69,52 @@ final class DebugSeeder: Sendable {
             ) else {
                 continue
             }
-            try await saveWorkout(on: day, offset: dayOffset)
+            do {
+                try await saveWorkout(on: day, offset: dayOffset)
+            } catch let error as HKError where Self.isAuthorizationIssue(error) {
+                skipped.insert("锻炼")
+            }
+        }
+
+        // 一条都没写进去说明整个授权都没给,那才算失败。
+        if skipped.count == Dictionary(grouping: samples, by: { $0.sampleType.identifier }).count {
+            throw HealthStoreError.healthDataUnavailable
+        }
+        return skipped.sorted()
+    }
+
+    private static func isAuthorizationIssue(_ error: HKError) -> Bool {
+        error.code == .errorAuthorizationNotDetermined || error.code == .errorAuthorizationDenied
+    }
+
+    private static func friendlyName(for type: HKSampleType) -> String {
+        switch type {
+        case HKQuantityType(.stepCount): "步数"
+        case HKQuantityType(.restingHeartRate): "静息心率"
+        case HKQuantityType(.heartRateVariabilitySDNN): "HRV"
+        case HKQuantityType(.bodyMass): "体重"
+        case HKQuantityType(.bodyFatPercentage): "体脂"
+        case HKQuantityType(.bloodPressureSystolic): "收缩压"
+        case HKQuantityType(.bloodPressureDiastolic): "舒张压"
+        case HKQuantityType(.oxygenSaturation): "血氧"
+        case HKQuantityType(.respiratoryRate): "呼吸频率"
+        case HKQuantityType(.bodyTemperature): "体温"
+        case HKCategoryType(.sleepAnalysis): "睡眠"
+        default: type.identifier
+        }
+    }
+
+    /// 先删掉本 app 上次写的样本,再写新的。
+    ///
+    /// HealthKit 不去重:重复点「写入种子数据」就是重复写入,步数直接翻倍、
+    /// 一晚睡眠加到 28 小时。只删自己写的,用户真实的健康记录不受影响。
+    private func deletePreviousSeed() async {
+        let ownSamples = HKQuery.predicateForObjects(from: HKSource.default())
+
+        for type in writeTypes {
+            // 删不掉不是致命问题:没写过(errorNoData)、或者这个类型没给写权限,
+            // 都跳过就行——为此让整批种子数据写不进去才是本末倒置。
+            _ = try? await store.deleteObjects(of: type, predicate: ownSamples)
         }
     }
 
@@ -106,7 +170,62 @@ final class DebugSeeder: Sendable {
                 date: sampleDate,
                 metadata: metadata
             )
-        ]
+        ] + vitalSamples(on: sampleDate, offset: offset, metadata: metadata)
+    }
+
+    /// 血压、血氧、呼吸频率、体温。
+    ///
+    /// 真机上这几项多数人是空的,种子数据也故意做成"不是每天都有":血压隔两天一次,
+    /// 对得上真人用血压计的频率。
+    private func vitalSamples(on date: Date, offset: Int, metadata: [String: Any]) -> [HKSample] {
+        var samples: [HKSample] = []
+
+        if offset % 3 == 0 {
+            let systolic = Double(112 + (offset * 5) % 17)
+            let diastolic = Double(70 + (offset * 3) % 13)
+            let unit = HKUnit.millimeterOfMercury()
+            // 收缩压和舒张压分开写。HealthKit 里血压虽然是一对关联样本,但 app 根本
+            // 申请不到关联类型的写权限(iOS 直接抛 disallowed),所以只能各写各的——
+            // 读取那侧本来也是按两个数量类型分别查。
+            samples.append(quantitySample(
+                type: HKQuantityType(.bloodPressureSystolic),
+                value: systolic,
+                unit: unit,
+                date: date,
+                metadata: metadata
+            ))
+            samples.append(quantitySample(
+                type: HKQuantityType(.bloodPressureDiastolic),
+                value: diastolic,
+                unit: unit,
+                date: date,
+                metadata: metadata
+            ))
+        }
+
+        samples.append(quantitySample(
+            type: HKQuantityType(.oxygenSaturation),
+            value: Double(95 + (offset * 2) % 4) / 100,
+            unit: .percent(),
+            date: date,
+            metadata: metadata
+        ))
+        samples.append(quantitySample(
+            type: HKQuantityType(.respiratoryRate),
+            value: Double(13 + (offset * 3) % 5),
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            date: date,
+            metadata: metadata
+        ))
+        samples.append(quantitySample(
+            type: HKQuantityType(.bodyTemperature),
+            value: 36.2 + Double((offset * 7) % 9) / 10,
+            unit: .degreeCelsius(),
+            date: date,
+            metadata: metadata
+        ))
+
+        return samples
     }
 
     private func sleepSamples(wakingOn day: Date, offset: Int) -> [HKSample] {

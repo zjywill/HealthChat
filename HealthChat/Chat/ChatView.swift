@@ -15,14 +15,24 @@ struct ChatView: View {
                         } else if model.messages.isEmpty {
                             WelcomeCard(
                                 setupGuidance: model.engineGuidance,
+                                questions: model.suggestions,
+                                selectedTopic: model.session.topic,
+                                onSelectTopic: model.selectTopic,
                                 onSelectQuestion: model.send
                             )
                             .padding(.top, 24)
+                            .id(Self.welcomeAnchor)
+                            // 挂在卡片上而不是整个视图:只有真的要显示问题时才去生成,
+                            // 挂 onAppear 会在会话还没载入完(此时 messages 是空的)就先跑一次。
+                            .task { model.refreshSuggestionsIfNeeded() }
                         } else {
                             ForEach(model.messages) { message in
                                 MessageBubble(
                                     message: message,
                                     canRetry: message.id == model.messages.last?.id,
+                                    isWaiting: model.isReplying
+                                        && message.id == model.messages.last?.id
+                                        && message.text.isEmpty,
                                     onRetry: { model.retry(message.id) }
                                 )
                                     .id(message.id)
@@ -32,17 +42,15 @@ struct ChatView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
                 }
-                .defaultScrollAnchor(.bottom)
+                // 有消息时贴底跟着流式内容走;空会话贴顶,否则欢迎卡会被压到屏幕底部。
+                .defaultScrollAnchor(model.messages.isEmpty ? .top : .bottom)
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: model.messages) {
-                    guard let id = model.messages.last?.id else { return }
-                    if reduceMotion {
-                        proxy.scrollTo(id, anchor: .bottom)
-                    } else {
-                        withAnimation(.smooth(duration: 0.25)) {
-                            proxy.scrollTo(id, anchor: .bottom)
-                        }
-                    }
+                    scroll(with: proxy)
+                }
+                // 换会话/开新会话时消息可能一样(两条空会话),得跟着 id 再归位一次。
+                .onChange(of: model.session.id) {
+                    scroll(with: proxy)
                 }
             }
             .safeAreaInset(edge: .bottom) { inputBar }
@@ -50,15 +58,36 @@ struct ChatView: View {
             .navigationTitle("HealthChat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                NavigationLink {
-                    SettingsView(
-                        canClearConversation: !model.messages.isEmpty && !model.isReplying,
-                        onClearConversation: model.clearConversation
-                    )
-                } label: {
-                    Image(systemName: "gearshape")
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        SessionListView(model: model)
+                    } label: {
+                        Image(systemName: "list.bullet")
+                    }
+                    .accessibilityLabel("会话列表")
                 }
-                .accessibilityLabel("设置")
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        model.startNewSession()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .disabled(model.isReplying || model.messages.isEmpty)
+                    .accessibilityLabel("新对话")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView(
+                            canClearConversation: !model.messages.isEmpty && !model.isReplying,
+                            onClearConversation: model.clearConversation
+                        )
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("设置")
+                }
             }
             .onAppear {
                 model.refreshEngineAvailability()
@@ -73,7 +102,46 @@ struct ChatView: View {
         }
     }
 
+    private static let welcomeAnchor = "welcome"
+
+    /// 滚到该看的地方:有消息就是最后一条,空会话就是欢迎卡顶部。
+    private func scroll(with proxy: ScrollViewProxy) {
+        let target: (id: AnyHashable, anchor: UnitPoint) = model.messages.last
+            .map { (AnyHashable($0.id), UnitPoint.bottom) }
+            ?? (AnyHashable(Self.welcomeAnchor), UnitPoint.top)
+
+        if reduceMotion {
+            proxy.scrollTo(target.id, anchor: target.anchor)
+        } else {
+            withAnimation(.smooth(duration: 0.25)) {
+                proxy.scrollTo(target.id, anchor: target.anchor)
+            }
+        }
+    }
+
     private var inputBar: some View {
+        VStack(spacing: 8) {
+            // 开聊之后话题还留在提示词里,界面上也得看得见,否则用户不知道
+            // 为什么模型一直在围着跑步说。
+            if let topic = model.session.topic, !model.messages.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: topic.icon)
+                    Text("话题：\(topic.name)")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+            }
+
+            messageField
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
+    }
+
+    private var messageField: some View {
         HStack(alignment: .bottom, spacing: 12) {
             TextField("问问你的健康数据…", text: $model.input, axis: .vertical)
                 .lineLimit(1...5)
@@ -110,15 +178,13 @@ struct ChatView: View {
             )
             .accessibilityLabel(model.isReplying ? "停止回复" : "发送")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.regularMaterial)
     }
 }
 
 private struct MessageBubble: View {
     let message: ChatMessage
     let canRetry: Bool
+    let isWaiting: Bool
     let onRetry: () -> Void
 
     var body: some View {
@@ -128,22 +194,20 @@ private struct MessageBubble: View {
             }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-                ForEach(message.toolNotes, id: \.self) { note in
-                    Label(note, systemImage: "heart.text.square")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ForEach(message.toolCalls) { call in
+                    ToolCallRow(call: call)
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(displayText)
-                        .foregroundStyle(message.role == .user ? .white : .primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .accessibilityLabel(
-                            message.text.isEmpty
-                                ? "正在回复"
-                                : message.text
-                        )
+                    if isWaiting {
+                        TypingIndicator()
+                    } else {
+                        Text(displayText)
+                            .foregroundStyle(message.role == .user ? .white : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .accessibilityLabel(message.text)
+                    }
 
                     if message.errorDescription != nil, canRetry {
                         Button(action: onRetry) {
@@ -177,25 +241,155 @@ private struct MessageBubble: View {
         guard message.role == .assistant else {
             return AttributedString(text)
         }
+        // 只解析行内语法并保留空白:.full 会按 CommonMark 把单换行折叠掉,
+        // 模型列的每日数据于是糊成一坨("22:26–05:19" 直接粘上下一行的日期)。
         return (try? AttributedString(
             markdown: text,
             options: .init(
-                interpretedSyntax: .full,
+                interpretedSyntax: .inlineOnlyPreservingWhitespace,
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
         )) ?? AttributedString(text)
     }
 }
 
+/// 模型还没吐出第一个字时的等待态。
+///
+/// 原来是一个静止的"…",跟一条真的只写了省略号的回复长得一模一样,看不出在动。
+private struct TypingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isAnimating = false
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                Text("正在回复…")
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 5) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .frame(width: 7, height: 7)
+                            .opacity(isAnimating ? 1 : 0.25)
+                            .animation(
+                                .easeInOut(duration: 0.55)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.18),
+                                value: isAnimating
+                            )
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .onAppear { isAnimating = true }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 22)
+        .accessibilityLabel("正在回复")
+    }
+}
+
+/// 一次健康查询:默认只显示一句说明,展开能看到工具实际返回的聚合数据。
+///
+/// 数据摆在这里,模型在气泡里就不必逐行复述——它只负责结论。
+private struct ToolCallRow: View {
+    let call: ToolCallRecord
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                guard call.output != nil else { return }
+                withAnimation(.smooth(duration: 0.2)) { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: call.isError ? "exclamationmark.triangle" : "heart.text.square")
+                    Text(note)
+                    if call.output == nil {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(call.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                .frame(minHeight: 32)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(call.output == nil)
+            .accessibilityLabel(note)
+            .accessibilityHint(call.output == nil ? "正在查询" : "展开查看查询结果")
+
+            if isExpanded, let output = call.output {
+                Text(output)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private var note: String {
+        HealthTools.note(for: call.name, days: HealthTools.days(fromInput: call.input))
+    }
+}
+
+/// 新会话选话题。选中的话题会写进系统提示,决定模型先看哪些数据。
+///
+/// 再点一次取消选择——选错了不该只能重开一条会话。
+private struct TopicPicker: View {
+    let selected: ChatTopic?
+    let onSelect: (ChatTopic?) -> Void
+
+    private let columns = [GridItem(.adaptive(minimum: 96), spacing: 8)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(ChatTopics.all) { topic in
+                let isSelected = topic.id == selected?.id
+
+                Button {
+                    onSelect(isSelected ? nil : topic)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: topic.icon)
+                            .font(.caption)
+                        Text(topic.name)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    .background(
+                        isSelected
+                            ? AnyShapeStyle(Color.accentColor)
+                            : AnyShapeStyle(.fill.tertiary),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("话题：\(topic.name)")
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+    }
+}
+
 private struct WelcomeCard: View {
     let setupGuidance: String?
+    let questions: [SuggestedQuestion]
+    let selectedTopic: ChatTopic?
+    let onSelectTopic: (ChatTopic?) -> Void
     let onSelectQuestion: (String) -> Void
-
-    private let questions = [
-        ("moon.stars", "我最近一周睡得怎么样？"),
-        ("figure.walk", "我这周的活动量够吗？"),
-        ("heart.text.square", "结合最近数据，我的状态如何？")
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -208,29 +402,38 @@ private struct WelcomeCard: View {
                 Text("从你的健康数据开始")
                     .font(.title2.weight(.semibold))
 
-                Text("你可以直接询问步数、睡眠、静息心率、锻炼、体重和体脂趋势。HealthChat 只读取你授权的数据，不会修改健康记录。")
+                Text("你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。HealthChat 只读取你授权的数据，不会修改健康记录。")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("想聊什么")
+                    .font(.headline)
+
+                TopicPicker(selected: selectedTopic, onSelect: onSelectTopic)
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("试着问")
                     .font(.headline)
 
-                ForEach(questions, id: \.1) { icon, question in
+                ForEach(questions) { question in
                     Button {
-                        onSelectQuestion(question)
+                        onSelectQuestion(question.text)
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: icon)
+                            Image(systemName: question.icon)
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(Color.accentColor)
                                 .frame(width: 24)
 
-                            Text(question)
+                            // 一行放不下就缩字号,不换行——换行会把三张卡撑得参差不齐。
+                            Text(question.text)
                                 .foregroundStyle(.primary)
-                                .multilineTextAlignment(.leading)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
 
                             Spacer(minLength: 8)
 
@@ -243,7 +446,7 @@ private struct WelcomeCard: View {
                         .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("提问：\(question)")
+                    .accessibilityLabel("提问：\(question.text)")
                 }
             }
 

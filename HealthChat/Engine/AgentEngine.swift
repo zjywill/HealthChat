@@ -1,23 +1,25 @@
 import Foundation
 
-/// 引擎在一轮回复中吐出的事件:文本增量,或一次健康查询的说明(如"查询了最近 7 天步数")。
+/// 引擎在一轮回复中吐出的事件:文本增量,或一次健康查询的开始与结束。
+///
+/// 开始和结束分开发:工具跑起来先让界面有反应,结果回来再补上——合成一个事件的话,
+/// 慢查询期间界面上什么都不会动。
 enum AgentEvent: Sendable {
     case textDelta(String)
-    case toolCall(String)
+    case toolCallStarted(ToolCallRecord)
+    case toolCallFinished(id: String, output: String, isError: Bool)
 }
 
 enum AgentError: LocalizedError {
-    case modelUnavailable(String)
     case needsAPIKey
-    case noEngineAvailable
+    case needsModelSelection
     case cloudService(String)
     case toolLoopLimit
 
     var errorDescription: String? {
         switch self {
-        case .modelUnavailable(let reason): "端上模型不可用：\(reason)"
         case .needsAPIKey: "需要先在设置里填写云端 API key"
-        case .noEngineAvailable: "请开启 Apple Intelligence，或在设置里填写云端 API key"
+        case .needsModelSelection: "需要先在设置里选择云端模型"
         case .cloudService(let message): "云端服务返回错误：\(message)"
         case .toolLoopLimit: "健康查询次数过多，请缩小问题范围后重试"
         }
@@ -25,7 +27,7 @@ enum AgentError: LocalizedError {
 }
 
 /// 对话引擎统一接口。UI 层只认这个协议和 AgentEvent,不感知引擎差异。
-/// 实现:FoundationModelsEngine 和 AIKitEngine。
+/// 当前唯一实现是 AIKitEngine(端上 FoundationModels 引擎暂时移除,见 PLAN.md M3)。
 protocol AgentEngine: Sendable {
     var name: String { get }
 
