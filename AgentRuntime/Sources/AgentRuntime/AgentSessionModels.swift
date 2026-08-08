@@ -171,6 +171,8 @@ public struct TurnContextSnapshotDTO: Equatable, Codable, Sendable {
     public var actualPromptTokens: Int?
     public var compactedAssistantMessages: Int
     public var droppedConversationTurns: Int
+    /// 这一轮的 prompt 里有几段是整段摘要(而不是原样回放)。
+    public var summarizedSpans: Int
     public var migrationNotes: [String]
 
     public init(
@@ -183,6 +185,7 @@ public struct TurnContextSnapshotDTO: Equatable, Codable, Sendable {
         actualPromptTokens: Int? = nil,
         compactedAssistantMessages: Int = 0,
         droppedConversationTurns: Int = 0,
+        summarizedSpans: Int = 0,
         migrationNotes: [String] = []
     ) {
         self.providerId = providerId
@@ -194,7 +197,24 @@ public struct TurnContextSnapshotDTO: Equatable, Codable, Sendable {
         self.actualPromptTokens = actualPromptTokens
         self.compactedAssistantMessages = compactedAssistantMessages
         self.droppedConversationTurns = droppedConversationTurns
+        self.summarizedSpans = summarizedSpans
         self.migrationNotes = migrationNotes
+    }
+
+    // summarizedSpans 是后加的:老会话的快照里没有。
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providerId = try container.decode(String.self, forKey: .providerId)
+        requestedModelId = try container.decode(String.self, forKey: .requestedModelId)
+        servedModelId = try container.decodeIfPresent(String.self, forKey: .servedModelId)
+        contextWindow = try container.decodeIfPresent(Int.self, forKey: .contextWindow)
+        reservedOutputTokens = try container.decodeIfPresent(Int.self, forKey: .reservedOutputTokens)
+        estimatedPromptTokens = try container.decodeIfPresent(Int.self, forKey: .estimatedPromptTokens)
+        actualPromptTokens = try container.decodeIfPresent(Int.self, forKey: .actualPromptTokens)
+        compactedAssistantMessages = try container.decodeIfPresent(Int.self, forKey: .compactedAssistantMessages) ?? 0
+        droppedConversationTurns = try container.decodeIfPresent(Int.self, forKey: .droppedConversationTurns) ?? 0
+        summarizedSpans = try container.decodeIfPresent(Int.self, forKey: .summarizedSpans) ?? 0
+        migrationNotes = try container.decodeIfPresent([String].self, forKey: .migrationNotes) ?? []
     }
 
     public func matches(providerId: String, requestedModelId: String) -> Bool {

@@ -242,6 +242,12 @@ final class ChatViewModel {
     /// 事件落到最后一条(正在写的那条回复)上。语义在 `AgentTurnSink.apply` 里,
     /// 这里只负责找到收件人——每个 delta 都把整条会话翻一遍 DTO 太贵了。
     private func apply(_ event: AgentEvent) {
+        // 例外:整段摘要挂在早先某条上。存下来,下轮就不用再叫一次模型重算。
+        if case .historyCompacted(let messageID, let artifact) = event {
+            guard let index = session.messages.firstIndex(where: { $0.id == messageID }) else { return }
+            session.messages[index].storedTurn.compaction = artifact
+            return
+        }
         guard let last = session.messages.indices.last else { return }
         session.messages[last].apply(event)
     }

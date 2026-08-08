@@ -1,4 +1,5 @@
 import SwiftUI
+import AgentRuntime
 
 struct ChatView: View {
     @Binding var openedCheckIn: CheckInLaunch?
@@ -43,6 +44,10 @@ struct ChatView: View {
                                     onBranch: { model.branch(from: message.id) }
                                 )
                                     .id(message.id)
+
+                                if let folded = message.foldedSpan {
+                                    CompactionDivider(artifact: folded)
+                                }
                             }
                         }
                     }
@@ -206,6 +211,46 @@ struct ChatView: View {
             )
             .accessibilityLabel(model.isReplying ? "停止回复" : "发送")
         }
+    }
+}
+
+/// 折叠分隔线:从这里往上,模型记得的只有一句摘要,不再是逐字的对话。
+///
+/// 界面上的消息一条没少——压缩只发生在发给模型的那一份里。但用户得知道模型的记忆到哪儿
+/// 为止,否则"你刚才不是说过吗"会变成一次莫名其妙的对话。
+private struct CompactionDivider: View {
+    let artifact: CompactionArtifact
+
+    private var countText: String { "以上 \(artifact.sourceMessageIDs.count) 条已折叠" }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                rule
+                Text(countText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .layoutPriority(1)
+                rule
+            }
+
+            if !artifact.visibleSummary.isEmpty {
+                Text(artifact.visibleSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(countText)。\(artifact.visibleSummary)")
+    }
+
+    private var rule: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.25))
+            .frame(height: 1)
     }
 }
 

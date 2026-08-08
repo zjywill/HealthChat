@@ -144,31 +144,105 @@ struct HistoryPlannerTests {
         #expect(prepared.exceedsBudget)
     }
 
-    @Test("migration only fires when the new window is actually smaller")
-    func migrationRespectsWindowSize() {
-        let assistant = AgentChatMessageDTO(
+    @Test("switching to a smaller model with room to spare leaves history untouched")
+    func harmlessModelSwitchKeepsHistory() {
+        let output = String(repeating: "步数数据。", count: 20)
+        let history: [AgentChatMessageDTO] = [
+            .init(role: .user, text: "问题"),
+            assistantTurn(
+                text: "旧模型上的回答",
+                output: output,
+                model: "claude-opus-4-8",
+                window: 200_000
+            ),
+            .init(role: .user, text: "接着问")
+        ]
+
+        // 窗口是变小了,但整段对话离新窗口还差得远——没有任何理由丢掉工具轨迹。
+        let prepared = planner(window: 20_000, reserved: 0).prepare(history: history)
+
+        #expect(prepared.migrationNotes.isEmpty)
+        #expect(prepared.compactedAssistantMessages == 0)
+        #expect(prepared.prompt.contains(output))
+    }
+
+    @Test("under pressure the turn carried over from the old model is compacted first")
+    func migratedTurnIsCompactedFirst() {
+        let fromOldModel = String(repeating: "旧模型那轮。", count: 66)
+        let fromNewModel = String(repeating: "新模型那轮。", count: 66)
+
+        let history: [AgentChatMessageDTO] = [
+            .init(role: .user, text: "一问"),
+            // 更老,但它是新模型自己产出的。
+            assistantTurn(text: "一答", output: fromNewModel, model: "claude-sonnet-5", window: 20_000),
+            .init(role: .user, text: "二问"),
+            // 更新,但是从大窗口模型带过来的——它才该先被压。
+            assistantTurn(text: "二答", output: fromOldModel, model: "claude-opus-4-8", window: 200_000),
+            .init(role: .user, text: "三问"),
+            assistantTurn(text: "三答", output: "短", model: "claude-sonnet-5", window: 20_000),
+            .init(role: .user, text: "四问")
+        ]
+
+        let prepared = planner(window: 1_300, reserved: 0).prepare(history: history)
+
+        #expect(prepared.compactedAssistantMessages == 1)
+        #expect(prepared.migrationNotes.contains(ConversationHistoryPlanner.modelSwitchNote))
+        // 换过来的那轮被压掉了,同样老的本地那轮原样留着——先压谁是按来源挑的,不是按顺序。
+        #expect(!prepared.prompt.contains(fromOldModel))
+        #expect(prepared.prompt.contains(fromNewModel))
+    }
+
+    @Test("the most recent turns are never touched by threshold compaction")
+    func recentTurnsAreProtected() {
+        let recent = String(repeating: "最近那轮。", count: 80)
+        let old = String(repeating: "很早那轮。", count: 80)
+        let history: [AgentChatMessageDTO] = [
+            .init(role: .user, text: "一问"),
+            assistantTurn(text: "一答", output: old, model: "claude-sonnet-5", window: 20_000),
+            .init(role: .user, text: "二问"),
+            assistantTurn(text: "二答", output: recent, model: "claude-sonnet-5", window: 20_000),
+            .init(role: .user, text: "三问")
+        ]
+
+        let prepared = planner(window: 1_000, reserved: 0).prepare(history: history)
+
+        // 刚查完的数据被压成一句摘要,用户下一句"那第三天呢"就答不上来了。
+        #expect(prepared.prompt.contains(recent))
+        #expect(!prepared.prompt.contains(old))
+    }
+
+    private func assistantTurn(
+        text: String,
+        output: String,
+        model: String,
+        window: Int
+    ) -> AgentChatMessageDTO {
+        let callId = "call_\(UUID().uuidString.prefix(4))"
+        return AgentChatMessageDTO(
             role: .assistant,
-            text: "旧模型上的回答",
+            text: text,
+            toolCalls: [.init(
+                id: callId,
+                name: "daily_steps",
+                input: #"{"days":30}"#,
+                output: .init(kind: .table, text: output)
+            )],
             storedTurn: .init(
+                exactTranscript: .init(messages: [
+                    .init(role: .assistant, parts: [
+                        .text(text),
+                        .toolCall(.init(toolCallId: callId, toolName: "daily_steps", input: #"{"days":30}"#))
+                    ]),
+                    .toolResult(toolCallId: callId, toolName: "daily_steps", result: .string(output))
+                ]),
                 state: .completed,
                 context: .init(
                     providerId: "anthropic",
-                    requestedModelId: "claude-opus-4-8",
-                    contextWindow: 200_000
+                    requestedModelId: model,
+                    contextWindow: window
                 )
             )
         )
-        let history: [AgentChatMessageDTO] = [.init(role: .user, text: "问题"), assistant]
-
-        let shrunk = planner(window: 20_000, reserved: 0).prepare(history: history)
-        #expect(shrunk.migrationNotes.contains(ConversationHistoryPlanner.modelSwitchNote))
-
-        let grown = planner(window: 400_000, reserved: 0).prepare(history: history)
-        #expect(grown.migrationNotes.isEmpty)
-
-        let sameModel = planner(window: 20_000, reserved: 0, modelId: "claude-opus-4-8")
-            .prepare(history: history)
-        #expect(sameModel.migrationNotes.isEmpty)
     }
 }
 

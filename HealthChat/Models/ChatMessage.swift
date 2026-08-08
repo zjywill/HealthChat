@@ -163,6 +163,18 @@ extension ChatMessage {
     var usage: AgentUsage? { storedTurn.usage }
     var context: TurnContextSnapshot? { storedTurn.context }
 
+    /// 这条消息的结尾处折叠掉了它上面的一整段。
+    ///
+    /// 只认跨多条的 artifact:单条那种是发请求时按预算临时决定的,下一轮可能就不压了,
+    /// 不该在界面上留痕。整段摘要是实打实存下来的,回不去了,得让用户看见。
+    var foldedSpan: CompactionArtifact? {
+        guard let compaction = storedTurn.compaction,
+              compaction.sourceMessageIDs.count > 1 else {
+            return nil
+        }
+        return compaction
+    }
+
     /// 交给 runtime 的形态。落盘和回放走的是同一份,不会出现"存的和发的不一样"。
     var agentDTO: AgentChatMessageDTO {
         var dto = rawDTO

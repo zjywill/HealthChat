@@ -52,6 +52,32 @@ enum AgentError: LocalizedError {
     }
 }
 
+extension ModelSummarizer {
+    /// 中文的总结提示。摘要是发给模型看的,和对话同语言才不会平白多一层翻译损耗。
+    ///
+    /// 「保留什么、丢什么」写得很具体是有原因的:说得笼统模型就只会写一段客套的概述,
+    /// 把真正要留的数字丢掉——那样压缩就等于失忆。
+    static func healthChat(client: any AgentModelClient) -> ModelSummarizer {
+        ModelSummarizer(
+            client: client,
+            instruction: """
+                你在压缩一段健康助手的对话，好让它能在更小的上下文窗口里继续。
+                只输出两段，各自用标签包起来：
+
+                <visible>一句话给用户看的回顾：到目前为止聊过什么。</visible>
+                <replay>给接着聊下去的助手看的要点笔记。必须保留：已经给出的结论；\
+                调用过哪些工具、参数是什么；工具返回的具体数字（步数、时长、心率、体重等）；\
+                用户说过的偏好、身体情况和限制。可以丢掉：寒暄、重复的提问、已经被结论概括掉的逐行原始数据。\
+                写成笔记，不要写成文章。</replay>
+
+                不要编造对话里没有的事实。数字必须原样保留，不要四舍五入。
+                """,
+            requestFormat: "下面是要压缩的对话：\n\n%@",
+            fallbackVisibleFormat: "早先的 %d 条对话已折叠"
+        )
+    }
+}
+
 extension TranscriptCompactor {
     /// 折叠提示是要发给模型看的,所以跟对话同语言。
     static let healthChat = TranscriptCompactor(

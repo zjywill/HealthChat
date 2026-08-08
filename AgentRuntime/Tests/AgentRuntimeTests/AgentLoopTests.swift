@@ -30,8 +30,12 @@ struct AgentLoopTests {
                     toolCalls: [.init(toolCallId: "call_1", name: "sleep_summary", input: #"{"days":7}"#)],
                     finishReason: .init(unified: .toolCalls)
                 ),
-                // 第二轮永远走不完——用户在工具结果回来之后就按了停止。
-                .init(textDeltas: ["这几晚"], finishReason: .init(unified: .stop))
+                // 第二轮永远走不完——用户在工具结果回来、模型还没开口时按了停止。
+                .init(
+                    textDeltas: ["这几晚"],
+                    finishReason: .init(unified: .stop),
+                    beforeResponding: { try await Task.sleep(for: .seconds(30)) }
+                )
             ]
         )
         let loop = AgentLoop(
@@ -151,7 +155,8 @@ struct AgentLoopTests {
             // 旧模型上本地估算差了一倍。这把尺子不能拿到新模型上继续用。
             actualPromptTokens: 200
         )
-        let detailedOutput = String(repeating: "详细的工具轨迹。", count: 30)
+        // 大到新模型的窗口里放不下:换模型这件事本身不该动历史,放不下才该动。
+        let detailedOutput = String(repeating: "详细的工具轨迹。", count: 2_500)
         let history: [AgentChatMessageDTO] = [
             .init(role: .user, text: "先聊聊上周"),
             completedAssistant(

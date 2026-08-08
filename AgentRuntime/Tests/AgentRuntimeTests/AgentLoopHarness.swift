@@ -14,8 +14,11 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         var usage: AgentUsage?
         var servedModelId: String?
         var failureMessage: String?
-        /// 吐完 delta 之后、给出 completed 之前跑一下。用来在流中途制造取消。
-        var beforeCompletion: (@Sendable () async -> Void)?
+        /// 这一轮开口之前先跑一下。挂住某一轮,好在模型还没说话时制造取消。
+        ///
+        /// 必须挂在开口**之前**:挂在之后的话,delta 已经进了 stream 的缓冲区,消费者会先把
+        /// 缓冲区抽干再发现自己被取消了——测试就变成看谁跑得快。
+        var beforeResponding: (@Sendable () async throws -> Void)?
     }
 
     let profile: AgentModelProfile
@@ -60,6 +63,9 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
+                    try await turn.beforeResponding?()
+                    try Task.checkCancellation()
+
                     var parts: [AgentTranscript.Part] = []
                     for delta in turn.textDeltas {
                         try Task.checkCancellation()
@@ -72,9 +78,6 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
                     parts.append(contentsOf: turn.toolCalls.map {
                         .toolCall(.init(toolCallId: $0.toolCallId, toolName: $0.name, input: $0.input))
                     })
-
-                    await turn.beforeCompletion?()
-                    try Task.checkCancellation()
 
                     continuation.yield(.completed(AgentModelResponse(
                         assistantMessage: parts.isEmpty

@@ -38,11 +38,26 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
 - `AgentModelClient`——「一个能估 token、能流式跑一轮的模型」。`AIKitModelClient` 是唯一实现。
 - `CapabilityRegistry`——「一组 JSON Schema 加一个执行闭包」。`HealthTools.registry` 是唯一实现。
 
-`AgentLoop` 在这两者之上跑工具循环:`ConversationHistoryPlanner` 铺历史(换模型时主动重整
-→ 逐条压缩 → 实在放不下才丢最老一轮),`TranscriptCompactor` 生成 compaction artifact,
-`ContextCalibration` 按 provider+model 归档估算误差。
+`AgentLoop` 在这两者之上跑工具循环。上下文管理是它最要紧的部分,从轻到重四档:
+
+1. **整段摘要**(`ModelSummarizer`)——估算跨过 `compactionThreshold`(默认预算的 80%)就叫
+   模型把远处那段写成 artifact。**发请求之前**做,不是撞墙之后:撞墙时已经没有从容处理的
+   余地了。artifact 通过 `.historyCompacted` 事件交回 app 存盘,下轮直接复用,不重算。
+2. **逐轮压缩**(`TranscriptCompactor`)——把某一轮的原始工具输出换成它的摘要形态。总结失败
+   时也退回这一档,绝不让用户这一句问不出去。
+3. **丢最老的一轮**——前两档都不够时的最后手段。
+4. 还塞不下就报 `contextWindowExceeded`,不偷偷发一个超长 prompt 出去。
+
+最近 `preservedRecentTurns`(默认 2)轮在第 1、2 档里受保护:刚查完的数据被压成一句摘要,
+用户下一句「那第三天呢」就答不上来了。只有真超预算才动它们。
+
+`ContextCalibration` 按 provider+model 归档本地估算和实际计费的比值,换模型即作废。
 
 几条不要破坏的边界:
+
+- **换模型本身不是丢历史的理由**。`whenWindowShrinks` 只决定「先压谁」(从大窗口带过来的
+  那几轮排前面)和把阈值降到 `thresholdAfterModelSwitch`,压不压由预算说了算。之前那版
+  换个模型就把所有工具轨迹铲平,哪怕整段对话只有两轮——白丢了追问要用的数据。
 
 - 会话文件里不能出现 AIKit 类型。transcript 存 `AgentTranscript`,旧格式在 `ChatMessage`
   的 decoder 里翻译一次(有测试盯着)。

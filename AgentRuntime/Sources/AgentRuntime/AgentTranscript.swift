@@ -137,6 +137,39 @@ public extension AgentTranscript.Message {
     }
 }
 
+public extension AgentTranscript {
+    /// 摊平成人和模型都读得懂的纯文本。给总结用。
+    ///
+    /// 工具调用和结果也摊进来——一段对话里最值钱的信息往往就在工具结果的数字上,
+    /// 只摊 `.text` 等于把要保住的东西先扔了。
+    func plainTextRendering(maxCharactersPerPart: Int = 2_000) -> String {
+        messages.compactMap { message -> String? in
+            let rendered = message.parts.compactMap { part -> String? in
+                switch part {
+                case .text(let text):
+                    return text.isEmpty ? nil : text
+                case .reasoning:
+                    return nil
+                case .toolCall(let call):
+                    return "[tool] \(call.toolName) \(call.input)"
+                case .toolResult(let result):
+                    let value = result.result.stringValue
+                        ?? (try? result.result.encodedString())
+                        ?? ""
+                    let clipped = value.count > maxCharactersPerPart
+                        ? value.prefix(maxCharactersPerPart) + "…"
+                        : value
+                    return "[result] \(result.toolName) → \(clipped)"
+                case .file(let file):
+                    return "[file] \(file.filename ?? file.mediaType)"
+                }
+            }.joined(separator: "\n")
+            guard !rendered.isEmpty else { return nil }
+            return "\(message.role.rawValue): \(rendered)"
+        }.joined(separator: "\n\n")
+    }
+}
+
 public extension AgentTranscript.Message {
     var text: String {
         parts.compactMap {

@@ -24,7 +24,10 @@ public struct AgentLoop: Sendable {
     public var capabilities: CapabilityRegistry
     public var systemInstruction: String
     public var compactor: TranscriptCompactor
+    /// 谁来写整段摘要。给 nil 就退回纯机械压缩(还能跑,只是省不了那么多)。
+    public var summarizer: (any AgentSummarizer)?
     public var migrationPolicy: HistoryMigrationPolicy
+    public var policy: ContextPolicy
     public var maxToolRounds: Int
 
     public init(
@@ -32,14 +35,18 @@ public struct AgentLoop: Sendable {
         capabilities: CapabilityRegistry,
         systemInstruction: String,
         compactor: TranscriptCompactor = .default,
+        summarizer: (any AgentSummarizer)? = nil,
         migrationPolicy: HistoryMigrationPolicy = .whenWindowShrinks,
+        policy: ContextPolicy = .default,
         maxToolRounds: Int = 6
     ) {
         self.client = client
         self.capabilities = capabilities
         self.systemInstruction = systemInstruction
         self.compactor = compactor
+        self.summarizer = summarizer
         self.migrationPolicy = migrationPolicy
+        self.policy = policy
         self.maxToolRounds = maxToolRounds
     }
 
@@ -78,9 +85,34 @@ private extension AgentLoop {
 
         var calibration = ContextCalibration(history: history, profile: profile)
         var runtimeTranscript = AgentTranscript()
+        // 本轮用的历史。整段摘要生成后就地写进去,同时通过事件让 app 存下来。
+        var history = history
+        // 一轮里最多总结一次。工具轮之间再压也只能压历史,压不动这一轮刚拿到的大结果,
+        // 白花调用。
+        var didSummarize = false
 
         for _ in 0..<maxToolRounds {
             try Task.checkCancellation()
+
+            // 过了水位线就叫模型把远处的对话总结掉,再去发这一轮。
+            // 放在发请求之前,而不是撞墙之后——撞墙时已经没有从容处理的余地了。
+            if !didSummarize, let compacted = await summarizeIfNeeded(
+                history: history,
+                runtimeTranscript: runtimeTranscript,
+                profile: profile,
+                definitions: definitions,
+                reserved: reserved,
+                calibrationScale: calibration.scale
+            ) {
+                didSummarize = true
+                if let index = history.firstIndex(where: { $0.id == compacted.messageID }) {
+                    history[index].storedTurn.compaction = compacted.artifact
+                }
+                continuation.yield(.historyCompacted(
+                    messageID: compacted.messageID,
+                    artifact: compacted.artifact
+                ))
+            }
 
             let prepared = plan(
                 history: history,
@@ -165,6 +197,34 @@ private extension AgentLoop {
         throw AgentLoopError.toolRoundLimit
     }
 
+    /// 跨过水位线就叫 summarizer 写一份整段摘要。
+    ///
+    /// 失败不上抛:总结只是省 token 的手段,它挂了应该退回机械压缩,而不是让用户这一句问不出去。
+    func summarizeIfNeeded(
+        history: [AgentChatMessageDTO],
+        runtimeTranscript: AgentTranscript,
+        profile: AgentModelProfile,
+        definitions: [CapabilityDefinition],
+        reserved: Int?,
+        calibrationScale: Double?
+    ) async -> (messageID: UUID, artifact: CompactionArtifact)? {
+        guard let summarizer else { return nil }
+        let planner = makePlanner(
+            profile: profile,
+            definitions: definitions,
+            reserved: reserved,
+            calibrationScale: calibrationScale
+        )
+        guard let plan = planner.summarizationPlan(
+            history: history,
+            runtimeTranscript: runtimeTranscript
+        ) else {
+            return nil
+        }
+        guard let artifact = try? await summarizer.summarize(plan) else { return nil }
+        return (plan.ownerMessageID, artifact)
+    }
+
     func plan(
         history: [AgentChatMessageDTO],
         runtimeTranscript: AgentTranscript,
@@ -173,14 +233,29 @@ private extension AgentLoop {
         reserved: Int?,
         calibrationScale: Double?
     ) -> ConversationHistoryPlanner.PreparedHistory {
+        makePlanner(
+            profile: profile,
+            definitions: definitions,
+            reserved: reserved,
+            calibrationScale: calibrationScale
+        ).prepare(history: history, runtimeTranscript: runtimeTranscript)
+    }
+
+    func makePlanner(
+        profile: AgentModelProfile,
+        definitions: [CapabilityDefinition],
+        reserved: Int?,
+        calibrationScale: Double?
+    ) -> ConversationHistoryPlanner {
         let client = client
         let calibration = ContextCalibration(scale: calibrationScale)
-        let planner = ConversationHistoryPlanner(
+        return ConversationHistoryPlanner(
             systemInstruction: systemInstruction,
             profile: profile,
             reservedOutputTokens: reserved,
             compactor: compactor,
-            migrationPolicy: migrationPolicy
+            migrationPolicy: migrationPolicy,
+            policy: policy
         ) { transcript in
             calibration.apply(to: client.estimateTokens(for: AgentModelRequest(
                 profile: profile,
@@ -188,7 +263,6 @@ private extension AgentLoop {
                 capabilities: definitions
             )))
         }
-        return planner.prepare(history: history, runtimeTranscript: runtimeTranscript)
     }
 
     func validate(_ response: AgentModelResponse) throws {

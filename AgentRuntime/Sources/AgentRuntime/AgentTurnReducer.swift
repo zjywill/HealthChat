@@ -4,6 +4,11 @@ public enum AgentTurnEvent: Sendable {
     case textDelta(String)
     case toolCallStarted(ToolCallRecordDTO)
     case toolCallFinished(id: String, output: AgentToolOutput, isError: Bool)
+    /// 早先某一段被总结掉了,artifact 挂在 `messageID` 这条上。
+    ///
+    /// 唯一一个不落在"正在写的那条回复"上的事件——总结是一次真实的模型调用,算完必须存下来,
+    /// 否则每轮都要重算一遍,既慢又费钱。
+    case historyCompacted(messageID: UUID, artifact: CompactionArtifact)
     case turnCompleted(
         transcript: AgentTranscript,
         finishReason: AgentFinishReason?,
@@ -47,6 +52,9 @@ public extension AgentTurnSink {
                 usage: usage,
                 context: context
             )
+        case .historyCompacted:
+            // 这条不是给当前回复的,由数组层按 id 投递。
+            break
         }
     }
 }
@@ -106,6 +114,11 @@ public enum AgentTurnReducer {
     }
 
     public static func apply(_ event: AgentTurnEvent, in history: inout [AgentChatMessageDTO]) {
+        if case .historyCompacted(let messageID, let artifact) = event {
+            guard let index = history.firstIndex(where: { $0.id == messageID }) else { return }
+            history[index].storedTurn.compaction = artifact
+            return
+        }
         guard let last = history.indices.last else { return }
         history[last].apply(event)
     }

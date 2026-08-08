@@ -102,6 +102,9 @@ struct AIKitEngine: AgentEngine {
                         capabilities: capabilityRegistry,
                         systemInstruction: systemInstruction(),
                         compactor: .healthChat,
+                        // 总结走同一个模型。理论上换个便宜的更划算,但那要用户再配一份 key
+                        // 和模型;等真有人抱怨这笔钱再说。
+                        summarizer: ModelSummarizer.healthChat(client: client),
                         maxToolRounds: Self.maxToolRounds
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {

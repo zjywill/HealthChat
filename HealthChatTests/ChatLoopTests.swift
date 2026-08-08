@@ -124,9 +124,48 @@ struct ChatLoopTests {
 
     // MARK: - 切模型之后继续追问
 
-    @Test("switching to a smaller model migrates the earlier turn instead of failing the request")
-    func modelSwitchMigratesHistory() async throws {
-        let detailedOutput = String(repeating: "详细的工具轨迹。", count: 60)
+    @Test("a model switch with room to spare keeps the earlier tool trace intact")
+    func harmlessModelSwitchKeepsHistory() async throws {
+        let output = "08-01 8,432 步\n08-02 9,120 步"
+        let bigModel = ScriptedModelClient(
+            profile: Self.profile("claude-opus-4-8", window: 200_000),
+            turns: [
+                .init(
+                    toolCalls: [.init(toolCallId: "call_1", name: "daily_steps", input: #"{"days":7}"#)],
+                    finishReason: .init(unified: .toolCalls)
+                ),
+                .init(text: "上周整体还行。")
+            ]
+        )
+        let smallModel = ScriptedModelClient(
+            profile: Self.profile("claude-sonnet-5", window: 20_000),
+            turns: [.init(text: "继续说说。")]
+        )
+        let clients = ModelSequence(clients: [bigModel, smallModel])
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in
+                LoopEngine(client: clients.next(), capabilities: stubRegistry(["daily_steps": output]))
+            },
+            loadsPersistedSession: false
+        )
+
+        viewModel.send("先聊聊上周")
+        try await waitUntil("大模型这轮结束") { !viewModel.isReplying }
+        viewModel.send("换个模型继续说")
+        try await waitUntil("小模型这轮结束") { !viewModel.isReplying }
+
+        // 换模型本身不是丢历史的理由。窗口小了但离满还远,工具轨迹一个字都不该少。
+        let context = try #require(viewModel.messages.last?.context)
+        #expect(context.requestedModelId == "claude-sonnet-5")
+        #expect(context.migrationNotes.isEmpty)
+        #expect(context.compactedAssistantMessages == 0)
+        #expect(smallModel.lastPromptContains(output))
+    }
+
+    @Test("switching to a model that cannot fit the history migrates that turn first")
+    func modelSwitchUnderPressureMigratesHistory() async throws {
+        // 这一段在新模型的窗口里放不下——这时候才该动它。
+        let detailedOutput = String(repeating: "详细的工具轨迹。", count: 3_000)
         let bigModel = ScriptedModelClient(
             profile: Self.profile("claude-opus-4-8", window: 200_000),
             turns: [
@@ -173,6 +212,93 @@ struct ChatLoopTests {
             prompt: try #require(smallModel.requests.last).prompt,
             capabilities: registry.definitions
         )))
+    }
+}
+
+extension ChatLoopTests {
+
+    /// 每轮的工具输出各不相同,才分得清哪一轮被压掉了、哪一轮被保住了。
+    static let turnOutput: @Sendable (Int) -> String = { turn in
+        String(repeating: "第\(turn)轮的原始数据。", count: 400)
+    }
+
+    // MARK: - 整段摘要:生成一次,存下来,复用
+
+    @Test("crossing the threshold summarizes older turns and persists the artifact for reuse")
+    func summarizationIsGeneratedOnceAndPersisted() async throws {
+        let output = Self.turnOutput
+        let summarizer = StubSummarizer(
+            visible: "聊过前两轮的步数。",
+            replay: "要点：第 1 轮日均 9,100 步；第 2 轮日均 8,400 步。已调用 daily_steps。"
+        )
+        let client = ScriptedModelClient(
+            profile: Self.profile("claude-sonnet-5", window: 12_000),
+            turns: (1...4).flatMap { turn in
+                [
+                    ScriptedModelClient.Turn(
+                        toolCalls: [.init(
+                            toolCallId: "call_\(turn)",
+                            name: "daily_steps",
+                            input: #"{"days":30}"#
+                        )],
+                        finishReason: .init(unified: .toolCalls)
+                    ),
+                    ScriptedModelClient.Turn(text: "第 \(turn) 答")
+                ]
+            } + [
+                // 第 5 轮不查数据:摘要已经把远处压下去了,这一轮不该再触发一次总结。
+                ScriptedModelClient.Turn(text: "第 5 答")
+            ]
+        )
+        let registry = CapabilityRegistry(
+            definitions: [.init(name: "daily_steps", description: "stub", inputSchema: ["type": "object"])]
+        ) { invocation in
+            let turn = Int(invocation.toolCallId.dropFirst("call_".count)) ?? 1
+            return CapabilityExecutionResult(output: .init(kind: .table, text: output(turn)))
+        }
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in
+                LoopEngine(client: client, capabilities: registry, summarizer: summarizer)
+            },
+            loadsPersistedSession: false
+        )
+
+        for turn in 1...4 {
+            viewModel.send("第 \(turn) 问")
+            try await waitUntil("第 \(turn) 轮结束") { !viewModel.isReplying }
+        }
+
+        #expect(summarizer.calls == 1)
+
+        // artifact 落在会话里了,而不是只活在这一轮的内存中。
+        let owner = try #require(viewModel.messages.first {
+            $0.storedTurn.compaction?.kind == .modelGenerated
+        })
+        let artifact = try #require(owner.storedTurn.compaction)
+        #expect(artifact.visibleSummary == "聊过前两轮的步数。")
+        #expect(artifact.sourceMessageIDs.count > 1)
+        // 界面上要在这条下面画一条折叠线,告诉用户模型的记忆到哪儿为止。
+        #expect(owner.foldedSpan == artifact)
+        // 逐轮压缩是发请求时的临时决定,不该在界面上留痕。
+        #expect(viewModel.messages.last?.foldedSpan == nil)
+
+        // 存下来的东西要能原样读回来——否则重开 app 就得再花一次钱重算。
+        let restored = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: try JSONEncoder().encode(owner)
+        )
+        #expect(restored.storedTurn.compaction == artifact)
+
+        #expect(client.lastPromptText.contains("要点：第 1 轮日均 9,100 步"))
+        #expect(!client.lastPromptContains(output(1)))
+        // 最近一轮的原始数据还在。
+        #expect(client.lastPromptContains(output(3)))
+
+        // 再问一轮:已经压下去的那段不该被重新总结一遍。
+        viewModel.send("第 5 问")
+        try await waitUntil("第 5 轮结束") { !viewModel.isReplying }
+        #expect(summarizer.calls == 1)
+        #expect(viewModel.messages.last?.text == "第 5 答")
     }
 }
 

@@ -118,6 +118,7 @@ struct LoopEngine: AgentEngine {
     let client: ScriptedModelClient
     var capabilities: CapabilityRegistry
     var systemInstruction = "你是测试助手"
+    var summarizer: (any AgentSummarizer)?
 
     func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -127,7 +128,8 @@ struct LoopEngine: AgentEngine {
                         client: client,
                         capabilities: capabilities,
                         systemInstruction: systemInstruction,
-                        compactor: .healthChat
+                        compactor: .healthChat,
+                        summarizer: summarizer
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {
                         continuation.yield(event)
@@ -156,6 +158,41 @@ func stubRegistry(_ outputs: [String: String]) -> CapabilityRegistry {
             return CapabilityExecutionResult(output: .init(kind: .text, text: "unknown"), isError: true)
         }
         return CapabilityExecutionResult(output: .init(kind: .table, text: text))
+    }
+}
+
+/// 固定输出的假 summarizer,顺便记下被叫了几次。
+final class StubSummarizer: AgentSummarizer, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _calls = 0
+    private let visible: String
+    private let replay: String
+
+    var calls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _calls
+    }
+
+    init(visible: String, replay: String) {
+        self.visible = visible
+        self.replay = replay
+    }
+
+    func summarize(_ plan: SummarizationPlan) async throws -> CompactionArtifact {
+        record()
+        return CompactionArtifact(
+            kind: .modelGenerated,
+            visibleSummary: visible,
+            replaySummary: .assistantSummary(replay, sourceIDs: plan.sourceMessageIDs),
+            sourceMessageIDs: plan.sourceMessageIDs
+        )
+    }
+
+    private func record() {
+        lock.lock()
+        _calls += 1
+        lock.unlock()
     }
 }
 
