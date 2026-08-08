@@ -1,4 +1,5 @@
 import Foundation
+import AIKit
 
 /// 引擎在一轮回复中吐出的事件:文本增量,或一次健康查询的开始与结束。
 ///
@@ -8,6 +9,12 @@ enum AgentEvent: Sendable {
     case textDelta(String)
     case toolCallStarted(ToolCallRecord)
     case toolCallFinished(id: String, output: String, report: HealthReport?, isError: Bool)
+    case turnCompleted(
+        replayMessages: [Message],
+        finishReason: FinishReason?,
+        usage: Usage?,
+        context: TurnContextSnapshot?
+    )
 }
 
 enum AgentError: LocalizedError {
@@ -15,6 +22,9 @@ enum AgentError: LocalizedError {
     case needsModelSelection
     case cloudService(String)
     case toolLoopLimit
+    case incompleteResponse
+    case responseTruncatedDuringToolCall
+    case contextWindowExceeded
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +32,9 @@ enum AgentError: LocalizedError {
         case .needsModelSelection: "需要先在设置里选择云端模型"
         case .cloudService(let message): "云端服务返回错误：\(message)"
         case .toolLoopLimit: "健康查询次数过多，请缩小问题范围后重试"
+        case .incompleteResponse: "模型回复没有正常结束，请重试"
+        case .responseTruncatedDuringToolCall: "模型在发出工具调用时被截断，参数可能不完整，请重试"
+        case .contextWindowExceeded: "当前对话过长，超出模型上下文限制，请开启新对话或缩小问题范围"
         }
     }
 }

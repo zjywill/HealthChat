@@ -4,6 +4,8 @@ import AIKit
 struct AIKitEngine: AgentEngine {
     let name = "云端模型"
 
+    private static let maxToolRounds = 6
+
     private static let toolDefinitions = HealthTools.all.map { spec in
         var properties: [String: JSONValue] = [
             "days": .object([
@@ -14,8 +16,7 @@ struct AIKitEngine: AgentEngine {
                 "default": 7
             ])
         ]
-        // 只有 workouts 支持按类型筛。用 enum 而不是自由字符串:模型写“跑”或者
-        // “running”都对不上 HealthKit 那套中文名,筛出来会是空的。
+
         if spec.supportsActivityFilter {
             properties["activity"] = .object([
                 "type": "string",
@@ -32,7 +33,9 @@ struct AIKitEngine: AgentEngine {
                 "properties": .object(properties),
                 "required": .array(["days"]),
                 "additionalProperties": false
-            ])
+            ]),
+            // 现在这份 schema 还不是严格 JSON Schema 兼容形态；先别把整条请求送进 400。
+            strict: false
         )
     }
 
@@ -68,7 +71,7 @@ struct AIKitEngine: AgentEngine {
                     )
                     try await streamToolLoop(
                         client: client,
-                        prompt: makePrompt(from: history),
+                        history: history,
                         continuation: continuation
                     )
                     continuation.finish()
@@ -82,15 +85,32 @@ struct AIKitEngine: AgentEngine {
 
     private func streamToolLoop(
         client: AIClient,
-        prompt initialPrompt: Prompt,
+        history: [ChatMessage],
         continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation
     ) async throws {
-        var prompt = initialPrompt
+        var transcript = ConversationTranscript(
+            systemInstruction: systemInstruction(),
+            history: history,
+            providerId: providerId,
+            requestedModelId: model
+        )
+        var budgetPolicy = ContextBudgetPolicy(
+            providerId: providerId,
+            requestedModelId: model,
+            modelInfo: ProviderCatalog.model(model, provider: providerId)?.1,
+            toolDefinitions: Self.toolDefinitions,
+            calibrationScale: transcript.calibrationScale
+        )
+        var replayMessages: [Message] = []
+        var finalUsage: Usage?
+        var finalFinishReason: FinishReason?
+        var finalSnapshot: TurnContextSnapshot?
 
-        for _ in 0..<6 {
+        for _ in 0..<Self.maxToolRounds {
+            let prepared = try budgetPolicy.prepare(transcript: &transcript)
             let options = CallOptions(
                 model: model,
-                prompt: prompt,
+                prompt: prepared.prompt,
                 tools: Self.toolDefinitions
             )
             var parts: [StreamPart] = []
@@ -107,11 +127,49 @@ struct AIKitEngine: AgentEngine {
             if let streamError = response.errors.first {
                 throw AgentError.cloudService(streamError.message)
             }
+            guard let finishReason = response.finishReason else {
+                throw AgentError.incompleteResponse
+            }
+
+            switch finishReason.unified {
+            case .error:
+                throw AgentError.cloudService(response.errors.first?.message ?? "模型执行失败")
+            case .contentFilter:
+                throw AgentError.cloudService("模型因安全策略拒绝了这次请求")
+            case .length where !response.pendingToolCalls.isEmpty:
+                throw AgentError.responseTruncatedDuringToolCall
+            default:
+                break
+            }
+
+            let assistantMessage = response.assistantMessage
+            if !assistantMessage.content.isEmpty {
+                replayMessages.append(assistantMessage)
+                transcript.appendRuntime(assistantMessage)
+            }
+
+            finalUsage = response.usage
+            finalFinishReason = finishReason
+            budgetPolicy.noteActualInputTokens(
+                actual: response.usage.inputTokens.total,
+                estimated: prepared.contextUsage.used
+            )
+            budgetPolicy.noteServedModel(response.metadata?.modelId)
+            finalSnapshot = prepared.snapshot(
+                servedModelId: response.metadata?.modelId,
+                actualPromptTokens: response.usage.inputTokens.total
+            )
+
             guard !response.pendingToolCalls.isEmpty else {
+                continuation.yield(.turnCompleted(
+                    replayMessages: replayMessages,
+                    finishReason: finalFinishReason,
+                    usage: finalUsage,
+                    context: finalSnapshot
+                ))
                 return
             }
 
-            prompt.append(response.assistantMessage)
             for call in response.pendingToolCalls {
                 let days = HealthTools.days(fromInput: call.input)
 
@@ -139,74 +197,304 @@ struct AIKitEngine: AgentEngine {
                     report: outcome.report,
                     isError: outcome.isError
                 ))
-                prompt.append(.toolResult(
+
+                let toolResultMessage = Message.toolResult(
                     toolCallId: call.toolCallId,
                     toolName: call.toolName,
                     result: .string(outcome.output),
                     isError: outcome.isError
-                ))
+                )
+                replayMessages.append(toolResultMessage)
+                transcript.appendRuntime(toolResultMessage)
             }
         }
 
         throw AgentError.toolLoopLimit
     }
 
-    /// 把整段历史还原成 prompt——包括上几轮的工具调用和结果。
-    ///
-    /// 只回放文本会让模型失忆:它看不到自己查过什么,追问时只能重查或顺着上一段
-    /// 总结编。失败的回合整轮跳过——那段"无法回复：…"是 app 写给用户看的,不是
-    /// 模型说过的话;而且带着一个没有结果的 tool_use 回去,provider 会直接拒收。
-    private func makePrompt(from history: [ChatMessage]) -> Prompt {
-        // 话题是用户在新会话时自己选的,写进系统提示比让模型从问题里猜准得多:
-        // 它直接决定先调哪个工具、按哪种口径回答。
+    private func systemInstruction() -> String {
         var instructions = HealthAssistantInstructions.text
         if let topic {
             instructions += "\n\n本次对话的话题：\(topic.name)。\(topic.focus)"
         }
-        // 人格只加在最后,且只谈语气——前面那些事实口径不能被它盖掉。
         let persona = EngineSettings.persona.instruction
         if !persona.isEmpty {
             instructions += "\n\n\(persona)"
         }
-        var prompt: Prompt = [.system(instructions)]
+        return instructions
+    }
+}
+
+private struct PreparedPrompt {
+    let prompt: Prompt
+    let contextUsage: ContextUsage
+    let providerId: String
+    let requestedModelId: String
+    let contextWindow: Int?
+    let reservedOutputTokens: Int?
+    let compactedAssistantMessages: Int
+    let droppedConversationTurns: Int
+
+    func snapshot(servedModelId: String?, actualPromptTokens: Int?) -> TurnContextSnapshot {
+        TurnContextSnapshot(
+            providerId: providerId,
+            requestedModelId: requestedModelId,
+            servedModelId: servedModelId,
+            contextWindow: contextWindow,
+            reservedOutputTokens: reservedOutputTokens,
+            estimatedPromptTokens: contextUsage.used,
+            actualPromptTokens: actualPromptTokens,
+            compactedAssistantMessages: compactedAssistantMessages,
+            droppedConversationTurns: droppedConversationTurns
+        )
+    }
+}
+
+private struct ContextBudgetPolicy {
+    let providerId: String
+    let requestedModelId: String
+    let modelInfo: ModelInfo?
+    let toolDefinitions: [ToolDefinition]
+
+    private let reporter = ContextReporter()
+    private var calibrationScale: Double?
+    private(set) var servedModelId: String?
+
+    init(
+        providerId: String,
+        requestedModelId: String,
+        modelInfo: ModelInfo?,
+        toolDefinitions: [ToolDefinition],
+        calibrationScale: Double?
+    ) {
+        self.providerId = providerId
+        self.requestedModelId = requestedModelId
+        self.modelInfo = modelInfo
+        self.toolDefinitions = toolDefinitions
+        self.calibrationScale = calibrationScale
+    }
+
+    mutating func prepare(transcript: inout ConversationTranscript) throws -> PreparedPrompt {
+        guard let contextWindow = modelInfo?.contextWindow else {
+            let prompt = transcript.prompt
+            return PreparedPrompt(
+                prompt: prompt,
+                contextUsage: usage(for: prompt, contextWindow: nil),
+                providerId: providerId,
+                requestedModelId: requestedModelId,
+                contextWindow: nil,
+                reservedOutputTokens: nil,
+                compactedAssistantMessages: transcript.compactedAssistantMessages,
+                droppedConversationTurns: transcript.droppedConversationTurns
+            )
+        }
+
+        let reservedOutputTokens = reserveOutputTokens(contextWindow: contextWindow)
+        let budget = max(0, contextWindow - reservedOutputTokens)
+
+        while true {
+            let prompt = transcript.prompt
+            let contextUsage = usage(for: prompt, contextWindow: contextWindow)
+            if contextUsage.used <= budget {
+                return PreparedPrompt(
+                    prompt: prompt,
+                    contextUsage: contextUsage,
+                    providerId: providerId,
+                    requestedModelId: requestedModelId,
+                    contextWindow: contextWindow,
+                    reservedOutputTokens: reservedOutputTokens,
+                    compactedAssistantMessages: transcript.compactedAssistantMessages,
+                    droppedConversationTurns: transcript.droppedConversationTurns
+                )
+            }
+
+            if transcript.compactOldestAssistantMessage() {
+                continue
+            }
+            if transcript.dropOldestConversationTurn() {
+                continue
+            }
+            throw AgentError.contextWindowExceeded
+        }
+    }
+
+    mutating func noteActualInputTokens(actual: Int?, estimated: Int) {
+        guard let actual, estimated > 0 else { return }
+        calibrationScale = Double(actual) / Double(estimated)
+    }
+
+    mutating func noteServedModel(_ modelId: String?) {
+        guard let modelId, !modelId.isEmpty else { return }
+        servedModelId = modelId
+    }
+
+    private func usage(for prompt: Prompt, contextWindow: Int?) -> ContextUsage {
+        let options = CallOptions(
+            model: requestedModelId,
+            prompt: prompt,
+            tools: toolDefinitions
+        )
+        let estimated = reporter.report(options, contextWindow: contextWindow)
+        guard let calibrationScale, calibrationScale > 0 else {
+            return estimated
+        }
+        let calibratedTotal = max(1, Int((Double(estimated.used) * calibrationScale).rounded()))
+        return estimated.calibrated(toTotal: calibratedTotal)
+    }
+
+    private func reserveOutputTokens(contextWindow: Int) -> Int {
+        let heuristic = min(4_096, max(1_024, contextWindow / 10))
+        guard let outputCap = modelInfo?.maxOutputTokens, outputCap > 0 else {
+            return heuristic
+        }
+        return max(256, min(heuristic, outputCap))
+    }
+}
+
+private struct ConversationTranscript {
+    private enum Item {
+        case user(String)
+        case assistant(AssistantTurn)
+    }
+
+    private struct AssistantTurn {
+        let exactMessages: [Message]
+        let compactMessages: [Message]
+        var isCompacted = false
+
+        var activeMessages: [Message] {
+            isCompacted ? compactMessages : exactMessages
+        }
+
+        var canCompact: Bool {
+            !isCompacted && !compactMessages.isEmpty && compactMessages != exactMessages
+        }
+    }
+
+    private let systemInstruction: String
+    private var items: [Item]
+    private var runtimeMessages: [Message] = []
+
+    private(set) var compactedAssistantMessages = 0
+    private(set) var droppedConversationTurns = 0
+    let calibrationScale: Double?
+
+    init(
+        systemInstruction: String,
+        history: [ChatMessage],
+        providerId: String,
+        requestedModelId: String
+    ) {
+        self.systemInstruction = systemInstruction
+        self.items = []
+        self.calibrationScale = history.reversed().compactMap { message -> Double? in
+            guard message.role == .assistant,
+                  let context = message.context,
+                  context.matches(providerId: providerId, requestedModelId: requestedModelId),
+                  let estimated = context.estimatedPromptTokens,
+                  let actual = context.actualPromptTokens,
+                  estimated > 0,
+                  actual > 0 else {
+                return nil
+            }
+            return Double(actual) / Double(estimated)
+        }.first
 
         for message in history {
             switch message.role {
             case .user:
                 guard !message.text.isEmpty else { continue }
-                prompt.append(.user(message.text))
+                items.append(.user(message.text))
 
             case .assistant:
-                guard message.errorDescription == nil else { continue }
-
-                let completed = message.toolCalls.filter { $0.output != nil }
-                var content: [ContentPart] = []
-                if !message.text.isEmpty {
-                    content.append(.text(message.text))
-                }
-                content.append(contentsOf: completed.map { call in
-                    .toolCall(ToolCall(
-                        toolCallId: call.id,
-                        toolName: call.name,
-                        input: call.input
-                    ))
-                })
-
-                guard !content.isEmpty else { continue }
-                prompt.append(Message(role: .assistant, content: content))
-
-                // tool_use 后面必须紧跟对应的 tool_result,顺序不能错开。
-                for call in completed {
-                    prompt.append(.toolResult(
-                        toolCallId: call.id,
-                        toolName: call.name,
-                        result: .string(call.output ?? ""),
-                        isError: call.isError
-                    ))
-                }
+                guard message.shouldReplayInContext else { continue }
+                let exact = message.exactReplayMessages.isEmpty
+                    ? message.reconstructedReplayMessages
+                    : message.exactReplayMessages
+                let compact = message.compactReplayMessages
+                guard !exact.isEmpty || !compact.isEmpty else { continue }
+                items.append(.assistant(AssistantTurn(
+                    exactMessages: exact.isEmpty ? compact : exact,
+                    compactMessages: compact
+                )))
             }
         }
+    }
 
+    var prompt: Prompt {
+        var prompt: Prompt = [.system(systemInstruction)]
+        for item in items {
+            switch item {
+            case .user(let text):
+                prompt.append(.user(text))
+            case .assistant(let turn):
+                prompt.append(contentsOf: turn.activeMessages)
+            }
+        }
+        prompt.append(contentsOf: runtimeMessages)
         return prompt
+    }
+
+    mutating func appendRuntime(_ message: Message) {
+        guard !message.content.isEmpty else { return }
+        runtimeMessages.append(message)
+    }
+
+    mutating func compactOldestAssistantMessage() -> Bool {
+        for index in items.indices {
+            guard case .assistant(var turn) = items[index], turn.canCompact else { continue }
+            turn.isCompacted = true
+            items[index] = .assistant(turn)
+            compactedAssistantMessages += 1
+            return true
+        }
+        return false
+    }
+
+    mutating func dropOldestConversationTurn() -> Bool {
+        guard userMessageCount > 1, !items.isEmpty else { return false }
+
+        var end = 1
+        while end < items.count {
+            if case .user = items[end] {
+                break
+            }
+            end += 1
+        }
+        items.removeSubrange(0..<end)
+        droppedConversationTurns += 1
+        return true
+    }
+
+    private var userMessageCount: Int {
+        items.reduce(into: 0) { count, item in
+            if case .user = item {
+                count += 1
+            }
+        }
+    }
+}
+
+private extension ChatMessage {
+    var shouldReplayInContext: Bool {
+        switch turnState {
+        case .failed:
+            return hasReplayableContent
+        case .stopped:
+            if text == "已停止回复", exactReplayMessages.isEmpty, toolCalls.allSatisfy({ $0.output == nil }) {
+                return false
+            }
+            return hasReplayableContent
+        case .completed, .none:
+            return hasReplayableContent
+        }
+    }
+}
+
+private extension TurnContextSnapshot {
+    func matches(providerId: String, requestedModelId: String) -> Bool {
+        guard self.providerId == providerId else { return false }
+        let effectiveModelId = servedModelId ?? self.requestedModelId
+        return effectiveModelId == requestedModelId
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AIKit
 
 @MainActor
 @Observable
@@ -231,6 +232,12 @@ final class ChatViewModel {
             session.messages[last].toolCalls[index].output = output
             session.messages[last].toolCalls[index].report = report
             session.messages[last].toolCalls[index].isError = isError
+        case .turnCompleted(let replayMessages, let finishReason, let usage, let context):
+            session.messages[last].replayMessages = replayMessages
+            session.messages[last].finishReason = finishReason
+            session.messages[last].usage = usage
+            session.messages[last].context = context
+            session.messages[last].turnState = .completed
         }
     }
 
@@ -239,6 +246,7 @@ final class ChatViewModel {
         if session.messages[last].text.isEmpty {
             session.messages[last].text = "已停止回复"
         }
+        session.messages[last].turnState = .stopped
     }
 
     private func markFailed(_ error: any Error) {
@@ -246,9 +254,8 @@ final class ChatViewModel {
         let description = error.localizedDescription
         if session.messages[last].text.isEmpty {
             session.messages[last].text = "无法回复：\(description)"
-        } else {
-            session.messages[last].text += "\n\n无法继续：\(description)"
         }
+        session.messages[last].turnState = .failed
         session.messages[last].errorDescription = description
     }
 
