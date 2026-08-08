@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		035D8709303854537D038A4C /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693B0422A40F1D865403F63B /* KeychainStore.swift */; };
 		055303B542D7C5B593624D0C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */; };
 		2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A96DFA89142899891C5040A /* HealthChatApp.swift */; };
 		5A8E14B8D4CE94201F1D49F2 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
@@ -33,6 +34,7 @@
 		4831856EE2EC904362E41D29 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		675AAA08C439AACDF220D3AA /* AIKitEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIKitEngine.swift; sourceTree = "<group>"; };
+		693B0422A40F1D865403F63B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSeeder.swift; sourceTree = "<group>"; };
 		72475A88DE4F0DDDF7275FD3 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		739C357FEEE3B3781C93B957 /* FoundationModelsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsEngine.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 		BEB0F1583ED31D14EC7B660B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				693B0422A40F1D865403F63B /* KeychainStore.swift */,
 				5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -215,6 +218,7 @@
 				2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */,
 				935519603C0E13B5A17B333F /* HealthStore.swift in Sources */,
 				A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */,
+				035D8709303854537D038A4C /* KeychainStore.swift in Sources */,
 				055303B542D7C5B593624D0C /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
