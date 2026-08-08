@@ -85,10 +85,7 @@ final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
         }
         return LanguageModelSession(
             tools: tools,
-            instructions: """
-            你是 HealthChat 的中文健康助手。回答简洁、清楚，不编造用户数据。
-            健康分析仅供参考，不做医疗诊断。
-            """
+            instructions: HealthAssistantInstructions.text
         )
     }
 

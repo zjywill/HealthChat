@@ -15,6 +15,7 @@
 		935519603C0E13B5A17B333F /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */; };
 		9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */; };
 		A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E650374FC8103EB913304E2 /* HealthTools.swift */; };
+		C01C3911E3D20BB7D30FD59B /* HealthAssistantInstructions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E69E7DE6F21A0E9160A0F628 /* HealthAssistantInstructions.swift */; };
 		C2C3B4553544E3A79EF770AB /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4831856EE2EC904362E41D29 /* ChatView.swift */; };
 		C361FA106076E33DD4DE3584 /* AIKitEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 675AAA08C439AACDF220D3AA /* AIKitEngine.swift */; };
 		C6FD8B430EA426EE66E0B60B /* FoundationModelsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739C357FEEE3B3781C93B957 /* FoundationModelsEngine.swift */; };
@@ -38,6 +39,7 @@
 		7E650374FC8103EB913304E2 /* HealthTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTools.swift; sourceTree = "<group>"; };
 		7F86DB50065C30617D4EC449 /* HealthChat.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthChat.entitlements; sourceTree = "<group>"; };
 		99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStore.swift; sourceTree = "<group>"; };
+		E69E7DE6F21A0E9160A0F628 /* HealthAssistantInstructions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthAssistantInstructions.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +102,7 @@
 				675AAA08C439AACDF220D3AA /* AIKitEngine.swift */,
 				433358BA9EFC65D7F1DACB01 /* EchoEngine.swift */,
 				739C357FEEE3B3781C93B957 /* FoundationModelsEngine.swift */,
+				E69E7DE6F21A0E9160A0F628 /* HealthAssistantInstructions.swift */,
 				7E650374FC8103EB913304E2 /* HealthTools.swift */,
 			);
 			path = Engine;
@@ -208,6 +211,7 @@
 				9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */,
 				E0C1126863A9EF613F97FF0A /* EchoEngine.swift in Sources */,
 				C6FD8B430EA426EE66E0B60B /* FoundationModelsEngine.swift in Sources */,
+				C01C3911E3D20BB7D30FD59B /* HealthAssistantInstructions.swift in Sources */,
 				2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */,
 				935519603C0E13B5A17B333F /* HealthStore.swift in Sources */,
 				A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */,
