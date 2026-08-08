@@ -10,6 +10,7 @@
 		035D8709303854537D038A4C /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693B0422A40F1D865403F63B /* KeychainStore.swift */; };
 		055303B542D7C5B593624D0C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */; };
 		2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A96DFA89142899891C5040A /* HealthChatApp.swift */; };
+		2EC1821C50AB2EE063C5456E /* EngineSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */; };
 		5A8E14B8D4CE94201F1D49F2 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
 		5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F93D5AB337EF321F53CCE7D /* ChatMessage.swift */; };
 		7839689D42E2C2728E83AA03 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72475A88DE4F0DDDF7275FD3 /* ChatViewModel.swift */; };
@@ -32,6 +33,7 @@
 		3A96DFA89142899891C5040A /* HealthChatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthChatApp.swift; sourceTree = "<group>"; };
 		433358BA9EFC65D7F1DACB01 /* EchoEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoEngine.swift; sourceTree = "<group>"; };
 		4831856EE2EC904362E41D29 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSettings.swift; sourceTree = "<group>"; };
 		5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		675AAA08C439AACDF220D3AA /* AIKitEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIKitEngine.swift; sourceTree = "<group>"; };
 		693B0422A40F1D865403F63B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 		BEB0F1583ED31D14EC7B660B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */,
 				693B0422A40F1D865403F63B /* KeychainStore.swift */,
 				5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */,
 			);
@@ -213,6 +216,7 @@
 				7839689D42E2C2728E83AA03 /* ChatViewModel.swift in Sources */,
 				9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */,
 				E0C1126863A9EF613F97FF0A /* EchoEngine.swift in Sources */,
+				2EC1821C50AB2EE063C5456E /* EngineSettings.swift in Sources */,
 				C6FD8B430EA426EE66E0B60B /* FoundationModelsEngine.swift in Sources */,
 				C01C3911E3D20BB7D30FD59B /* HealthAssistantInstructions.swift in Sources */,
 				2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */,
