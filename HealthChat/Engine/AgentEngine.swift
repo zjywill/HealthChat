@@ -15,7 +15,7 @@ enum AgentError: LocalizedError {
         switch self {
         case .notImplemented: "这个引擎还没实现"
         case .modelUnavailable(let reason): "端上模型不可用：\(reason)"
-        case .needsAPIKey: "需要先在设置里填 Claude API key"
+        case .needsAPIKey: "需要先在设置里填写云端 API key"
         }
     }
 }
