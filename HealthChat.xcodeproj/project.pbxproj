@@ -13,6 +13,7 @@
 		5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F93D5AB337EF321F53CCE7D /* ChatMessage.swift */; };
 		7839689D42E2C2728E83AA03 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72475A88DE4F0DDDF7275FD3 /* ChatViewModel.swift */; };
 		935519603C0E13B5A17B333F /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */; };
+		9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */; };
 		A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E650374FC8103EB913304E2 /* HealthTools.swift */; };
 		C2C3B4553544E3A79EF770AB /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4831856EE2EC904362E41D29 /* ChatView.swift */; };
 		C361FA106076E33DD4DE3584 /* AIKitEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 675AAA08C439AACDF220D3AA /* AIKitEngine.swift */; };
@@ -31,6 +32,7 @@
 		4831856EE2EC904362E41D29 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		675AAA08C439AACDF220D3AA /* AIKitEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIKitEngine.swift; sourceTree = "<group>"; };
+		6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSeeder.swift; sourceTree = "<group>"; };
 		72475A88DE4F0DDDF7275FD3 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		739C357FEEE3B3781C93B957 /* FoundationModelsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationModelsEngine.swift; sourceTree = "<group>"; };
 		7E650374FC8103EB913304E2 /* HealthTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTools.swift; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 		7229EB7A7508313A4C9E5CBE /* Health */ = {
 			isa = PBXGroup;
 			children = (
+				6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */,
 				99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */,
 			);
 			path = Health;
@@ -202,6 +205,7 @@
 				5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */,
 				C2C3B4553544E3A79EF770AB /* ChatView.swift in Sources */,
 				7839689D42E2C2728E83AA03 /* ChatViewModel.swift in Sources */,
+				9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */,
 				E0C1126863A9EF613F97FF0A /* EchoEngine.swift in Sources */,
 				C6FD8B430EA426EE66E0B60B /* FoundationModelsEngine.swift in Sources */,
 				2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */,
@@ -344,6 +348,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = HealthChat;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -366,6 +371,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = HealthChat;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
