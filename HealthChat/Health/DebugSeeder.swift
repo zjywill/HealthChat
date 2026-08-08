@@ -54,8 +54,15 @@ final class DebugSeeder: Sendable {
         }
     }
 
-    func selfCheck() {
-        print("健康查询会从 T2.2 起逐项接入此自检入口。")
+    func selfCheck() async throws {
+        let values = try await HealthStore.shared.dailySteps(days: 7)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM-dd"
+
+        print("=== 最近 7 天步数 ===")
+        for item in values {
+            print("\(formatter.string(from: item.date)) \(Int(item.value)) 步")
+        }
     }
 
     private func dailySamples(for day: Date, offset: Int) -> [HKSample] {

@@ -77,8 +77,16 @@ struct SettingsView: View {
 
         Task {
             defer { isChecking = false }
-            DebugSeeder.shared.selfCheck()
-            debugStatus = DebugStatus(message: "自检入口已就绪，查询将在后续任务接入", icon: "checkmark.circle", isError: false)
+            do {
+                try await DebugSeeder.shared.selfCheck()
+                debugStatus = DebugStatus(message: "自检完成，结果已输出到控制台", icon: "checkmark.circle.fill", isError: false)
+            } catch {
+                debugStatus = DebugStatus(
+                    message: "自检失败：\(error.localizedDescription)",
+                    icon: "exclamationmark.triangle.fill",
+                    isError: true
+                )
+            }
         }
     }
     #endif
