@@ -13,6 +13,12 @@ struct NightSleep: Sendable, Equatable {
     let wake: Date?
 }
 
+struct DayHeart: Sendable, Equatable {
+    let date: Date
+    let restingHR: Double?
+    let hrv: Double?
+}
+
 /// HealthKit 读取层,只读不写。所有查询返回按天聚合值(工具输出要紧凑)。
 final class HealthStore: Sendable {
     static let shared = HealthStore()
@@ -135,10 +141,72 @@ final class HealthStore: Sendable {
         }
     }
 
-    // TODO(M2): 其余三个聚合查询,对应 HealthTools。
-    // func heartRateSummary(days: Int) async throws -> ...
+    func heartRateSummary(days: Int) async throws -> [DayHeart] {
+        let dayCount = min(max(days, 1), 90)
+        let today = calendar.startOfDay(for: Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
+              let endDate = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+
+        async let restingCollection = dailyAverageCollection(
+            type: HKQuantityType(.restingHeartRate),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+        async let hrvCollection = dailyAverageCollection(
+            type: HKQuantityType(.heartRateVariabilitySDNN),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+
+        let (resting, hrv) = try await (restingCollection, hrvCollection)
+        let restingUnit = HKUnit.count().unitDivided(by: .minute())
+        let hrvUnit = HKUnit.secondUnit(with: .milli)
+
+        return (0..<dayCount).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
+                return nil
+            }
+            return DayHeart(
+                date: date,
+                restingHR: resting
+                    .statistics(for: date)?
+                    .averageQuantity()?
+                    .doubleValue(for: restingUnit),
+                hrv: hrv
+                    .statistics(for: date)?
+                    .averageQuantity()?
+                    .doubleValue(for: hrvUnit)
+            )
+        }
+    }
+
+    // TODO(M2): 其余两个聚合查询,对应 HealthTools。
     // func workouts(days: Int) async throws -> ...
     // func bodyMetrics(days: Int) async throws -> ...
+
+    private func dailyAverageCollection(
+        type: HKQuantityType,
+        startDate: Date,
+        endDate: Date,
+        anchorDate: Date
+    ) async throws -> HKStatisticsCollection {
+        let samplePredicate = HKQuery.predicateForSamples(
+            withStart: startDate,
+            end: endDate,
+            options: .strictStartDate
+        )
+        let descriptor = HKStatisticsCollectionQueryDescriptor(
+            predicate: .quantitySample(type: type, predicate: samplePredicate),
+            options: .discreteAverage,
+            anchorDate: anchorDate,
+            intervalComponents: DateComponents(day: 1)
+        )
+        return try await descriptor.result(for: store)
+    }
 
     private func minDate(_ lhs: Date?, _ rhs: Date) -> Date {
         guard let lhs else { return rhs }

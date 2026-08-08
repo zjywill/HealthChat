@@ -69,6 +69,13 @@ final class DebugSeeder: Sendable {
             let minutes = Int(item.asleep) % 3_600 / 60
             print("\(formatter.string(from: item.night)) \(hours)小时\(minutes)分")
         }
+
+        print("=== 最近 7 天心率 ===")
+        for item in try await HealthStore.shared.heartRateSummary(days: 7) {
+            let resting = item.restingHR.map { String(format: "%.0f 次/分", $0) } ?? "无静息心率"
+            let hrv = item.hrv.map { String(format: "%.0f ms", $0) } ?? "无 HRV"
+            print("\(formatter.string(from: item.date)) \(resting)，\(hrv)")
+        }
     }
 
     private func dailySamples(for day: Date, offset: Int) -> [HKSample] {
