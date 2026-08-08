@@ -55,13 +55,19 @@ final class DebugSeeder: Sendable {
     }
 
     func selfCheck() async throws {
-        let values = try await HealthStore.shared.dailySteps(days: 7)
         let formatter = DateFormatter()
         formatter.dateFormat = "MM-dd"
 
         print("=== 最近 7 天步数 ===")
-        for item in values {
+        for item in try await HealthStore.shared.dailySteps(days: 7) {
             print("\(formatter.string(from: item.date)) \(Int(item.value)) 步")
+        }
+
+        print("=== 最近 7 晚睡眠 ===")
+        for item in try await HealthStore.shared.sleepSummary(days: 7) {
+            let hours = Int(item.asleep) / 3_600
+            let minutes = Int(item.asleep) % 3_600 / 60
+            print("\(formatter.string(from: item.night)) \(hours)小时\(minutes)分")
         }
     }
 
