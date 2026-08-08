@@ -6,6 +6,11 @@ struct SettingsView: View {
 
     @AppStorage(EngineSettings.providerKey) private var providerId = EngineSettings.defaultProvider
     @AppStorage(EngineSettings.modelKey) private var model = EngineSettings.defaultModel
+    @AppStorage(EngineSettings.personaKey) private var persona = EngineSettings.defaultPersona
+    @AppStorage(EngineSettings.checkInsEnabledKey) private var checkInsEnabled = false
+    @AppStorage(EngineSettings.morningCheckInHourKey) private var morningHour = EngineSettings.defaultMorningHour
+    @AppStorage(EngineSettings.eveningCheckInHourKey) private var eveningHour = EngineSettings.defaultEveningHour
+    @State private var checkInStatus: HealthAuthStatus?
 
     @State private var apiKey = ""
     @State private var persistedAPIKey = ""
@@ -144,6 +149,51 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("说话方式", selection: $persona) {
+                    ForEach(AssistantPersona.allCases) { option in
+                        Text(option.name).tag(option.rawValue)
+                    }
+                }
+
+                Text(AssistantPersona(rawValue: persona)?.summary ?? "")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("助手")
+            } footer: {
+                Text("只改语气和详略，不改数据口径——同样只引用工具返回的数字，同样不做诊断。")
+            }
+
+            Section {
+                Toggle("每日 check-in", isOn: $checkInsEnabled)
+
+                if checkInsEnabled {
+                    Picker("早上", selection: $morningHour) {
+                        ForEach(5...11, id: \.self) { hour in
+                            Text("\(hour):00").tag(hour)
+                        }
+                    }
+                    Picker("晚上", selection: $eveningHour) {
+                        ForEach(18...23, id: \.self) { hour in
+                            Text("\(hour):00").tag(hour)
+                        }
+                    }
+                }
+
+                if let checkInStatus {
+                    Label(checkInStatus.message, systemImage: checkInStatus.icon)
+                        .font(.footnote)
+                        .foregroundStyle(checkInStatus.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                        .accessibilityElement(children: .combine)
+                }
+            } header: {
+                Text("提醒")
+            } footer: {
+                Text("早上说昨晚的睡眠，晚上说今天的活动量，都基于本机算出来的数据；"
+                    + "点开通知会直接带着对应话题开一条新对话。文案在每次打开 app 时刷新。")
+            }
+
+            Section {
                 Button {
                     requestHealthAuthorization()
                 } label: {
@@ -236,6 +286,15 @@ struct SettingsView: View {
                 saveAPIKey()
             }
         }
+        .onChange(of: checkInsEnabled) { _, enabled in
+            Task { await applyCheckInSettings(enabled: enabled) }
+        }
+        .onChange(of: morningHour) { _, _ in
+            Task { await CheckInScheduler.reschedule() }
+        }
+        .onChange(of: eveningHour) { _, _ in
+            Task { await CheckInScheduler.reschedule() }
+        }
         .confirmationDialog(
             "清空当前对话？",
             isPresented: $isShowingClearConfirmation,
@@ -257,6 +316,32 @@ struct SettingsView: View {
         if CloudCatalog.model(model, in: id) == nil {
             model = CloudCatalog.defaultModel(for: id) ?? ""
         }
+    }
+
+    /// 打开开关时先要通知权限;用户拒了就把开关拨回去,而不是留着一个不会响的开关。
+    private func applyCheckInSettings(enabled: Bool) async {
+        guard enabled else {
+            await CheckInScheduler.reschedule()
+            checkInStatus = nil
+            return
+        }
+
+        guard await CheckInScheduler.requestAuthorization() else {
+            checkInsEnabled = false
+            checkInStatus = HealthAuthStatus(
+                message: "系统通知权限没有打开，请到「设置 > HealthChat > 通知」里允许。",
+                icon: "exclamationmark.triangle.fill",
+                isError: true
+            )
+            return
+        }
+
+        await CheckInScheduler.reschedule()
+        checkInStatus = HealthAuthStatus(
+            message: "已排程，每天 \(morningHour):00 和 \(eveningHour):00 各一条。",
+            icon: "checkmark.circle.fill",
+            isError: false
+        )
     }
 
     /// 再请求一次授权。iOS 只会为"还没问过"的类型弹窗——新增数据类型后靠这个补上,

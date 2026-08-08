@@ -160,9 +160,15 @@ struct AIKitEngine: AgentEngine {
     private func makePrompt(from history: [ChatMessage]) -> Prompt {
         // 话题是用户在新会话时自己选的,写进系统提示比让模型从问题里猜准得多:
         // 它直接决定先调哪个工具、按哪种口径回答。
-        let instructions = topic.map {
-            "\(HealthAssistantInstructions.text)\n\n本次对话的话题：\($0.name)。\($0.focus)"
-        } ?? HealthAssistantInstructions.text
+        var instructions = HealthAssistantInstructions.text
+        if let topic {
+            instructions += "\n\n本次对话的话题：\(topic.name)。\(topic.focus)"
+        }
+        // 人格只加在最后,且只谈语气——前面那些事实口径不能被它盖掉。
+        let persona = EngineSettings.persona.instruction
+        if !persona.isEmpty {
+            instructions += "\n\n\(persona)"
+        }
         var prompt: Prompt = [.system(instructions)]
 
         for message in history {

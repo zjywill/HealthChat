@@ -6,19 +6,29 @@ struct ChatSession: Identifiable, Equatable, Codable, Sendable {
     var messages: [ChatMessage]
     /// 只存 id,话题本身(文案、提示词)随版本改,存全量会把旧文案锁死在文件里。
     var topicId: String?
+    /// 临时会话:不落盘,也不进会话列表。想问一句就走的时候用。
+    ///
+    /// 不参与编解码——会话文件里出现一条"临时"会话本身就是矛盾的。
+    var isEphemeral = false
     var createdAt: Date
     var updatedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id, messages, topicId, createdAt, updatedAt
+    }
 
     init(
         id: UUID = UUID(),
         messages: [ChatMessage] = [],
         topicId: String? = nil,
+        isEphemeral: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
         self.id = id
         self.messages = messages
         self.topicId = topicId
+        self.isEphemeral = isEphemeral
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

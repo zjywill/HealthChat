@@ -1,8 +1,14 @@
 import SwiftUI
 
 struct ChatView: View {
+    @Binding var openedCheckIn: CheckInLaunch?
+
     @State private var model = ChatViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(openedCheckIn: Binding<CheckInLaunch?> = .constant(nil)) {
+        _openedCheckIn = openedCheckIn
+    }
 
     var body: some View {
         NavigationStack {
@@ -68,8 +74,18 @@ struct ChatView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        model.startNewSession()
+                    Menu {
+                        Button {
+                            model.startNewSession()
+                        } label: {
+                            Label("新对话", systemImage: "square.and.pencil")
+                        }
+
+                        Button {
+                            model.startNewSession(ephemeral: true)
+                        } label: {
+                            Label("临时对话（不保存）", systemImage: "eye.slash")
+                        }
                     } label: {
                         Image(systemName: "square.and.pencil")
                     }
@@ -91,6 +107,11 @@ struct ChatView: View {
             }
             .onAppear {
                 model.refreshEngineAvailability()
+            }
+            .onChange(of: openedCheckIn) { _, checkIn in
+                guard let checkIn else { return }
+                model.open(checkIn)
+                openedCheckIn = nil
             }
             .task {
                 do {
@@ -123,10 +144,16 @@ struct ChatView: View {
         VStack(spacing: 8) {
             // 开聊之后话题还留在提示词里,界面上也得看得见,否则用户不知道
             // 为什么模型一直在围着跑步说。
-            if let topic = model.session.topic, !model.messages.isEmpty {
+            if model.session.isEphemeral || (model.session.topic != nil && !model.messages.isEmpty) {
                 HStack(spacing: 6) {
-                    Image(systemName: topic.icon)
-                    Text("话题：\(topic.name)")
+                    if let topic = model.session.topic, !model.messages.isEmpty {
+                        Image(systemName: topic.icon)
+                        Text("话题：\(topic.name)")
+                    }
+                    if model.session.isEphemeral {
+                        Image(systemName: "eye.slash")
+                        Text("临时对话，不会保存")
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

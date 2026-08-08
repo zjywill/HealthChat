@@ -56,10 +56,31 @@ final class ChatViewModel {
     // MARK: - 会话
 
     /// 开一条新会话。当前这条已经存过盘,不会丢。
-    func startNewSession() {
+    func startNewSession(ephemeral: Bool = false) {
         guard !isReplying else { return }
-        session = ChatSession()
+        session = ChatSession(isEphemeral: ephemeral)
         suggestions = situationSuggestions
+        Task { await refreshSummaries() }
+    }
+
+    /// 会话还空着时可以随时切换临不临时;开聊之后就定了,不然"说好不存"会被推翻。
+    func setEphemeral(_ isEphemeral: Bool) {
+        guard messages.isEmpty, !isReplying else { return }
+        session.isEphemeral = isEphemeral
+    }
+
+    /// 从 check-in 通知点进来:直接开一条带话题的新会话,并把开场问题填进输入框。
+    ///
+    /// 不自动发送——通知是邀请不是命令,让用户看一眼再决定问不问。
+    func open(_ checkIn: CheckInLaunch) {
+        guard !isReplying else { return }
+        session = ChatSession(topicId: checkIn.topicId)
+        if let topic = session.topic {
+            suggestions = topic.questions.map { SuggestedQuestion(icon: topic.icon, text: $0) }
+        }
+        if let question = checkIn.question {
+            input = question
+        }
         Task { await refreshSummaries() }
     }
 
@@ -258,7 +279,8 @@ final class ChatViewModel {
 
     private func saveSession() async {
         // 空会话不落盘,否则每次点「新对话」都在列表里留一条空壳。
-        guard !session.isEmpty else { return }
+        // 临时会话永远不落盘——这是它唯一的意义。
+        guard !session.isEmpty, !session.isEphemeral else { return }
         session.updatedAt = Date()
         do {
             try await SessionStore.shared.save(session)
