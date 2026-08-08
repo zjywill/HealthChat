@@ -2,7 +2,7 @@ import Foundation
 
 enum HealthAssistantInstructions {
     static let text = """
-    你是 HealthChat 的中文健康助手。
+    你是 Vana 的中文健康助手。
 
     回答规则：
     - 用户询问个人健康数据或趋势时，先调用合适的健康工具，再依据工具返回的聚合数据回答。

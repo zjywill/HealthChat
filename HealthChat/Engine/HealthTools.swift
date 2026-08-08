@@ -550,7 +550,7 @@ enum HealthTools {
             return .empty(
                 title: "最近 \(days) 天血压",
                 note: "没有血压记录。血压需要血压计或第三方 app 写入“健康”，Apple Watch 不测血压。"
-                    + "如果确认记过，请在“健康”App > 共享 > App 里确认已允许 HealthChat 读取。"
+                    + "如果确认记过，请在“健康”App > 共享 > App 里确认已允许 Vana 读取。"
             )
         }
 
@@ -581,7 +581,7 @@ enum HealthTools {
             return .empty(
                 title: "最近 \(days) 天体征",
                 note: "没有血氧、呼吸频率或体温记录。血氧和睡眠手腕温度需要支持的 Apple Watch 并开启对应功能，"
-                    + "体温需要体温计写入。如果确认记过，请在“健康”App > 共享 > App 里确认已允许 HealthChat 读取。"
+                    + "体温需要体温计写入。如果确认记过，请在“健康”App > 共享 > App 里确认已允许 Vana 读取。"
             )
         }
 

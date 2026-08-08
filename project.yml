@@ -35,7 +35,9 @@ targets:
         # Icon Composer 的 HealthChat/AppIcon.icon,名字要和这里对上。
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: HealthChat
+        # 用户看到的名字是 Vana;target、bundle id 和 Keychain service 仍叫 HealthChat,
+        # 换掉它们会让已存的 API key 和已授权的健康数据都对不上。
+        INFOPLIST_KEY_CFBundleDisplayName: Vana
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSHealthShareUsageDescription: 用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: 仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。

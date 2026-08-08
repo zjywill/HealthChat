@@ -222,7 +222,7 @@ struct SettingsView: View {
                 // iOS 从不告诉 app 读取权限被拒了(拒绝和"没数据"长得一样),所以这里
                 // 不假装能显示授权状态,只说清楚该去哪儿改。
                 Text("新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。"
-                    + "已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > HealthChat。")
+                    + "已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > Vana。")
             }
 
             Section {
@@ -342,7 +342,7 @@ struct SettingsView: View {
         guard await CheckInScheduler.requestAuthorization() else {
             checkInsEnabled = false
             checkInStatus = HealthAuthStatus(
-                message: "系统通知权限没有打开，请到「设置 > HealthChat > 通知」里允许。",
+                message: "系统通知权限没有打开，请到「设置 > Vana > 通知」里允许。",
                 icon: "exclamationmark.triangle.fill",
                 isError: true
             )

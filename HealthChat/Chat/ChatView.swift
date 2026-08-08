@@ -62,7 +62,7 @@ struct ChatView: View {
             }
             .safeAreaInset(edge: .bottom) { inputBar }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("HealthChat")
+            .navigationTitle("Vana")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -461,7 +461,7 @@ private struct WelcomeCard: View {
                 Text("从你的健康数据开始")
                     .font(.title2.weight(.semibold))
 
-                Text("你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。HealthChat 只读取你授权的数据，不会修改健康记录。")
+                Text("你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。Vana 只读取你授权的数据，不会修改健康记录。")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

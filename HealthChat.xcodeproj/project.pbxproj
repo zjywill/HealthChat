@@ -421,7 +421,7 @@
 				CODE_SIGN_ENTITLEMENTS = HealthChat/HealthChat.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = HealthChat;
+				INFOPLIST_KEY_CFBundleDisplayName = Vana;
 				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
@@ -445,7 +445,7 @@
 				CODE_SIGN_ENTITLEMENTS = HealthChat/HealthChat.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = HealthChat;
+				INFOPLIST_KEY_CFBundleDisplayName = Vana;
 				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
