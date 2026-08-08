@@ -4,10 +4,13 @@ import FoundationModels
 final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
     let name = "端上模型"
 
+    private let toolEventSink: FoundationToolEventSink
     private var session: LanguageModelSession
 
     init() {
-        session = Self.makeSession()
+        let toolEventSink = FoundationToolEventSink()
+        self.toolEventSink = toolEventSink
+        session = Self.makeSession(toolEventSink: toolEventSink)
     }
 
     func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
@@ -15,6 +18,10 @@ final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
 
         return AsyncThrowingStream { continuation in
             let task = Task {
+                await toolEventSink.setHandler { note in
+                    continuation.yield(.toolCall(note))
+                }
+
                 do {
                     try Self.checkAvailability()
                     try await streamReply(
@@ -22,8 +29,10 @@ final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
                         continuation: continuation,
                         canRetryAfterContextReset: true
                     )
+                    await toolEventSink.setHandler(nil)
                     continuation.finish()
                 } catch {
+                    await toolEventSink.setHandler(nil)
                     continuation.finish(throwing: error)
                 }
             }
@@ -56,7 +65,7 @@ final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
         } catch let error as LanguageModelSession.GenerationError {
             switch error {
             case .exceededContextWindowSize where canRetryAfterContextReset:
-                session = Self.makeSession()
+                session = Self.makeSession(toolEventSink: toolEventSink)
                 try await streamReply(
                     to: text,
                     continuation: continuation,
@@ -70,8 +79,12 @@ final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
         }
     }
 
-    private static func makeSession() -> LanguageModelSession {
-        LanguageModelSession(
+    private static func makeSession(toolEventSink: FoundationToolEventSink) -> LanguageModelSession {
+        let tools: [any Tool] = HealthTools.all.map {
+            FoundationHealthTool(spec: $0, eventSink: toolEventSink)
+        }
+        return LanguageModelSession(
+            tools: tools,
             instructions: """
             你是 HealthChat 的中文健康助手。回答简洁、清楚，不编造用户数据。
             健康分析仅供参考，不做医疗诊断。
@@ -97,5 +110,44 @@ final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
             }
             throw AgentError.modelUnavailable(message)
         }
+    }
+}
+
+private struct FoundationHealthTool: Tool {
+    @Generable
+    struct Arguments {
+        @Guide(description: "查询最近多少天，范围 1–90", .range(1...90))
+        var days: Int
+    }
+
+    let name: String
+    let description: String
+
+    private let spec: HealthToolSpec
+    private let eventSink: FoundationToolEventSink
+
+    init(spec: HealthToolSpec, eventSink: FoundationToolEventSink) {
+        name = spec.name
+        description = spec.description
+        self.spec = spec
+        self.eventSink = eventSink
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        let days = min(max(arguments.days, 1), 90)
+        await eventSink.emit(HealthTools.note(for: name, days: days))
+        return try await spec.run(days)
+    }
+}
+
+private actor FoundationToolEventSink {
+    private var handler: (@Sendable (String) -> Void)?
+
+    func setHandler(_ handler: (@Sendable (String) -> Void)?) {
+        self.handler = handler
+    }
+
+    func emit(_ note: String) {
+        handler?(note)
     }
 }
