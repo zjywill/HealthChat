@@ -11,16 +11,19 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
     let role: Role
     var text: String
     var toolNotes: [String]
+    var errorDescription: String?
 
     init(
         id: UUID = UUID(),
         role: Role,
         text: String,
-        toolNotes: [String] = []
+        toolNotes: [String] = [],
+        errorDescription: String? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.toolNotes = toolNotes
+        self.errorDescription = errorDescription
     }
 }

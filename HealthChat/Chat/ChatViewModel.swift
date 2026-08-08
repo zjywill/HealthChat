@@ -10,6 +10,7 @@ final class ChatViewModel {
     var engineGuidance: String?
 
     private let onDeviceEngine = FoundationModelsEngine()
+    private var currentReplyTask: Task<Void, Never>?
 
     init() {
         refreshEngineAvailability()
@@ -23,10 +24,34 @@ final class ChatViewModel {
         guard !text.isEmpty, !isReplying, !isLoadingConversation else { return }
         input = ""
         messages.append(ChatMessage(role: .user, text: text))
+        startReply()
+    }
+
+    func stopReply() {
+        currentReplyTask?.cancel()
+    }
+
+    func retry(_ messageID: UUID) {
+        guard !isReplying,
+              !isLoadingConversation,
+              let index = messages.firstIndex(where: { $0.id == messageID }),
+              index == messages.index(before: messages.endIndex),
+              messages[index].role == .assistant,
+              messages[index].errorDescription != nil,
+              messages[..<index].last(where: { $0.role == .user }) != nil else {
+            return
+        }
+
+        messages.remove(at: index)
+        onDeviceEngine.reset()
+        startReply()
+    }
+
+    private func startReply() {
         messages.append(ChatMessage(role: .assistant, text: ""))
         isReplying = true
 
-        Task {
+        currentReplyTask = Task {
             do {
                 let engine = try resolveEngine()
                 for try await event in engine.reply(to: messages) {
@@ -37,10 +62,27 @@ final class ChatViewModel {
                         messages[messages.count - 1].toolNotes.append(note)
                     }
                 }
+            } catch is CancellationError {
+                if messages[messages.count - 1].text.isEmpty {
+                    messages[messages.count - 1].text = "已停止回复"
+                }
             } catch {
-                messages[messages.count - 1].text = "无法回复：\(error.localizedDescription)"
+                if Task.isCancelled {
+                    if messages[messages.count - 1].text.isEmpty {
+                        messages[messages.count - 1].text = "已停止回复"
+                    }
+                } else {
+                    let description = error.localizedDescription
+                    if messages[messages.count - 1].text.isEmpty {
+                        messages[messages.count - 1].text = "无法回复：\(description)"
+                    } else {
+                        messages[messages.count - 1].text += "\n\n无法继续：\(description)"
+                    }
+                    messages[messages.count - 1].errorDescription = description
+                }
             }
             isReplying = false
+            currentReplyTask = nil
             await saveConversation()
         }
     }

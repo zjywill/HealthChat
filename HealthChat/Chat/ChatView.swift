@@ -20,7 +20,11 @@ struct ChatView: View {
                             .padding(.top, 24)
                         } else {
                             ForEach(model.messages) { message in
-                                MessageBubble(message: message)
+                                MessageBubble(
+                                    message: message,
+                                    canRetry: message.id == model.messages.last?.id,
+                                    onRetry: { model.retry(message.id) }
+                                )
                                     .id(message.id)
                             }
                         }
@@ -77,24 +81,34 @@ struct ChatView: View {
                 .padding(.vertical, 10)
                 .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8))
                 .onSubmit { model.send() }
+                .submitLabel(.send)
                 .accessibilityLabel("消息")
 
             Button {
-                model.send()
+                if model.isReplying {
+                    model.stopReply()
+                } else {
+                    model.send()
+                }
             } label: {
-                Image(systemName: "arrow.up")
+                Image(systemName: model.isReplying ? "stop.fill" : "arrow.up")
                     .font(.body.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
-                    .background(Color.accentColor, in: Circle())
+                    .background(
+                        model.isReplying ? Color(.systemRed) : Color.accentColor,
+                        in: Circle()
+                    )
             }
             .buttonStyle(.plain)
             .disabled(
-                model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || model.isReplying
-                    || model.isLoadingConversation
+                !model.isReplying
+                    && (
+                        model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || model.isLoadingConversation
+                    )
             )
-            .accessibilityLabel("发送")
+            .accessibilityLabel(model.isReplying ? "停止回复" : "发送")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -104,6 +118,8 @@ struct ChatView: View {
 
 private struct MessageBubble: View {
     let message: ChatMessage
+    let canRetry: Bool
+    let onRetry: () -> Void
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
@@ -118,30 +134,42 @@ private struct MessageBubble: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text(displayText)
-                    .foregroundStyle(message.role == .user ? .white : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .accessibilityLabel(
-                        message.text.isEmpty
-                            ? "正在回复"
-                            : message.text
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        message.role == .user
-                            ? AnyShapeStyle(Color.accentColor)
-                            : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(displayText)
+                        .foregroundStyle(message.role == .user ? .white : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .accessibilityLabel(
+                            message.text.isEmpty
+                                ? "正在回复"
+                                : message.text
+                        )
+
+                    if message.errorDescription != nil, canRetry {
+                        Button(action: onRetry) {
+                            Label("重试", systemImage: "arrow.clockwise")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .accessibilityHint("重新发送上一条问题")
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    message.role == .user
+                        ? AnyShapeStyle(Color.accentColor)
+                        : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
             }
 
             if message.role == .assistant {
                 Spacer(minLength: 52)
             }
         }
-        .accessibilityElement(children: .combine)
     }
 
     private var displayText: AttributedString {
