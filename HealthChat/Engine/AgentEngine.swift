@@ -10,12 +10,16 @@ enum AgentError: LocalizedError {
     case notImplemented
     case modelUnavailable(String)
     case needsAPIKey
+    case cloudService(String)
+    case toolLoopLimit
 
     var errorDescription: String? {
         switch self {
         case .notImplemented: "这个引擎还没实现"
         case .modelUnavailable(let reason): "端上模型不可用：\(reason)"
         case .needsAPIKey: "需要先在设置里填写云端 API key"
+        case .cloudService(let message): "云端服务返回错误：\(message)"
+        case .toolLoopLimit: "健康查询次数过多，请缩小问题范围后重试"
         }
     }
 }
