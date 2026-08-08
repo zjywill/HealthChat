@@ -82,32 +82,76 @@ final class HealthStore: Sendable {
         HKObjectType.workoutType(),
         // 下面这几项多数人没有数据(血压要血压计、血氧和手腕温度要够新的 Apple Watch)。
         // 照样申请:授权本身不要求有数据,等用户以后真的记了就直接能读到。
-        HKQuantityType(.bloodPressureSystolic),
-        HKQuantityType(.bloodPressureDiastolic),
         HKQuantityType(.oxygenSaturation),
         HKQuantityType(.respiratoryRate),
         HKQuantityType(.bodyTemperature),
-        HKQuantityType(.appleSleepingWristTemperature),
+        HKQuantityType(.appleSleepingWristTemperature)
+    ]
+
+    /// 真的要读的时候才申请的类型。
+    ///
+    /// 血压和病历都有同一个毛病:授权状态永远停在 `shouldRequest`。血压在 HealthKit 里
+    /// 是一对关联数据,授权面板上只有"血压"一行,给了之后两个数量类型各自查仍然算没决定;
+    /// 病历在模拟器上根本给不了。于是只要它们在启动请求里,每次启动都会弹一次面板又被
+    /// 立刻收回去——就是那个闪屏,而且永远闪不完。
+    ///
+    /// 挪到按需申请还顺带解决了另一件事:用户还没问任何问题,就弹窗要读化验单,本来
+    /// 就过界了。
+    private let bloodPressureReadTypes: Set<HKObjectType> = [
+        HKQuantityType(.bloodPressureSystolic),
+        HKQuantityType(.bloodPressureDiastolic)
+    ]
+
+    private let clinicalReadTypes: Set<HKObjectType> = [
         HKClinicalType(.labResultRecord),
         HKClinicalType(.vitalSignRecord)
     ]
 
+    /// 一次运行里只自动问一次。
+    ///
+    /// 从设置返回时 SwiftUI 会让根视图重新 appear,挂在上面的 `.task` 跟着重跑;
+    /// 每跑一次就请求一次授权,面板就闪一次。设置页那个按钮传 `force: true` 绕开它。
+    @MainActor private static var hasRequestedThisLaunch = false
+
     /// 需要问的时候才问,返回这次有没有真的弹窗。
     ///
     /// 所有类型都已经决定过时再调 `requestAuthorization`,iOS 仍然会把授权面板推上来
-    /// 再立刻收回去——启动时看着就是"闪一下"。`statusForAuthorizationRequest` 能在
-    /// 不弹任何 UI 的情况下问清楚"还需不需要问"。
+    /// 再立刻收回去。`statusForAuthorizationRequest` 能在不弹任何 UI 的情况下问清楚
+    /// "还需不需要问"。
+    @MainActor
     @discardableResult
-    func requestAuthorizationIfNeeded() async throws -> Bool {
+    func requestAuthorizationIfNeeded(force: Bool = false) async throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw HealthStoreError.healthDataUnavailable
         }
+        if !force {
+            guard !Self.hasRequestedThisLaunch else { return false }
+        }
+        Self.hasRequestedThisLaunch = true
 
-        let status = try await store.statusForAuthorizationRequest(toShare: [], read: readTypes)
+        // force 时把按需那几类也一起问了:设置页那个按钮是用户主动点的,
+        // 一次问全比让他们各点一遍强。
+        let requested = force ? readTypes.union(bloodPressureReadTypes).union(clinicalReadTypes) : readTypes
+        let status = try await store.statusForAuthorizationRequest(toShare: [], read: requested)
         guard status == .shouldRequest else { return false }
 
-        try await store.requestAuthorization(toShare: [], read: readTypes)
+        try await store.requestAuthorization(toShare: [], read: requested)
         return true
+    }
+
+    /// 按需授权:第一次真的要读的时候才问,一次运行只问一次。
+    @MainActor private static var requestedOnDemand: Set<String> = []
+
+    @MainActor
+    private func requestOnDemand(_ types: Set<HKObjectType>, key: String) async {
+        guard !Self.requestedOnDemand.contains(key) else { return }
+        Self.requestedOnDemand.insert(key)
+
+        guard let status = try? await store.statusForAuthorizationRequest(toShare: [], read: types),
+              status == .shouldRequest else {
+            return
+        }
+        try? await store.requestAuthorization(toShare: [], read: types)
     }
 
     func dailySteps(days: Int) async throws -> [DayValue] {
@@ -288,6 +332,8 @@ final class HealthStore: Sendable {
     }
 
     func bloodPressureSummary(days: Int) async throws -> [DayBloodPressure] {
+        await requestOnDemand(bloodPressureReadTypes, key: "bloodPressure")
+
         let dayCount = min(max(days, 1), 90)
         let today = calendar.startOfDay(for: Date())
         guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
@@ -453,6 +499,9 @@ final class HealthStore: Sendable {
     /// 只有用户在「健康」App 里连过医院或诊所才会有;没连过就是空的,跟血压一样属于
     /// "没有很正常"。这里只取化验结果和体征两类——诊断和用药涉及的解读责任太重。
     func clinicalRecords(days: Int) async throws -> [ClinicalItem] {
+        // 用户真的问到化验单了,这时候申请授权才说得过去。
+        await requestOnDemand(clinicalReadTypes, key: "clinical")
+
         let dayCount = min(max(days, 1), 3650)
         let today = calendar.startOfDay(for: Date())
         guard let startDate = calendar.date(byAdding: .day, value: -dayCount, to: today) else {

@@ -354,7 +354,7 @@ struct SettingsView: View {
         Task {
             defer { isRequestingHealth = false }
             do {
-                let didAsk = try await HealthStore.shared.requestAuthorizationIfNeeded()
+                let didAsk = try await HealthStore.shared.requestAuthorizationIfNeeded(force: true)
                 healthStatus = HealthAuthStatus(
                     message: didAsk
                         ? "已弹出授权面板，你的选择已保存。"

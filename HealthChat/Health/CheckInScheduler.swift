@@ -129,7 +129,45 @@ enum CheckInScheduler {
 
     // MARK: - 排程
 
+    #if DEBUG
+    /// 立刻发一条,内容走的是和真 check-in 完全相同的那条路。
+    ///
+    /// 不然验证一次要等到早上八点。
+    @discardableResult
+    static func sendTest(after seconds: TimeInterval = 5) async -> String {
+        guard await isAuthorized() else {
+            return "还没有通知权限，先打开每日 check-in。"
+        }
+
+        let situation = await HealthSituation.detect()
+        let checkIn = content(for: DayPeriod(), situation: situation)
+        await schedule(
+            identifier: "checkin.test",
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false),
+            content: checkIn
+        )
+        return "\(Int(seconds)) 秒后送达：\(checkIn.body)"
+    }
+    #endif
+
     private static func schedule(identifier: String, hour: Int, content: CheckIn) async {
+        var components = DateComponents()
+        components.hour = hour
+        components.minute = 0
+
+        // 每天重复。文案下次打开 app 时会被重排刷新。
+        await schedule(
+            identifier: identifier,
+            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true),
+            content: content
+        )
+    }
+
+    private static func schedule(
+        identifier: String,
+        trigger: UNNotificationTrigger,
+        content: CheckIn
+    ) async {
         let notification = UNMutableNotificationContent()
         notification.title = content.title
         notification.body = content.body
@@ -139,17 +177,9 @@ enum CheckInScheduler {
             questionKey: content.question ?? ""
         ]
 
-        var components = DateComponents()
-        components.hour = hour
-        components.minute = 0
-
-        let request = UNNotificationRequest(
-            identifier: identifier,
-            content: notification,
-            // 每天重复。文案下次打开 app 时会被重排刷新。
-            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        try? await UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: identifier, content: notification, trigger: trigger)
         )
-        try? await UNUserNotificationCenter.current().add(request)
     }
 
     private static func hour(forKey key: String, fallback: Int) -> Int {
