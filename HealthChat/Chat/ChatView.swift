@@ -214,53 +214,63 @@ private struct MessageBubble: View {
     let isWaiting: Bool
     let onRetry: () -> Void
 
+    @ViewBuilder
     var body: some View {
+        if message.role == .user {
+            userMessage
+        } else {
+            assistantMessage
+        }
+    }
+
+    private var userMessage: some View {
         HStack(alignment: .bottom, spacing: 0) {
-            if message.role == .user {
-                Spacer(minLength: 52)
-            }
+            Spacer(minLength: 52)
 
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-                ForEach(message.toolCalls) { call in
-                    ToolCallRow(call: call)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    if isWaiting {
-                        TypingIndicator()
-                    } else {
-                        Text(displayText)
-                            .foregroundStyle(message.role == .user ? .white : .primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .accessibilityLabel(message.text)
-                    }
-
-                    if message.errorDescription != nil, canRetry {
-                        Button(action: onRetry) {
-                            Label("重试", systemImage: "arrow.clockwise")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.accentColor)
-                        .accessibilityHint("重新发送上一条问题")
-                    }
-                }
-                .padding(.horizontal, 12)
+            Text(displayText)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .accessibilityLabel(message.text)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
-                    message.role == .user
-                        ? AnyShapeStyle(Color.accentColor)
-                        : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
-                    in: RoundedRectangle(cornerRadius: 8)
+                    Color.accentColor,
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
+                .layoutPriority(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var assistantMessage: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(message.toolCalls) { call in
+                ToolCallRow(call: call)
             }
 
-            if message.role == .assistant {
-                Spacer(minLength: 52)
+            if isWaiting {
+                TypingIndicator()
+            } else {
+                Text(displayText)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .accessibilityLabel(message.text)
+            }
+
+            if message.errorDescription != nil, canRetry {
+                Button(action: onRetry) {
+                    Label("重试", systemImage: "arrow.clockwise")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHint("重新发送上一条问题")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var displayText: AttributedString {
