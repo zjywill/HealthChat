@@ -55,40 +55,9 @@ final class DebugSeeder: Sendable {
     }
 
     func selfCheck() async throws {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd"
-
-        print("=== 最近 7 天步数 ===")
-        for item in try await HealthStore.shared.dailySteps(days: 7) {
-            print("\(formatter.string(from: item.date)) \(Int(item.value)) 步")
-        }
-
-        print("=== 最近 7 晚睡眠 ===")
-        for item in try await HealthStore.shared.sleepSummary(days: 7) {
-            let hours = Int(item.asleep) / 3_600
-            let minutes = Int(item.asleep) % 3_600 / 60
-            print("\(formatter.string(from: item.night)) \(hours)小时\(minutes)分")
-        }
-
-        print("=== 最近 7 天心率 ===")
-        for item in try await HealthStore.shared.heartRateSummary(days: 7) {
-            let resting = item.restingHR.map { String(format: "%.0f 次/分", $0) } ?? "无静息心率"
-            let hrv = item.hrv.map { String(format: "%.0f ms", $0) } ?? "无 HRV"
-            print("\(formatter.string(from: item.date)) \(resting)，\(hrv)")
-        }
-
-        print("=== 最近 7 天锻炼 ===")
-        for item in try await HealthStore.shared.workouts(days: 7) {
-            let minutes = Int(item.duration) / 60
-            let energy = item.activeEnergy.map { String(format: "%.0f kcal", $0) } ?? "无能量记录"
-            print("\(formatter.string(from: item.date)) \(item.typeName) \(minutes) 分钟，\(energy)")
-        }
-
-        print("=== 最近 7 天身体指标 ===")
-        for item in try await HealthStore.shared.bodyMetrics(days: 7) {
-            let weight = item.weight.map { String(format: "%.1f kg", $0) } ?? "无体重"
-            let bodyFat = item.bodyFat.map { String(format: "%.1f%%", $0) } ?? "无体脂"
-            print("\(formatter.string(from: item.date)) \(weight)，\(bodyFat)")
+        for tool in HealthTools.all {
+            print("=== \(tool.name) ===")
+            print(try await tool.run(7))
         }
     }
 
