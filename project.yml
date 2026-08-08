@@ -12,13 +12,32 @@ settings:
 packages:
   AIKitSwift:
     path: ../aikitswift
+  AgentRuntime:
+    path: AgentRuntime
 targets:
+  HealthChatTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HealthChatTests
+    dependencies:
+      - target: HealthChat
+      - package: AgentRuntime
+        product: AgentRuntime
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
   HealthChat:
     type: application
     platform: iOS
+    scheme:
+      testTargets:
+        - HealthChatTests
     sources:
       - path: HealthChat
     dependencies:
+      - package: AgentRuntime
+        product: AgentRuntime
       - package: AIKitSwift
         product: AIKit
     entitlements:

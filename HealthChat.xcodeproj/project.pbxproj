@@ -12,18 +12,24 @@
 		055303B542D7C5B593624D0C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */; };
 		0C5A80234BBD46447D34BC8F /* CloudCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99342B97067E454CEA41A74C /* CloudCatalog.swift */; };
 		11394994FFE4A02E95C07486 /* CheckInScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52899627630A75079D60920 /* CheckInScheduler.swift */; };
+		1EB178C4F9F2F4301A00F6AE /* ChatLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3605F6F823756E8E2D3977A4 /* ChatLoopTests.swift */; };
 		2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A96DFA89142899891C5040A /* HealthChatApp.swift */; };
 		2EC1821C50AB2EE063C5456E /* EngineSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */; };
 		33DDA01D626BF6ED06CF7333 /* ToolResultPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FA7092CC07CC4F43676FDB /* ToolResultPanel.swift */; };
 		36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DD0DA8E7A626878D4D2553 /* AssistantPersona.swift */; };
+		41AFEC0661ADF52C6ED8DC89 /* ChatMessagePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE15B96B7A5C9905343074E /* ChatMessagePersistenceTests.swift */; };
 		49E6A8005E71885F29B8AFBC /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 342547D9878008FA7FBE3445 /* AppIcon.icon */; };
 		57E0A0A9A177F6B8BF7366C3 /* HealthReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73490F6A80560B9A2E3BF573 /* HealthReport.swift */; };
-		5A8E14B8D4CE94201F1D49F2 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
+		5A8E14B8D4CE94201F1D49F2 /* AgentRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 0A45762E47C5E6B236EB6053 /* AgentRuntime */; };
 		5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F93D5AB337EF321F53CCE7D /* ChatMessage.swift */; };
+		61710FCB64153415EE2C514D /* AgentRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = FE697F0031546643A20E7E55 /* AgentRuntime */; };
 		77F66688041E64881D5B7EEF /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3EA5435E4040695ACB0A74B /* SessionListView.swift */; };
 		7839689D42E2C2728E83AA03 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72475A88DE4F0DDDF7275FD3 /* ChatViewModel.swift */; };
+		8726B8F27396FACF0F71ED44 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
 		935519603C0E13B5A17B333F /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */; };
 		950C87E0AA3A6DB3B75F82B0 /* QuestionSuggester.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8428C9546ADF171E7350A3B1 /* QuestionSuggester.swift */; };
+		95D28A74F6326A87C8B49A21 /* AgentRuntimeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A652BD4E051861856B61EA59 /* AgentRuntimeBridge.swift */; };
+		9C28DC58955726B8CAA27C0F /* ChatLoopHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0EAE3425B7C10A8DAAC0F3D /* ChatLoopHarness.swift */; };
 		9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */; };
 		9E99DB6119B3D9F194C8F9C8 /* ChatTopic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FCC10525E1BE91F5812F60 /* ChatTopic.swift */; };
 		A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E650374FC8103EB913304E2 /* HealthTools.swift */; };
@@ -38,6 +44,16 @@
 		FDFC3710084BB49D6D5A0EEE /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0074F7C3BB04FAD54B8769 /* AgentEngine.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		6BECC9D57A84D099AFDB61DD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3246CE8650E7B4E6AE443863 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A4C1FC5C987576F7B19F3806;
+			remoteInfo = HealthChat;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		0220BC12F370803EFB063960 /* HealthSituation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSituation.swift; sourceTree = "<group>"; };
 		1F93D5AB337EF321F53CCE7D /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
@@ -46,10 +62,12 @@
 		2764D5648660091F407CFE7A /* HealthChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HealthChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2B0074F7C3BB04FAD54B8769 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		342547D9878008FA7FBE3445 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		3605F6F823756E8E2D3977A4 /* ChatLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLoopTests.swift; sourceTree = "<group>"; };
 		3A96DFA89142899891C5040A /* HealthChatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthChatApp.swift; sourceTree = "<group>"; };
 		4831856EE2EC904362E41D29 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSettings.swift; sourceTree = "<group>"; };
 		4A349106B1279DFA21FE15B3 /* CloudPickerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudPickerViews.swift; sourceTree = "<group>"; };
+		5DF5720A8DD2FEF3DF8EACCE /* AgentRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AgentRuntime; path = AgentRuntime; sourceTree = SOURCE_ROOT; };
 		5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		675AAA08C439AACDF220D3AA /* AIKitEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIKitEngine.swift; sourceTree = "<group>"; };
 		693B0422A40F1D865403F63B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -65,6 +83,10 @@
 		98FA7092CC07CC4F43676FDB /* ToolResultPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolResultPanel.swift; sourceTree = "<group>"; };
 		99342B97067E454CEA41A74C /* CloudCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudCatalog.swift; sourceTree = "<group>"; };
 		99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStore.swift; sourceTree = "<group>"; };
+		A652BD4E051861856B61EA59 /* AgentRuntimeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRuntimeBridge.swift; sourceTree = "<group>"; };
+		B1816650C836AAE200940329 /* HealthChatTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HealthChatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BFE15B96B7A5C9905343074E /* ChatMessagePersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessagePersistenceTests.swift; sourceTree = "<group>"; };
+		C0EAE3425B7C10A8DAAC0F3D /* ChatLoopHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLoopHarness.swift; sourceTree = "<group>"; };
 		CB3C81EFA4F5819BA6BEA62B /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		D3EA5435E4040695ACB0A74B /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		D52899627630A75079D60920 /* CheckInScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInScheduler.swift; sourceTree = "<group>"; };
@@ -73,11 +95,20 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0A65DD261C10ACCCBBCF0586 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61710FCB64153415EE2C514D /* AgentRuntime in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D110C1BE203E6BC81B1E71D6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5A8E14B8D4CE94201F1D49F2 /* AIKit in Frameworks */,
+				5A8E14B8D4CE94201F1D49F2 /* AgentRuntime in Frameworks */,
+				8726B8F27396FACF0F71ED44 /* AIKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -88,6 +119,7 @@
 			isa = PBXGroup;
 			children = (
 				3ADC8D25DBD68C363CC4B6CB /* HealthChat */,
+				DCDC059BA539F5033992EA4F /* HealthChatTests */,
 				FD5634472C0DC070F1FEEA47 /* Packages */,
 				A51543E4F499D110097E3EDB /* Products */,
 			);
@@ -138,6 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				2B0074F7C3BB04FAD54B8769 /* AgentEngine.swift */,
+				A652BD4E051861856B61EA59 /* AgentRuntimeBridge.swift */,
 				675AAA08C439AACDF220D3AA /* AIKitEngine.swift */,
 				E69E7DE6F21A0E9160A0F628 /* HealthAssistantInstructions.swift */,
 				73490F6A80560B9A2E3BF573 /* HealthReport.swift */,
@@ -160,6 +193,7 @@
 			isa = PBXGroup;
 			children = (
 				2764D5648660091F407CFE7A /* HealthChat.app */,
+				B1816650C836AAE200940329 /* HealthChatTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -177,9 +211,20 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		DCDC059BA539F5033992EA4F /* HealthChatTests */ = {
+			isa = PBXGroup;
+			children = (
+				C0EAE3425B7C10A8DAAC0F3D /* ChatLoopHarness.swift */,
+				3605F6F823756E8E2D3977A4 /* ChatLoopTests.swift */,
+				BFE15B96B7A5C9905343074E /* ChatMessagePersistenceTests.swift */,
+			);
+			path = HealthChatTests;
+			sourceTree = "<group>";
+		};
 		FD5634472C0DC070F1FEEA47 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				5DF5720A8DD2FEF3DF8EACCE /* AgentRuntime */,
 				240748FF19F50787C5D02C81 /* aikitswift */,
 			);
 			name = Packages;
@@ -188,6 +233,26 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		04F6D327FE1B8BC3FC6524CE /* HealthChatTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A67E151CCB375A255578B7D /* Build configuration list for PBXNativeTarget "HealthChatTests" */;
+			buildPhases = (
+				688D9B51E359CF80EFC6ED42 /* Sources */,
+				0A65DD261C10ACCCBBCF0586 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				41B38456BA3E99BD24286306 /* PBXTargetDependency */,
+			);
+			name = HealthChatTests;
+			packageProductDependencies = (
+				FE697F0031546643A20E7E55 /* AgentRuntime */,
+			);
+			productName = HealthChatTests;
+			productReference = B1816650C836AAE200940329 /* HealthChatTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A4C1FC5C987576F7B19F3806 /* HealthChat */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8FAAFC7932662947E874CAD6 /* Build configuration list for PBXNativeTarget "HealthChat" */;
@@ -202,6 +267,7 @@
 			);
 			name = HealthChat;
 			packageProductDependencies = (
+				0A45762E47C5E6B236EB6053 /* AgentRuntime */,
 				10AD1DA4C2AB6A5E98DD8996 /* AIKit */,
 			);
 			productName = HealthChat;
@@ -217,6 +283,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					04F6D327FE1B8BC3FC6524CE = {
+						ProvisioningStyle = Automatic;
+					};
 					A4C1FC5C987576F7B19F3806 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -233,12 +302,14 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D8CE29101E0760240DC35A8E /* XCLocalSwiftPackageReference "../aikitswift" */,
+				853127B1BDD24FBC1573C793 /* XCLocalSwiftPackageReference "AgentRuntime" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A51543E4F499D110097E3EDB /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				04F6D327FE1B8BC3FC6524CE /* HealthChatTests */,
 				A4C1FC5C987576F7B19F3806 /* HealthChat */,
 			);
 		};
@@ -262,6 +333,7 @@
 			files = (
 				C361FA106076E33DD4DE3584 /* AIKitEngine.swift in Sources */,
 				FDFC3710084BB49D6D5A0EEE /* AgentEngine.swift in Sources */,
+				95D28A74F6326A87C8B49A21 /* AgentRuntimeBridge.swift in Sources */,
 				36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */,
 				5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */,
 				C4C25FAFEAA316D97BAAACCA /* ChatSession.swift in Sources */,
@@ -290,7 +362,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		688D9B51E359CF80EFC6ED42 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C28DC58955726B8CAA27C0F /* ChatLoopHarness.swift in Sources */,
+				1EB178C4F9F2F4301A00F6AE /* ChatLoopTests.swift in Sources */,
+				41AFEC0661ADF52C6ED8DC89 /* ChatMessagePersistenceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		41B38456BA3E99BD24286306 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A4C1FC5C987576F7B19F3806 /* HealthChat */;
+			targetProxy = 6BECC9D57A84D099AFDB61DD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		191DC10AFAA5138A720CF67C /* Debug */ = {
@@ -356,6 +446,23 @@
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
+		};
+		55B698AD16D77E2AFBDB1688 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.HealthChatTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HealthChat.app/HealthChat";
+			};
+			name = Release;
 		};
 		5D817E3D2947C103BAFC419E /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -462,9 +569,35 @@
 			};
 			name = Release;
 		};
+		9F071E57BDD74011825196F8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.HealthChatTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HealthChat.app/HealthChat";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		5A67E151CCB375A255578B7D /* Build configuration list for PBXNativeTarget "HealthChatTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9F071E57BDD74011825196F8 /* Debug */,
+				55B698AD16D77E2AFBDB1688 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		8FAAFC7932662947E874CAD6 /* Build configuration list for PBXNativeTarget "HealthChat" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -486,6 +619,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		853127B1BDD24FBC1573C793 /* XCLocalSwiftPackageReference "AgentRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = AgentRuntime;
+		};
 		D8CE29101E0760240DC35A8E /* XCLocalSwiftPackageReference "../aikitswift" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../aikitswift;
@@ -493,9 +630,17 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0A45762E47C5E6B236EB6053 /* AgentRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AgentRuntime;
+		};
 		10AD1DA4C2AB6A5E98DD8996 /* AIKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AIKit;
+		};
+		FE697F0031546643A20E7E55 /* AgentRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AgentRuntime;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

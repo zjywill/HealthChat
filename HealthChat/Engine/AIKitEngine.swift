@@ -1,79 +1,49 @@
 import Foundation
+import AgentRuntime
 import AIKit
 
-struct AIKitEngine: AgentEngine {
-    let name = "云端模型"
+/// AIKit 在 runtime 眼里的样子。
+///
+/// 这是 app 里唯一还认识 AIKit 的执行路径:token 怎么估、流怎么拆、一轮结束时拿到什么,
+/// 都收在这儿。`AgentLoop` 只看得见 `AgentModelClient`,换 SDK 时不用动 loop。
+struct AIKitModelClient: AgentModelClient {
+    let profile: AgentModelProfile
 
-    private static let maxToolRounds = 6
+    private let client: AIClient
+    private let reporter = ContextReporter()
 
-    private static let toolDefinitions = HealthTools.all.map { spec in
-        var properties: [String: JSONValue] = [
-            "days": .object([
-                "type": "integer",
-                "description": "查询最近多少天，范围 1–90，默认 7",
-                "minimum": 1,
-                "maximum": 90,
-                "default": 7
-            ])
-        ]
-
-        if spec.supportsActivityFilter {
-            properties["activity"] = .object([
-                "type": "string",
-                "description": "只看某一类锻炼时传，留空表示全部",
-                "enum": .array(HealthTools.activityNames.map { .string($0) })
-            ])
-        }
-
-        return ToolDefinition(
-            name: spec.name,
-            description: spec.description,
-            inputSchema: .object([
-                "type": "object",
-                "properties": .object(properties),
-                "required": .array(["days"]),
-                "additionalProperties": false
-            ]),
-            // 现在这份 schema 还不是严格 JSON Schema 兼容形态；先别把整条请求送进 400。
-            strict: false
+    init(providerId: String, modelId: String, apiKey: String) throws {
+        let info = ProviderCatalog.model(modelId, provider: providerId)?.1
+        profile = AgentModelProfile(
+            providerId: providerId,
+            modelId: modelId,
+            contextWindow: info?.contextWindow,
+            maxOutputTokens: info?.maxOutputTokens
+        )
+        client = try AIClient(
+            providerId: providerId,
+            configuration: .init(apiKey: apiKey)
         )
     }
 
-    private let providerId: String
-    private let model: String
-    private let topic: ChatTopic?
-
-    init(
-        providerId: String = "anthropic",
-        model: String = "claude-sonnet-5",
-        topic: ChatTopic? = nil
-    ) {
-        self.providerId = providerId
-        self.model = model
-        self.topic = topic
+    func estimateTokens(for request: AgentModelRequest) -> Int {
+        reporter.report(callOptions(for: request), contextWindow: profile.contextWindow).used
     }
 
-    func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
-        AsyncThrowingStream { continuation in
+    func stream(_ request: AgentModelRequest) throws -> AsyncThrowingStream<AgentModelStreamEvent, any Error> {
+        let parts = try client.stream(callOptions(for: request))
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    guard let storedKey = try KeychainStore.get(account: KeychainStore.apiKeyAccount) else {
-                        throw AgentError.needsAPIKey
+                    var collected: [StreamPart] = []
+                    for try await part in parts {
+                        try Task.checkCancellation()
+                        collected.append(part)
+                        if case .textDelta(_, let delta, _) = part, !delta.isEmpty {
+                            continuation.yield(.textDelta(delta))
+                        }
                     }
-                    let key = storedKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !key.isEmpty else {
-                        throw AgentError.needsAPIKey
-                    }
-
-                    let client = try AIClient(
-                        providerId: providerId,
-                        configuration: .init(apiKey: key)
-                    )
-                    try await streamToolLoop(
-                        client: client,
-                        history: history,
-                        continuation: continuation
-                    )
+                    continuation.yield(.completed(AIResponse(parts: collected).agentModelResponse))
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -83,133 +53,76 @@ struct AIKitEngine: AgentEngine {
         }
     }
 
-    private func streamToolLoop(
-        client: AIClient,
-        history: [ChatMessage],
-        continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation
-    ) async throws {
-        var transcript = ConversationTranscript(
-            systemInstruction: systemInstruction(),
-            history: history,
-            providerId: providerId,
-            requestedModelId: model
+    private func callOptions(for request: AgentModelRequest) -> CallOptions {
+        CallOptions(
+            model: request.profile.modelId,
+            prompt: request.prompt.aiKitPrompt,
+            tools: request.capabilities.map(\.aiKitToolDefinition)
         )
-        var budgetPolicy = ContextBudgetPolicy(
-            providerId: providerId,
-            requestedModelId: model,
-            modelInfo: ProviderCatalog.model(model, provider: providerId)?.1,
-            toolDefinitions: Self.toolDefinitions,
-            calibrationScale: transcript.calibrationScale
-        )
-        var replayMessages: [Message] = []
-        var finalUsage: Usage?
-        var finalFinishReason: FinishReason?
-        var finalSnapshot: TurnContextSnapshot?
+    }
+}
 
-        for _ in 0..<Self.maxToolRounds {
-            let prepared = try budgetPolicy.prepare(transcript: &transcript)
-            let options = CallOptions(
-                model: model,
-                prompt: prepared.prompt,
-                tools: Self.toolDefinitions
-            )
-            var parts: [StreamPart] = []
+/// 云端引擎。
+///
+/// 到这一步它只剩三件 app 自己的事:拿 key、拼系统提示、把 runtime 的错误翻成中文。
+/// 工具循环、上下文预算、压缩、换模型迁移全在 `AgentLoop` 里,和健康数据没关系。
+struct AIKitEngine: AgentEngine {
+    let name = "云端模型"
 
-            for try await part in try client.stream(options) {
-                try Task.checkCancellation()
-                parts.append(part)
-                if case .textDelta(_, let delta, _) = part, !delta.isEmpty {
-                    continuation.yield(.textDelta(delta))
-                }
-            }
+    private static let maxToolRounds = 6
 
-            let response = AIResponse(parts: parts)
-            if let streamError = response.errors.first {
-                throw AgentError.cloudService(streamError.message)
-            }
-            guard let finishReason = response.finishReason else {
-                throw AgentError.incompleteResponse
-            }
+    private let providerId: String
+    private let model: String
+    private let topic: ChatTopic?
+    private let capabilityRegistry: CapabilityRegistry
 
-            switch finishReason.unified {
-            case .error:
-                throw AgentError.cloudService(response.errors.first?.message ?? "模型执行失败")
-            case .contentFilter:
-                throw AgentError.cloudService("模型因安全策略拒绝了这次请求")
-            case .length where !response.pendingToolCalls.isEmpty:
-                throw AgentError.responseTruncatedDuringToolCall
-            default:
-                break
-            }
+    init(
+        providerId: String = "anthropic",
+        model: String = "claude-sonnet-5",
+        topic: ChatTopic? = nil,
+        capabilityRegistry: CapabilityRegistry = HealthTools.registry
+    ) {
+        self.providerId = providerId
+        self.model = model
+        self.topic = topic
+        self.capabilityRegistry = capabilityRegistry
+    }
 
-            let assistantMessage = response.assistantMessage
-            if !assistantMessage.content.isEmpty {
-                replayMessages.append(assistantMessage)
-                transcript.appendRuntime(assistantMessage)
-            }
-
-            finalUsage = response.usage
-            finalFinishReason = finishReason
-            budgetPolicy.noteActualInputTokens(
-                actual: response.usage.inputTokens.total,
-                estimated: prepared.contextUsage.used
-            )
-            budgetPolicy.noteServedModel(response.metadata?.modelId)
-            finalSnapshot = prepared.snapshot(
-                servedModelId: response.metadata?.modelId,
-                actualPromptTokens: response.usage.inputTokens.total
-            )
-
-            guard !response.pendingToolCalls.isEmpty else {
-                continuation.yield(.turnCompleted(
-                    replayMessages: replayMessages,
-                    finishReason: finalFinishReason,
-                    usage: finalUsage,
-                    context: finalSnapshot
-                ))
-                return
-            }
-
-            for call in response.pendingToolCalls {
-                let days = HealthTools.days(fromInput: call.input)
-
-                continuation.yield(.toolCallStarted(ToolCallRecord(
-                    id: call.toolCallId,
-                    name: call.toolName,
-                    input: call.input
-                )))
-
-                let outcome: (output: String, report: HealthReport?, isError: Bool)
-                if let spec = HealthTools.spec(named: call.toolName) {
-                    do {
-                        let report = try await spec.run(days, HealthTools.activity(fromInput: call.input))
-                        outcome = (report.modelText, report, false)
-                    } catch {
-                        outcome = ("健康数据查询失败：\(error.localizedDescription)", nil, true)
+    func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let client = try AIKitModelClient(
+                        providerId: providerId,
+                        modelId: model,
+                        apiKey: try resolvedAPIKey()
+                    )
+                    let loop = AgentLoop(
+                        client: client,
+                        capabilities: capabilityRegistry,
+                        systemInstruction: systemInstruction(),
+                        compactor: .healthChat,
+                        maxToolRounds: Self.maxToolRounds
+                    )
+                    for try await event in loop.run(history: history.map(\.agentDTO)) {
+                        continuation.yield(event)
                     }
-                } else {
-                    outcome = ("不支持名为 \(call.toolName) 的健康工具。", nil, true)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: AgentError.wrapping(error))
                 }
-
-                continuation.yield(.toolCallFinished(
-                    id: call.toolCallId,
-                    output: outcome.output,
-                    report: outcome.report,
-                    isError: outcome.isError
-                ))
-
-                let toolResultMessage = Message.toolResult(
-                    toolCallId: call.toolCallId,
-                    toolName: call.toolName,
-                    result: .string(outcome.output),
-                    isError: outcome.isError
-                )
-                replayMessages.append(toolResultMessage)
-                transcript.appendRuntime(toolResultMessage)
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
+    }
 
-        throw AgentError.toolLoopLimit
+    private func resolvedAPIKey() throws -> String {
+        guard let stored = try KeychainStore.get(account: KeychainStore.apiKeyAccount) else {
+            throw AgentError.needsAPIKey
+        }
+        let key = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { throw AgentError.needsAPIKey }
+        return key
     }
 
     private func systemInstruction() -> String {
@@ -222,279 +135,5 @@ struct AIKitEngine: AgentEngine {
             instructions += "\n\n\(persona)"
         }
         return instructions
-    }
-}
-
-private struct PreparedPrompt {
-    let prompt: Prompt
-    let contextUsage: ContextUsage
-    let providerId: String
-    let requestedModelId: String
-    let contextWindow: Int?
-    let reservedOutputTokens: Int?
-    let compactedAssistantMessages: Int
-    let droppedConversationTurns: Int
-
-    func snapshot(servedModelId: String?, actualPromptTokens: Int?) -> TurnContextSnapshot {
-        TurnContextSnapshot(
-            providerId: providerId,
-            requestedModelId: requestedModelId,
-            servedModelId: servedModelId,
-            contextWindow: contextWindow,
-            reservedOutputTokens: reservedOutputTokens,
-            estimatedPromptTokens: contextUsage.used,
-            actualPromptTokens: actualPromptTokens,
-            compactedAssistantMessages: compactedAssistantMessages,
-            droppedConversationTurns: droppedConversationTurns
-        )
-    }
-}
-
-private struct ContextBudgetPolicy {
-    let providerId: String
-    let requestedModelId: String
-    let modelInfo: ModelInfo?
-    let toolDefinitions: [ToolDefinition]
-
-    private let reporter = ContextReporter()
-    private var calibrationScale: Double?
-    private(set) var servedModelId: String?
-
-    init(
-        providerId: String,
-        requestedModelId: String,
-        modelInfo: ModelInfo?,
-        toolDefinitions: [ToolDefinition],
-        calibrationScale: Double?
-    ) {
-        self.providerId = providerId
-        self.requestedModelId = requestedModelId
-        self.modelInfo = modelInfo
-        self.toolDefinitions = toolDefinitions
-        self.calibrationScale = calibrationScale
-    }
-
-    mutating func prepare(transcript: inout ConversationTranscript) throws -> PreparedPrompt {
-        guard let contextWindow = modelInfo?.contextWindow else {
-            let prompt = transcript.prompt
-            return PreparedPrompt(
-                prompt: prompt,
-                contextUsage: usage(for: prompt, contextWindow: nil),
-                providerId: providerId,
-                requestedModelId: requestedModelId,
-                contextWindow: nil,
-                reservedOutputTokens: nil,
-                compactedAssistantMessages: transcript.compactedAssistantMessages,
-                droppedConversationTurns: transcript.droppedConversationTurns
-            )
-        }
-
-        let reservedOutputTokens = reserveOutputTokens(contextWindow: contextWindow)
-        let budget = max(0, contextWindow - reservedOutputTokens)
-
-        while true {
-            let prompt = transcript.prompt
-            let contextUsage = usage(for: prompt, contextWindow: contextWindow)
-            if contextUsage.used <= budget {
-                return PreparedPrompt(
-                    prompt: prompt,
-                    contextUsage: contextUsage,
-                    providerId: providerId,
-                    requestedModelId: requestedModelId,
-                    contextWindow: contextWindow,
-                    reservedOutputTokens: reservedOutputTokens,
-                    compactedAssistantMessages: transcript.compactedAssistantMessages,
-                    droppedConversationTurns: transcript.droppedConversationTurns
-                )
-            }
-
-            if transcript.compactOldestAssistantMessage() {
-                continue
-            }
-            if transcript.dropOldestConversationTurn() {
-                continue
-            }
-            throw AgentError.contextWindowExceeded
-        }
-    }
-
-    mutating func noteActualInputTokens(actual: Int?, estimated: Int) {
-        guard let actual, estimated > 0 else { return }
-        calibrationScale = Double(actual) / Double(estimated)
-    }
-
-    mutating func noteServedModel(_ modelId: String?) {
-        guard let modelId, !modelId.isEmpty else { return }
-        servedModelId = modelId
-    }
-
-    private func usage(for prompt: Prompt, contextWindow: Int?) -> ContextUsage {
-        let options = CallOptions(
-            model: requestedModelId,
-            prompt: prompt,
-            tools: toolDefinitions
-        )
-        let estimated = reporter.report(options, contextWindow: contextWindow)
-        guard let calibrationScale, calibrationScale > 0 else {
-            return estimated
-        }
-        let calibratedTotal = max(1, Int((Double(estimated.used) * calibrationScale).rounded()))
-        return estimated.calibrated(toTotal: calibratedTotal)
-    }
-
-    private func reserveOutputTokens(contextWindow: Int) -> Int {
-        let heuristic = min(4_096, max(1_024, contextWindow / 10))
-        guard let outputCap = modelInfo?.maxOutputTokens, outputCap > 0 else {
-            return heuristic
-        }
-        return max(256, min(heuristic, outputCap))
-    }
-}
-
-private struct ConversationTranscript {
-    private enum Item {
-        case user(String)
-        case assistant(AssistantTurn)
-    }
-
-    private struct AssistantTurn {
-        let exactMessages: [Message]
-        let compactMessages: [Message]
-        var isCompacted = false
-
-        var activeMessages: [Message] {
-            isCompacted ? compactMessages : exactMessages
-        }
-
-        var canCompact: Bool {
-            !isCompacted && !compactMessages.isEmpty && compactMessages != exactMessages
-        }
-    }
-
-    private let systemInstruction: String
-    private var items: [Item]
-    private var runtimeMessages: [Message] = []
-
-    private(set) var compactedAssistantMessages = 0
-    private(set) var droppedConversationTurns = 0
-    let calibrationScale: Double?
-
-    init(
-        systemInstruction: String,
-        history: [ChatMessage],
-        providerId: String,
-        requestedModelId: String
-    ) {
-        self.systemInstruction = systemInstruction
-        self.items = []
-        self.calibrationScale = history.reversed().compactMap { message -> Double? in
-            guard message.role == .assistant,
-                  let context = message.context,
-                  context.matches(providerId: providerId, requestedModelId: requestedModelId),
-                  let estimated = context.estimatedPromptTokens,
-                  let actual = context.actualPromptTokens,
-                  estimated > 0,
-                  actual > 0 else {
-                return nil
-            }
-            return Double(actual) / Double(estimated)
-        }.first
-
-        for message in history {
-            switch message.role {
-            case .user:
-                guard !message.text.isEmpty else { continue }
-                items.append(.user(message.text))
-
-            case .assistant:
-                guard message.shouldReplayInContext else { continue }
-                let exact = message.exactReplayMessages.isEmpty
-                    ? message.reconstructedReplayMessages
-                    : message.exactReplayMessages
-                let compact = message.compactReplayMessages
-                guard !exact.isEmpty || !compact.isEmpty else { continue }
-                items.append(.assistant(AssistantTurn(
-                    exactMessages: exact.isEmpty ? compact : exact,
-                    compactMessages: compact
-                )))
-            }
-        }
-    }
-
-    var prompt: Prompt {
-        var prompt: Prompt = [.system(systemInstruction)]
-        for item in items {
-            switch item {
-            case .user(let text):
-                prompt.append(.user(text))
-            case .assistant(let turn):
-                prompt.append(contentsOf: turn.activeMessages)
-            }
-        }
-        prompt.append(contentsOf: runtimeMessages)
-        return prompt
-    }
-
-    mutating func appendRuntime(_ message: Message) {
-        guard !message.content.isEmpty else { return }
-        runtimeMessages.append(message)
-    }
-
-    mutating func compactOldestAssistantMessage() -> Bool {
-        for index in items.indices {
-            guard case .assistant(var turn) = items[index], turn.canCompact else { continue }
-            turn.isCompacted = true
-            items[index] = .assistant(turn)
-            compactedAssistantMessages += 1
-            return true
-        }
-        return false
-    }
-
-    mutating func dropOldestConversationTurn() -> Bool {
-        guard userMessageCount > 1, !items.isEmpty else { return false }
-
-        var end = 1
-        while end < items.count {
-            if case .user = items[end] {
-                break
-            }
-            end += 1
-        }
-        items.removeSubrange(0..<end)
-        droppedConversationTurns += 1
-        return true
-    }
-
-    private var userMessageCount: Int {
-        items.reduce(into: 0) { count, item in
-            if case .user = item {
-                count += 1
-            }
-        }
-    }
-}
-
-private extension ChatMessage {
-    var shouldReplayInContext: Bool {
-        switch turnState {
-        case .failed:
-            return hasReplayableContent
-        case .stopped:
-            if text == "已停止回复", exactReplayMessages.isEmpty, toolCalls.allSatisfy({ $0.output == nil }) {
-                return false
-            }
-            return hasReplayableContent
-        case .completed, .none:
-            return hasReplayableContent
-        }
-    }
-}
-
-private extension TurnContextSnapshot {
-    func matches(providerId: String, requestedModelId: String) -> Bool {
-        guard self.providerId == providerId else { return false }
-        let effectiveModelId = servedModelId ?? self.requestedModelId
-        return effectiveModelId == requestedModelId
     }
 }

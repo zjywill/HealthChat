@@ -1,20 +1,19 @@
 import Foundation
+import AgentRuntime
 import AIKit
+
+typealias TurnContextSnapshot = TurnContextSnapshotDTO
+typealias TurnState = StoredAgentTurn.State
 
 /// 一次工具调用的完整记录:调用本身和它的结果。
 ///
-/// 存进消息里而不是只留一句"查询了最近 7 天睡眠",是因为下一轮要把它原样回放给
-/// 模型——只回放文本的话,模型看不到自己上轮查到过什么,只能重查或者顺着总结瞎编。
+/// 聊天气泡和详情面板都认这层 app 自己的结构;真正回放给模型的 transcript 存在
+/// `ChatMessage.storedTurn` 里,会话文件里没有任何 AIKit 类型。
 struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
-    /// provider 给的 toolCallId,回放时要原样带回去。
     let id: String
     let name: String
-    /// 参数的 JSON 字符串,保留原样(重新编码一遍不会得到相同的字节)。
     let input: String
-    /// nil 表示还在跑。回放给模型的就是这段文本。
     var output: String?
-    /// 同一次查询的结构化形式,面板拿它画表格。查询失败、或者是旧版本存下来的
-    /// 会话,这里是 nil——面板那时退回显示 `output`。
     var report: HealthReport?
     var isError: Bool
 
@@ -41,28 +40,15 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         case assistant
     }
 
-    enum TurnState: String, Codable, Sendable {
-        case completed
-        case stopped
-        case failed
-    }
-
     let id: UUID
     let role: Role
     var text: String
-    var toolCalls: [ToolCallRecord]
-    /// 这一轮里模型实际看到/说出的完整消息序列,按顺序保存:
-    /// assistant -> tool result -> assistant ...
+    /// `text` 是 app 写给用户的占位("已停止回复"/"无法回复：…"),不是模型说的话。
     ///
-    /// UI 仍然把它们压成一个气泡展示,但多轮回放必须保留原顺序,否则工具调用轮次一多,
-    /// prompt 很快就和真实对话漂移。
-    var replayMessages: [Message]
-    var finishReason: FinishReason?
-    var usage: Usage?
-    var turnState: TurnState?
-    /// 这一轮请求所处的预算环境。它是 app 自己的结构,不是 provider transcript 的一部分:
-    /// 下一次如果要按当前模型窗口压缩历史,靠它判断"这条 usage 能不能拿来校准"。
-    var context: TurnContextSnapshot?
+    /// 有这个标记,runtime 判断该不该回放时就不用去比对某句中文——那句话属于 app。
+    var textIsPlaceholder: Bool
+    var toolCalls: [ToolCallRecord]
+    var storedTurn: StoredAgentTurn
     var errorDescription: String?
     /// 这条消息是什么时候产生的。
     ///
@@ -70,59 +56,88 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
     /// 不显示。
     var createdAt: Date?
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case role
+        case text
+        case textIsPlaceholder
+        case toolCalls
+        case storedTurn
+        case errorDescription
+        case createdAt
+
+        // 旧会话格式:transcript 曾经直接落的是 AIKit 的 Message。
+        case replayMessages
+        case finishReason
+        case usage
+        case context
+        case turnState
+    }
+
     init(
         id: UUID = UUID(),
         role: Role,
         text: String,
+        textIsPlaceholder: Bool = false,
         toolCalls: [ToolCallRecord] = [],
-        replayMessages: [Message] = [],
-        finishReason: FinishReason? = nil,
-        usage: Usage? = nil,
-        turnState: TurnState? = nil,
-        context: TurnContextSnapshot? = nil,
+        storedTurn: StoredAgentTurn = .init(),
         errorDescription: String? = nil,
         createdAt: Date? = Date()
     ) {
         self.id = id
         self.role = role
         self.text = text
+        self.textIsPlaceholder = textIsPlaceholder
         self.toolCalls = toolCalls
-        self.replayMessages = replayMessages
-        self.finishReason = finishReason
-        self.usage = usage
-        self.turnState = turnState
-        self.context = context
+        self.storedTurn = storedTurn
         self.errorDescription = errorDescription
         self.createdAt = createdAt
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case role
-        case text
-        case toolCalls
-        case replayMessages
-        case finishReason
-        case usage
-        case turnState
-        case context
-        case errorDescription
-        case createdAt
+    init(_ dto: AgentChatMessageDTO) {
+        id = dto.id
+        role = Role(dto.role)
+        text = dto.text
+        textIsPlaceholder = dto.textIsPlaceholder
+        toolCalls = dto.toolCalls.map(ToolCallRecord.init)
+        storedTurn = dto.storedTurn
+        errorDescription = dto.errorDescription
+        createdAt = dto.createdAt
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+
         id = try container.decode(UUID.self, forKey: .id)
         role = try container.decode(Role.self, forKey: .role)
         text = try container.decode(String.self, forKey: .text)
+        textIsPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .textIsPlaceholder) ?? false
         toolCalls = try container.decodeIfPresent([ToolCallRecord].self, forKey: .toolCalls) ?? []
-        replayMessages = (try? container.decodeIfPresent([Message].self, forKey: .replayMessages)) ?? []
-        finishReason = (try? container.decodeIfPresent(FinishReason.self, forKey: .finishReason)) ?? nil
-        usage = (try? container.decodeIfPresent(Usage.self, forKey: .usage)) ?? nil
-        turnState = (try? container.decodeIfPresent(TurnState.self, forKey: .turnState)) ?? nil
-        context = (try? container.decodeIfPresent(TurnContextSnapshot.self, forKey: .context)) ?? nil
         errorDescription = try container.decodeIfPresent(String.self, forKey: .errorDescription)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
+
+        // 要问 `contains`,不能用 `try? decodeIfPresent`:键不存在时后者是"成功地解出了 nil",
+        // 一样会走进这个分支,底下的旧格式就永远读不到了。
+        if container.contains(.storedTurn) {
+            self.storedTurn = (try? container.decode(StoredAgentTurn.self, forKey: .storedTurn)) ?? .init()
+            return
+        }
+
+        // 旧格式:把 AIKit 的消息翻成 app 自己的 transcript,之后就再也不碰 AIKit 类型了。
+        let replayMessages = ((try? container.decodeIfPresent([AIKit.Message].self, forKey: .replayMessages)) ?? [])
+            .map(\.agentTranscriptMessage)
+        let finishReason = (try? container.decodeIfPresent(FinishReason.self, forKey: .finishReason)) ?? nil
+        let usage = (try? container.decodeIfPresent(Usage.self, forKey: .usage)) ?? nil
+        let context = (try? container.decodeIfPresent(TurnContextSnapshot.self, forKey: .context)) ?? nil
+        let turnState = (try? container.decodeIfPresent(TurnState.self, forKey: .turnState)) ?? nil
+
+        self.storedTurn = .init(
+            exactTranscript: .init(messages: replayMessages),
+            finishReason: finishReason?.agentFinishReason,
+            usage: usage?.agentUsage,
+            state: turnState,
+            context: context
+        )
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -130,104 +145,151 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(role, forKey: .role)
         try container.encode(text, forKey: .text)
+        try container.encode(textIsPlaceholder, forKey: .textIsPlaceholder)
         try container.encode(toolCalls, forKey: .toolCalls)
-        if !replayMessages.isEmpty {
-            try container.encode(replayMessages, forKey: .replayMessages)
-        }
-        try container.encodeIfPresent(finishReason, forKey: .finishReason)
-        try container.encodeIfPresent(usage, forKey: .usage)
-        try container.encodeIfPresent(turnState, forKey: .turnState)
-        try container.encodeIfPresent(context, forKey: .context)
+        try container.encode(normalizedStoredTurn, forKey: .storedTurn)
         try container.encodeIfPresent(errorDescription, forKey: .errorDescription)
         try container.encodeIfPresent(createdAt, forKey: .createdAt)
     }
 }
 
 extension ChatMessage {
-    var hasReplayableContent: Bool {
-        !exactReplayMessages.isEmpty || !reconstructedReplayMessages.isEmpty
+    var turnState: TurnState? {
+        get { storedTurn.state }
+        set { storedTurn.state = newValue }
     }
 
-    /// 持久化过的精确 transcript。没有时返回空,由调用方决定要不要退回重建。
-    var exactReplayMessages: [Message] {
-        replayMessages
+    var finishReason: AgentFinishReason? { storedTurn.finishReason }
+    var usage: AgentUsage? { storedTurn.usage }
+    var context: TurnContextSnapshot? { storedTurn.context }
+
+    /// 交给 runtime 的形态。落盘和回放走的是同一份,不会出现"存的和发的不一样"。
+    var agentDTO: AgentChatMessageDTO {
+        var dto = rawDTO
+        dto.storedTurn = normalizedStoredTurn
+        return dto
     }
 
-    /// 用当前消息内容重建一份可回放 transcript。
+    /// 不带归一化的原样转换。给 compactor 用——归一化本身要读它,不能反过来依赖归一化。
+    private var rawDTO: AgentChatMessageDTO {
+        AgentChatMessageDTO(
+            id: id,
+            role: AgentChatMessageDTO.Role(role),
+            text: text,
+            textIsPlaceholder: textIsPlaceholder,
+            toolCalls: toolCalls.map(\.dto),
+            storedTurn: storedTurn,
+            errorDescription: errorDescription,
+            createdAt: createdAt
+        )
+    }
+
+    /// 回合一结束就把 compaction artifact 算出来存下,而不是每次要用时现推。
     ///
-    /// 只包含已经完成的工具调用。未完成的 tool_use 带回 provider 基本都会被拒收。
-    var reconstructedReplayMessages: [Message] {
-        let completed = toolCalls.filter { $0.output != nil }
-        var result: [Message] = []
-        var content: [ContentPart] = []
-        if !text.isEmpty {
-            content.append(.text(text))
+    /// 现推的问题是它只能拿到当时还剩下的东西;artifact 要在信息最全的时候生成。
+    private var normalizedStoredTurn: StoredAgentTurn {
+        guard role == .assistant, storedTurn.compaction == nil, storedTurn.state != nil else {
+            return storedTurn
         }
-        content.append(contentsOf: completed.map { call in
-            .toolCall(ToolCall(
-                toolCallId: call.id,
-                toolName: call.name,
-                input: call.input
-            ))
-        })
-
-        if !content.isEmpty {
-            result.append(Message(role: .assistant, content: content))
-        }
-        result.append(contentsOf: completed.map { call in
-            .toolResult(
-                toolCallId: call.id,
-                toolName: call.name,
-                result: .string(call.output ?? ""),
-                isError: call.isError
-            )
-        })
-        return result
-    }
-
-    /// 预算吃紧时的紧凑 transcript。优先保留用户可见总结,没有总结再退回完整重建。
-    var compactReplayMessages: [Message] {
-        guard !text.isEmpty else {
-            return exactReplayMessages.isEmpty ? reconstructedReplayMessages : exactReplayMessages
-        }
-        return [.assistant(text)]
+        var normalized = storedTurn
+        normalized.compaction = TranscriptCompactor.healthChat.artifact(for: rawDTO)
+        return normalized
     }
 }
 
-/// 一轮回复落地时的预算快照。
-///
-/// 它只回答三件事:这轮是按哪个模型窗口算的、最后大概占了多少上下文、为了塞进窗口
-/// 做了多少压缩/裁剪。后面无论接更多数据源还是换成别的 agent capability,这层都能继续用。
-struct TurnContextSnapshot: Equatable, Codable, Sendable {
-    var providerId: String
-    var requestedModelId: String
-    var servedModelId: String?
-    var contextWindow: Int?
-    var reservedOutputTokens: Int?
-    var estimatedPromptTokens: Int?
-    var actualPromptTokens: Int?
-    var compactedAssistantMessages: Int
-    var droppedConversationTurns: Int
+/// 事件怎么改状态只写在 runtime 的 `AgentTurnSink.apply` 里;这里只提供存储。
+extension ChatMessage: AgentTurnSink {
+    mutating func appendText(_ delta: String) {
+        if textIsPlaceholder {
+            text = ""
+            textIsPlaceholder = false
+        }
+        text += delta
+    }
 
-    init(
-        providerId: String,
-        requestedModelId: String,
-        servedModelId: String? = nil,
-        contextWindow: Int? = nil,
-        reservedOutputTokens: Int? = nil,
-        estimatedPromptTokens: Int? = nil,
-        actualPromptTokens: Int? = nil,
-        compactedAssistantMessages: Int = 0,
-        droppedConversationTurns: Int = 0
+    mutating func startToolCall(_ record: ToolCallRecordDTO) {
+        toolCalls.append(ToolCallRecord(record))
+    }
+
+    mutating func finishToolCall(id: String, output: AgentToolOutput, isError: Bool) {
+        guard let index = toolCalls.firstIndex(where: { $0.id == id }) else { return }
+        toolCalls[index].output = output.text
+        toolCalls[index].report = HealthReport.decode(fromToolMetadata: output.metadata)
+        toolCalls[index].isError = isError
+    }
+
+    mutating func completeTurn(
+        transcript: AgentTranscript,
+        finishReason: AgentFinishReason?,
+        usage: AgentUsage?,
+        context: TurnContextSnapshotDTO?
     ) {
-        self.providerId = providerId
-        self.requestedModelId = requestedModelId
-        self.servedModelId = servedModelId
-        self.contextWindow = contextWindow
-        self.reservedOutputTokens = reservedOutputTokens
-        self.estimatedPromptTokens = estimatedPromptTokens
-        self.actualPromptTokens = actualPromptTokens
-        self.compactedAssistantMessages = compactedAssistantMessages
-        self.droppedConversationTurns = droppedConversationTurns
+        storedTurn.exactTranscript = transcript
+        storedTurn.finishReason = finishReason
+        storedTurn.usage = usage
+        storedTurn.context = context
+        storedTurn.state = .completed
+    }
+
+    mutating func markStopped() {
+        if text.isEmpty {
+            text = "已停止回复"
+            textIsPlaceholder = true
+        }
+        storedTurn.state = .stopped
+    }
+
+    mutating func markFailed(_ description: String) {
+        if text.isEmpty {
+            text = "无法回复：\(description)"
+            textIsPlaceholder = true
+        }
+        storedTurn.state = .failed
+        errorDescription = description
+    }
+}
+
+private extension ToolCallRecord {
+    init(_ dto: ToolCallRecordDTO) {
+        id = dto.id
+        name = dto.name
+        input = dto.input
+        output = dto.output?.text
+        report = dto.output.flatMap { HealthReport.decode(fromToolMetadata: $0.metadata) }
+        isError = dto.isError
+    }
+
+    var dto: ToolCallRecordDTO {
+        ToolCallRecordDTO(
+            id: id,
+            name: name,
+            input: input,
+            output: output.map {
+                AgentToolOutput(
+                    kind: report == nil ? .text : .table,
+                    text: $0,
+                    metadata: report.flatMap(HealthReport.encodeForToolMetadata)
+                )
+            },
+            isError: isError
+        )
+    }
+}
+
+private extension ChatMessage.Role {
+    init(_ role: AgentChatMessageDTO.Role) {
+        switch role {
+        case .user: self = .user
+        case .assistant: self = .assistant
+        }
+    }
+}
+
+private extension AgentChatMessageDTO.Role {
+    init(_ role: ChatMessage.Role) {
+        switch role {
+        case .user: self = .user
+        case .assistant: self = .assistant
+        }
     }
 }

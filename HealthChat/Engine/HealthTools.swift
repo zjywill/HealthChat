@@ -1,5 +1,5 @@
 import Foundation
-import AIKit
+import AgentRuntime
 
 struct HealthToolSpec: Sendable {
     let name: String
@@ -18,6 +18,39 @@ struct HealthToolSpec: Sendable {
         self.description = description
         self.supportsActivityFilter = supportsActivityFilter
         self.run = run
+    }
+}
+
+private extension HealthToolSpec {
+    var capabilityDefinition: CapabilityDefinition {
+        var properties: [String: RuntimeJSONValue] = [
+            "days": .object([
+                "type": "integer",
+                "description": "查询最近多少天，范围 1–90，默认 7",
+                "minimum": 1,
+                "maximum": 90
+            ])
+        ]
+
+        if supportsActivityFilter {
+            properties["activity"] = .object([
+                "type": "string",
+                "description": "只看某一类锻炼时传，留空表示全部",
+                "enum": .array(HealthTools.activityNames.map(RuntimeJSONValue.string))
+            ])
+        }
+
+        return CapabilityDefinition(
+            name: name,
+            description: description,
+            inputSchema: .object([
+                "type": "object",
+                "properties": .object(properties),
+                "required": .array([.string("days")]),
+                "additionalProperties": .bool(false)
+            ]),
+            strictPreferred: false
+        )
     }
 }
 
@@ -142,14 +175,51 @@ enum HealthTools {
         all.first { $0.name == name }
     }
 
+    static let registry = CapabilityRegistry(
+        definitions: all.map(\.capabilityDefinition)
+    ) { invocation in
+        guard let spec = spec(named: invocation.name) else {
+            return CapabilityExecutionResult(
+                output: .init(
+                    kind: .text,
+                    text: "不支持名为 \(invocation.name) 的健康工具。"
+                ),
+                isError: true
+            )
+        }
+
+        do {
+            let report = try await spec.run(
+                days(fromInput: invocation.input),
+                activity(fromInput: invocation.input)
+            )
+            return CapabilityExecutionResult(
+                output: .init(
+                    kind: .table,
+                    text: report.modelText,
+                    metadata: HealthReport.encodeForToolMetadata(report)
+                ),
+                isError: false
+            )
+        } catch {
+            return CapabilityExecutionResult(
+                output: .init(
+                    kind: .text,
+                    text: "健康数据查询失败：\(error.localizedDescription)"
+                ),
+                isError: true
+            )
+        }
+    }
+
     /// 从工具参数的 JSON 字符串里取天数。引擎调用工具和界面显示说明都要用。
     static func days(fromInput input: String) -> Int {
-        normalizedDays((try? JSONValue.decode(from: input))?["days"]?.intValue ?? 7)
+        normalizedDays((try? RuntimeJSONValue.decode(from: input))?["days"]?.intValue ?? 7)
     }
 
     /// 锻炼类型筛选。只认目录里那几个名字,别的一律当没传。
     static func activity(fromInput input: String) -> String? {
-        guard let value = (try? JSONValue.decode(from: input))?["activity"]?.stringValue,
+        guard let value = (try? RuntimeJSONValue.decode(from: input))?["activity"]?.stringValue,
               activityNames.contains(value) else {
             return nil
         }

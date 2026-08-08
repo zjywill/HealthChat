@@ -1,5 +1,5 @@
 import SwiftUI
-import AIKit
+import AgentRuntime
 
 @MainActor
 @Observable
@@ -18,10 +18,24 @@ final class ChatViewModel {
     /// 没选话题时该显示的那几条,取消话题选择时用它复位。
     private var situationSuggestions = SuggestedQuestions.defaults()
 
+    /// 每轮现造引擎。测试注入一个脚本化的假引擎,就能在不碰 Keychain 和网络的前提下
+    /// 走完整条 loop。
+    typealias EngineFactory = @MainActor @Sendable (ChatTopic?) throws -> any AgentEngine
+
+    private let engineFactory: EngineFactory?
+
     var messages: [ChatMessage] { session.messages }
 
-    init() {
+    /// - Parameter loadsPersistedSession: 关掉就不读盘、不写盘,`isLoadingConversation`
+    ///   直接是 false。测试用。
+    init(engineFactory: EngineFactory? = nil, loadsPersistedSession: Bool = true) {
+        self.engineFactory = engineFactory
         refreshEngineAvailability()
+        guard loadsPersistedSession else {
+            session = ChatSession(isEphemeral: true)
+            isLoadingConversation = false
+            return
+        }
         Task {
             await loadInitialSession()
         }
@@ -204,6 +218,12 @@ final class ChatViewModel {
                 for try await event in engine.reply(to: session.messages) {
                     apply(event)
                 }
+                // AsyncThrowingStream 的消费者被取消时,`for try await` 是**正常**结束的,
+                // 不抛 CancellationError。只靠 catch 抓不到"用户按了停止",那条回复会既没
+                // 文本也没状态地存下去。
+                if Task.isCancelled {
+                    markStopped()
+                }
             } catch is CancellationError {
                 markStopped()
             } catch {
@@ -219,49 +239,29 @@ final class ChatViewModel {
         }
     }
 
+    /// 事件落到最后一条(正在写的那条回复)上。语义在 `AgentTurnSink.apply` 里,
+    /// 这里只负责找到收件人——每个 delta 都把整条会话翻一遍 DTO 太贵了。
     private func apply(_ event: AgentEvent) {
-        let last = session.messages.count - 1
-        switch event {
-        case .textDelta(let delta):
-            session.messages[last].text += delta
-        case .toolCallStarted(let record):
-            session.messages[last].toolCalls.append(record)
-        case .toolCallFinished(let id, let output, let report, let isError):
-            guard let index = session.messages[last].toolCalls.firstIndex(where: { $0.id == id })
-            else { return }
-            session.messages[last].toolCalls[index].output = output
-            session.messages[last].toolCalls[index].report = report
-            session.messages[last].toolCalls[index].isError = isError
-        case .turnCompleted(let replayMessages, let finishReason, let usage, let context):
-            session.messages[last].replayMessages = replayMessages
-            session.messages[last].finishReason = finishReason
-            session.messages[last].usage = usage
-            session.messages[last].context = context
-            session.messages[last].turnState = .completed
-        }
+        guard let last = session.messages.indices.last else { return }
+        session.messages[last].apply(event)
     }
 
     private func markStopped() {
-        let last = session.messages.count - 1
-        if session.messages[last].text.isEmpty {
-            session.messages[last].text = "已停止回复"
-        }
-        session.messages[last].turnState = .stopped
+        guard let last = session.messages.indices.last else { return }
+        session.messages[last].markStopped()
     }
 
     private func markFailed(_ error: any Error) {
-        let last = session.messages.count - 1
-        let description = error.localizedDescription
-        if session.messages[last].text.isEmpty {
-            session.messages[last].text = "无法回复：\(description)"
-        }
-        session.messages[last].turnState = .failed
-        session.messages[last].errorDescription = description
+        guard let last = session.messages.indices.last else { return }
+        session.messages[last].markFailed(error.localizedDescription)
     }
 
     // MARK: - 引擎
 
     private func resolveEngine() throws -> any AgentEngine {
+        if let engineFactory {
+            return try engineFactory(session.topic)
+        }
         let settings = try cloudSettings()
         return AIKitEngine(
             providerId: settings.provider,
