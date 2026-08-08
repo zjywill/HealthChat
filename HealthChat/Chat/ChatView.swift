@@ -94,7 +94,7 @@ struct ChatView: View {
             }
             .task {
                 do {
-                    try await HealthStore.shared.requestAuthorization()
+                    try await HealthStore.shared.requestAuthorizationIfNeeded()
                 } catch {
                     print("HealthKit 授权请求失败：\(error.localizedDescription)")
                 }
@@ -336,7 +336,11 @@ private struct ToolCallRow: View {
     }
 
     private var note: String {
-        HealthTools.note(for: call.name, days: HealthTools.days(fromInput: call.input))
+        HealthTools.note(
+            for: call.name,
+            days: HealthTools.days(fromInput: call.input),
+            activity: HealthTools.activity(fromInput: call.input)
+        )
     }
 }
 

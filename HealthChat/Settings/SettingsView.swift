@@ -269,10 +269,12 @@ struct SettingsView: View {
         Task {
             defer { isRequestingHealth = false }
             do {
-                try await HealthStore.shared.requestAuthorization()
+                let didAsk = try await HealthStore.shared.requestAuthorizationIfNeeded()
                 healthStatus = HealthAuthStatus(
-                    message: "已提交授权请求。没有弹窗说明这些类型你之前已经选择过。",
-                    icon: "checkmark.circle.fill",
+                    message: didAsk
+                        ? "已弹出授权面板，你的选择已保存。"
+                        : "这些数据类型都已经问过了。要打开或关闭，请到“健康”App 里改。",
+                    icon: didAsk ? "checkmark.circle.fill" : "info.circle",
                     isError: false
                 )
             } catch {
