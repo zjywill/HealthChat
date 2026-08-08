@@ -9,10 +9,14 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        if model.messages.isEmpty {
-                            WelcomeCard { question in
-                                model.send(question)
-                            }
+                        if model.isLoadingConversation {
+                            ProgressView("正在载入对话")
+                                .padding(.top, 40)
+                        } else if model.messages.isEmpty {
+                            WelcomeCard(
+                                setupGuidance: model.engineGuidance,
+                                onSelectQuestion: model.send
+                            )
                             .padding(.top, 24)
                         } else {
                             ForEach(model.messages) { message in
@@ -43,11 +47,17 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 NavigationLink {
-                    SettingsView()
+                    SettingsView(
+                        canClearConversation: !model.messages.isEmpty && !model.isReplying,
+                        onClearConversation: model.clearConversation
+                    )
                 } label: {
                     Image(systemName: "gearshape")
                 }
                 .accessibilityLabel("设置")
+            }
+            .onAppear {
+                model.refreshEngineAvailability()
             }
             .task {
                 do {
@@ -79,7 +89,11 @@ struct ChatView: View {
                     .background(Color.accentColor, in: Circle())
             }
             .buttonStyle(.plain)
-            .disabled(model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isReplying)
+            .disabled(
+                model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || model.isReplying
+                    || model.isLoadingConversation
+            )
             .accessibilityLabel("发送")
         }
         .padding(.horizontal, 16)
@@ -104,7 +118,7 @@ private struct MessageBubble: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text(message.text.isEmpty ? "…" : message.text)
+                Text(displayText)
                     .foregroundStyle(message.role == .user ? .white : .primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
@@ -129,9 +143,24 @@ private struct MessageBubble: View {
         }
         .accessibilityElement(children: .combine)
     }
+
+    private var displayText: AttributedString {
+        let text = message.text.isEmpty ? "…" : message.text
+        guard message.role == .assistant else {
+            return AttributedString(text)
+        }
+        return (try? AttributedString(
+            markdown: text,
+            options: .init(
+                interpretedSyntax: .full,
+                failurePolicy: .returnPartiallyParsedIfPossible
+            )
+        )) ?? AttributedString(text)
+    }
 }
 
 private struct WelcomeCard: View {
+    let setupGuidance: String?
     let onSelectQuestion: (String) -> Void
 
     private let questions = [
@@ -194,6 +223,13 @@ private struct WelcomeCard: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let setupGuidance {
+                Label(setupGuidance, systemImage: "gearshape")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(20)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))

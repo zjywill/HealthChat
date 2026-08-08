@@ -7,17 +7,17 @@ enum AgentEvent: Sendable {
 }
 
 enum AgentError: LocalizedError {
-    case notImplemented
     case modelUnavailable(String)
     case needsAPIKey
+    case noEngineAvailable
     case cloudService(String)
     case toolLoopLimit
 
     var errorDescription: String? {
         switch self {
-        case .notImplemented: "这个引擎还没实现"
         case .modelUnavailable(let reason): "端上模型不可用：\(reason)"
         case .needsAPIKey: "需要先在设置里填写云端 API key"
+        case .noEngineAvailable: "请开启 Apple Intelligence，或在设置里填写云端 API key"
         case .cloudService(let message): "云端服务返回错误：\(message)"
         case .toolLoopLimit: "健康查询次数过多，请缩小问题范围后重试"
         }
@@ -25,7 +25,7 @@ enum AgentError: LocalizedError {
 }
 
 /// 对话引擎统一接口。UI 层只认这个协议和 AgentEvent,不感知引擎差异。
-/// 实现:EchoEngine(M0 占位)、FoundationModelsEngine(M3)、ClaudeEngine(M4)。
+/// 实现:FoundationModelsEngine 和 AIKitEngine。
 protocol AgentEngine: Sendable {
     var name: String { get }
 

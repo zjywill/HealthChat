@@ -1,7 +1,9 @@
 import SwiftUI
-import FoundationModels
 
 struct SettingsView: View {
+    let canClearConversation: Bool
+    let onClearConversation: () -> Void
+
     @AppStorage(EngineSettings.choiceKey) private var engineChoice = EngineSettings.defaultChoice
     @AppStorage(EngineSettings.providerKey) private var providerId = EngineSettings.defaultProvider
     @AppStorage(EngineSettings.modelKey) private var model = EngineSettings.defaultModel
@@ -11,6 +13,7 @@ struct SettingsView: View {
     @State private var hasStoredAPIKey = false
     @State private var hasLoadedAPIKey = false
     @State private var keyStatus = KeyStatus.notSet
+    @State private var isShowingClearConfirmation = false
     @FocusState private var focusedField: Field?
 
     #if DEBUG
@@ -18,6 +21,14 @@ struct SettingsView: View {
     @State private var isSeeding = false
     @State private var isChecking = false
     #endif
+
+    init(
+        canClearConversation: Bool = false,
+        onClearConversation: @escaping () -> Void = {}
+    ) {
+        self.canClearConversation = canClearConversation
+        self.onClearConversation = onClearConversation
+    }
 
     var body: some View {
         Form {
@@ -97,6 +108,19 @@ struct SettingsView: View {
                 Text("Provider ID 使用 AIKit catalog 中的标识，例如 anthropic。API key 只保存在本机钥匙串。")
             }
 
+            Section {
+                Button(role: .destructive) {
+                    isShowingClearConfirmation = true
+                } label: {
+                    Label("清空对话", systemImage: "trash")
+                }
+                .disabled(!canClearConversation)
+            } header: {
+                Text("对话")
+            } footer: {
+                Text("清空会删除本机保存的所有消息，并重置端上模型的对话上下文。")
+            }
+
             #if DEBUG
             Section {
                 Button {
@@ -145,6 +169,18 @@ struct SettingsView: View {
                 saveAPIKey()
             }
         }
+        .confirmationDialog(
+            "清空当前对话？",
+            isPresented: $isShowingClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("清空对话", role: .destructive) {
+                onClearConversation()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("此操作会删除本机保存的所有消息，无法撤销。")
+        }
     }
 
     private var effectiveEngine: EngineStatus {
@@ -170,10 +206,7 @@ struct SettingsView: View {
     }
 
     private var onDeviceModelAvailable: Bool {
-        if case .available = SystemLanguageModel.default.availability {
-            return true
-        }
-        return false
+        FoundationModelsEngine.isAvailable
     }
 
     private func loadAPIKey() {

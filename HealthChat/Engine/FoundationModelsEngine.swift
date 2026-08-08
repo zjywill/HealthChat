@@ -4,12 +4,23 @@ import FoundationModels
 final class FoundationModelsEngine: AgentEngine, @unchecked Sendable {
     let name = "端上模型"
 
+    static var isAvailable: Bool {
+        if case .available = SystemLanguageModel.default.availability {
+            return true
+        }
+        return false
+    }
+
     private let toolEventSink: FoundationToolEventSink
     private var session: LanguageModelSession
 
     init() {
         let toolEventSink = FoundationToolEventSink()
         self.toolEventSink = toolEventSink
+        session = Self.makeSession(toolEventSink: toolEventSink)
+    }
+
+    func reset() {
         session = Self.makeSession(toolEventSink: toolEventSink)
     }
 
