@@ -254,6 +254,19 @@ struct SettingsView: View {
                 }
                 .disabled(isSeeding || isChecking)
 
+                Button {
+                    // 走的是和真 check-in 完全相同的那条路,只是触发器换成 5 秒后。
+                    Task {
+                        debugStatus = DebugStatus(
+                            message: await CheckInScheduler.sendTest(),
+                            icon: "bell",
+                            isError: false
+                        )
+                    }
+                } label: {
+                    Label("发一条测试 check-in", systemImage: "bell.badge")
+                }
+
                 if let debugStatus {
                     Label(debugStatus.message, systemImage: debugStatus.icon)
                         .font(.footnote)
