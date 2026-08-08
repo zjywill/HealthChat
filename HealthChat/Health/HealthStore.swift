@@ -7,9 +7,23 @@ final class HealthStore: Sendable {
 
     private let store = HKHealthStore()
 
-    // TODO(M1): 声明读取类型集合(步数/睡眠/心率/HRV/锻炼/体重/体脂/活动能量),
-    // 请求授权 + 拒绝态引导。
+    private let readTypes: Set<HKObjectType> = [
+        HKQuantityType(.stepCount),
+        HKQuantityType(.restingHeartRate),
+        HKQuantityType(.heartRateVariabilitySDNN),
+        HKQuantityType(.activeEnergyBurned),
+        HKQuantityType(.bodyMass),
+        HKQuantityType(.bodyFatPercentage),
+        HKCategoryType(.sleepAnalysis),
+        HKObjectType.workoutType()
+    ]
+
     func requestAuthorization() async throws {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            throw HealthStoreError.healthDataUnavailable
+        }
+
+        try await store.requestAuthorization(toShare: [], read: readTypes)
     }
 
     // TODO(M2): 五个聚合查询,对应 HealthTools。
@@ -18,4 +32,15 @@ final class HealthStore: Sendable {
     // func heartRateSummary(days: Int) async throws -> ...
     // func workouts(days: Int) async throws -> ...
     // func bodyMetrics(days: Int) async throws -> ...
+}
+
+enum HealthStoreError: LocalizedError {
+    case healthDataUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .healthDataUnavailable:
+            "此设备不支持健康数据"
+        }
+    }
 }
