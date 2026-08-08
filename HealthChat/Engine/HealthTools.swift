@@ -28,24 +28,41 @@ enum HealthTools {
             description: "当用户问及步数、活动量或久坐情况时调用。返回最近若干天的每日步数和均值。"
         ) { days, _ in
             let dayCount = normalizedDays(days)
-            let values = try await HealthStore.shared.dailySteps(days: dayCount)
-            return renderSteps(values, days: dayCount)
+            async let window = HealthStore.shared.dailySteps(days: dayCount)
+            async let history = HealthStore.shared.dailySteps(days: HealthStore.baselineDays)
+            return renderSteps(
+                try await window,
+                days: dayCount,
+                baseline: Baseline(try await history.map(\.value))
+            )
         },
         HealthToolSpec(
             name: "sleep_summary",
             description: "当用户问及睡眠时长、入睡时间、起床时间或睡眠趋势时调用。返回最近若干晚的聚合睡眠。"
         ) { days, _ in
             let dayCount = normalizedDays(days)
-            let values = try await HealthStore.shared.sleepSummary(days: dayCount)
-            return renderSleep(values, days: dayCount)
+            async let window = HealthStore.shared.sleepSummary(days: dayCount)
+            async let history = HealthStore.shared.sleepSummary(days: HealthStore.baselineDays)
+            return renderSleep(
+                try await window,
+                days: dayCount,
+                baseline: Baseline(try await history.map(\.asleep))
+            )
         },
         HealthToolSpec(
             name: "heart_rate_summary",
             description: "当用户问及静息心率、HRV、恢复或压力趋势时调用。返回最近若干天的静息心率和心率变异性。"
         ) { days, _ in
             let dayCount = normalizedDays(days)
-            let values = try await HealthStore.shared.heartRateSummary(days: dayCount)
-            return renderHeart(values, days: dayCount)
+            async let window = HealthStore.shared.heartRateSummary(days: dayCount)
+            async let history = HealthStore.shared.heartRateSummary(days: HealthStore.baselineDays)
+            let baseline = try await history
+            return renderHeart(
+                try await window,
+                days: dayCount,
+                restingBaseline: Baseline(baseline.compactMap(\.restingHR)),
+                hrvBaseline: Baseline(baseline.compactMap(\.hrv))
+            )
         },
         HealthToolSpec(
             name: "workouts",
@@ -82,6 +99,37 @@ enum HealthTools {
             let dayCount = normalizedDays(days)
             let values = try await HealthStore.shared.vitalsSummary(days: dayCount)
             return renderVitals(values, days: dayCount)
+        },
+        HealthToolSpec(
+            name: "correlations",
+            description: "当用户问「什么影响了我的睡眠/心率」「某件事有没有用」「有什么规律」时调用。"
+                + "把最近的数据按条件分成两组做对比（如锻炼当晚 vs 其他晚上的睡眠时长），返回每组天数和差值。"
+                + "days 建议传 60 以上，样本太少不会有结果。"
+        ) { days, _ in
+            let dayCount = max(normalizedDays(days), 30)
+            async let steps = HealthStore.shared.dailySteps(days: dayCount)
+            async let nights = HealthStore.shared.sleepSummary(days: dayCount)
+            async let hearts = HealthStore.shared.heartRateSummary(days: dayCount)
+            async let sessions = HealthStore.shared.workouts(days: dayCount)
+
+            let comparisons = HealthAnalysis.comparisons(
+                steps: try await steps,
+                nights: try await nights,
+                hearts: try await hearts,
+                sessions: try await sessions
+            )
+            return renderComparisons(comparisons, days: dayCount)
+        },
+        HealthToolSpec(
+            name: "health_records",
+            description: "当用户问及化验单、体检报告、血糖血脂等医院检查结果时调用。"
+                + "返回「健康」里来自医院或诊所的化验和体征记录。"
+                + "只有用户在「健康」App 里连过医疗机构才会有数据，没有时会明确说明。"
+        ) { days, _ in
+            // 化验单不是每周都有,窗口默认放到一年。
+            let dayCount = max(days, 365)
+            let items = try await HealthStore.shared.clinicalRecords(days: dayCount)
+            return renderClinical(items, days: dayCount)
         }
     ]
 
@@ -123,6 +171,10 @@ enum HealthTools {
             label = "血压"
         case "vitals":
             label = "血氧、呼吸与体温"
+        case "correlations":
+            label = "数据之间的关联"
+        case "health_records":
+            label = "化验与体检记录"
         default:
             label = "健康数据"
         }
@@ -133,7 +185,44 @@ enum HealthTools {
         min(max(days, 1), 90)
     }
 
-    private static func renderSteps(_ values: [DayValue], days: Int) -> String {
+    private static func renderComparisons(_ comparisons: [Comparison], days: Int) -> String {
+        guard !comparisons.isEmpty else {
+            return "最近 \(days) 天的数据还不足以做对比（每组至少要有 3 天）。多记录一段时间再看。"
+        }
+
+        let lines = comparisons.map { item in
+            let direction = item.difference >= 0 ? "多" : "少"
+            return "\(item.label)：\(formatDecimal(item.withCondition, suffix: ""))"
+                + " vs \(formatDecimal(item.withoutCondition, suffix: ""))"
+                + "，\(direction) \(formatDecimal(abs(item.difference), suffix: ""))"
+                + "（\(item.withCount) 天 / \(item.withoutCount) 天）"
+        }
+
+        return ([
+            "最近 \(days) 天的分组对比（单位跟随各项：睡眠为分钟，心率为次/分，HRV 为 ms）",
+            "这是相关不是因果，样本量也小，只能当线索。"
+        ] + lines).joined(separator: "\n")
+    }
+
+    private static func renderClinical(_ items: [ClinicalItem], days: Int) -> String {
+        guard !items.isEmpty else {
+            return "没有找到化验或体检记录。这类数据要先在“健康”App > 浏览 > 健康记录里"
+                + "连接医院或诊所才会有；国内多数机构尚未接入。"
+        }
+
+        let lines = items.prefix(40).map { item in
+            let value = item.value.map { "：\($0)" } ?? ""
+            return "\(formatFullDate(item.date)) [\(item.category)] \(item.name)\(value)"
+        }
+        var output = ["最近约 \(days) 天的化验与体征记录，共 \(items.count) 条"] + lines
+        if items.count > 40 {
+            output.append("（只列出最近 40 条）")
+        }
+        output.append("这些是医疗机构的原始记录，解读请以出具报告的医生为准。")
+        return output.joined(separator: "\n")
+    }
+
+    private static func renderSteps(_ values: [DayValue], days: Int, baseline: Baseline?) -> String {
         let recorded = values.filter { $0.value > 0 }
         guard !recorded.isEmpty else {
             return "最近 \(days) 天没有步数记录。请在“设置 > 隐私与安全性 > 健康”中检查授权。"
@@ -149,10 +238,31 @@ enum HealthTools {
 
         let average = values.map(\.value).reduce(0, +) / Double(values.count)
         let lines = values.map { "\(formatDate($0.date)) \(formatSteps($0.value)) 步" }
-        return (lines + ["日均 \(formatSteps(average)) 步"]).joined(separator: "\n")
+        var output = lines + ["日均 \(formatSteps(average)) 步"]
+        if let line = baselineLine(baseline, current: average, format: { "\(formatSteps($0)) 步" }) {
+            output.append(line)
+        }
+        return output.joined(separator: "\n")
     }
 
-    private static func renderSleep(_ values: [NightSleep], days: Int) -> String {
+    /// "60 天基线 8,120 步（中位数，58 天有记录），本段比基线低 12%"
+    ///
+    /// 让模型跟"这个人平常什么样"比,而不是跟人群平均值或者它自己的印象比。
+    private static func baselineLine(
+        _ baseline: Baseline?,
+        current: Double,
+        format: (Double) -> String
+    ) -> String? {
+        guard let baseline else { return nil }
+        var line = "\(HealthStore.baselineDays) 天基线 \(format(baseline.median))"
+            + "（中位数，\(baseline.sampleCount) 天有记录）"
+        if let deviation = baseline.deviation(of: current), abs(deviation) >= 5 {
+            line += "，本段比基线\(deviation > 0 ? "高" : "低") \(Int(abs(deviation).rounded()))%"
+        }
+        return line
+    }
+
+    private static func renderSleep(_ values: [NightSleep], days: Int, baseline: Baseline?) -> String {
         guard !values.isEmpty else {
             return "最近 \(days) 天没有睡眠记录。请在“设置 > 隐私与安全性 > 健康”中检查授权。"
         }
@@ -171,10 +281,19 @@ enum HealthTools {
             return "\(formatDate(item.night)) \(formatDuration(item.asleep))，\(bedtime)–\(wake)"
         }
         let average = values.map(\.asleep).reduce(0, +) / Double(values.count)
-        return (lines + ["平均 \(formatDuration(average))"]).joined(separator: "\n")
+        var output = lines + ["平均 \(formatDuration(average))"]
+        if let line = baselineLine(baseline, current: average, format: formatDuration) {
+            output.append(line)
+        }
+        return output.joined(separator: "\n")
     }
 
-    private static func renderHeart(_ values: [DayHeart], days: Int) -> String {
+    private static func renderHeart(
+        _ values: [DayHeart],
+        days: Int,
+        restingBaseline: Baseline? = nil,
+        hrvBaseline: Baseline? = nil
+    ) -> String {
         let recorded = values.filter { $0.restingHR != nil || $0.hrv != nil }
         guard !recorded.isEmpty else {
             return "最近 \(days) 天没有静息心率或 HRV 记录。请在“设置 > 隐私与安全性 > 健康”中检查授权。"
@@ -200,6 +319,18 @@ enum HealthTools {
         }
         if let minimum = hrvValues.min(), let maximum = hrvValues.max() {
             summary.append("HRV 区间 \(Int(minimum.rounded()))–\(Int(maximum.rounded())) ms")
+        }
+        if let current = average(restingValues),
+           let line = baselineLine(restingBaseline, current: current, format: {
+               "\(Int($0.rounded())) 次/分"
+           }) {
+            summary.append("静息心率 \(line)")
+        }
+        if let current = average(hrvValues),
+           let line = baselineLine(hrvBaseline, current: current, format: {
+               "\(Int($0.rounded())) ms"
+           }) {
+            summary.append("HRV \(line)")
         }
         return (lines + summary).joined(separator: "\n")
     }
@@ -348,6 +479,11 @@ enum HealthTools {
     private static func average(_ values: [Double]) -> Double? {
         guard !values.isEmpty else { return nil }
         return values.reduce(0, +) / Double(values.count)
+    }
+
+    /// 化验单可能是几个月前的,只写月-日会看不出年份。
+    private static func formatFullDate(_ date: Date) -> String {
+        date.formatted(.iso8601.year().month().day().dateSeparator(.dash))
     }
 
     private static func formatDate(_ date: Date) -> String {

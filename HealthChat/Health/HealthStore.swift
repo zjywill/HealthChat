@@ -49,9 +49,24 @@ struct DayBody: Sendable, Equatable {
     let bodyFat: Double?
 }
 
+/// 一条化验/体征记录。来自医院或诊所同步进「健康」的 FHIR 数据。
+struct ClinicalItem: Sendable, Equatable {
+    let date: Date
+    let name: String
+    /// "5.4 mmol/L";没有数值的记录(诊断、用药)这里是 nil。
+    let value: String?
+    let category: String
+}
+
 /// HealthKit 读取层,只读不写。所有查询返回按天聚合值(工具输出要紧凑)。
 final class HealthStore: Sendable {
     static let shared = HealthStore()
+
+    /// 算个人基线用多长的窗口。
+    ///
+    /// 60 天而不是 14 天:两周里一次熬夜就能把"平常"拉偏一大截。取中位数而不是均值,
+    /// 出于同一个理由——异常值不该定义什么叫正常。
+    static let baselineDays = 60
 
     private let store = HKHealthStore()
     private let calendar = Calendar.autoupdatingCurrent
@@ -72,7 +87,9 @@ final class HealthStore: Sendable {
         HKQuantityType(.oxygenSaturation),
         HKQuantityType(.respiratoryRate),
         HKQuantityType(.bodyTemperature),
-        HKQuantityType(.appleSleepingWristTemperature)
+        HKQuantityType(.appleSleepingWristTemperature),
+        HKClinicalType(.labResultRecord),
+        HKClinicalType(.vitalSignRecord)
     ]
 
     /// 需要问的时候才问,返回这次有没有真的弹窗。
@@ -429,6 +446,67 @@ final class HealthStore: Sendable {
             guard weight != nil || fat != nil else { return nil }
             return DayBody(date: date, weight: weight, bodyFat: fat)
         }
+    }
+
+    /// 「健康」里的体检报告和化验单(FHIR)。
+    ///
+    /// 只有用户在「健康」App 里连过医院或诊所才会有;没连过就是空的,跟血压一样属于
+    /// "没有很正常"。这里只取化验结果和体征两类——诊断和用药涉及的解读责任太重。
+    func clinicalRecords(days: Int) async throws -> [ClinicalItem] {
+        let dayCount = min(max(days, 1), 3650)
+        let today = calendar.startOfDay(for: Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -dayCount, to: today) else {
+            return []
+        }
+
+        let types: [(HKClinicalType, String)] = [
+            (HKClinicalType(.labResultRecord), "化验"),
+            (HKClinicalType(.vitalSignRecord), "体征")
+        ]
+
+        var items: [ClinicalItem] = []
+        for (type, category) in types {
+            let predicate = HKQuery.predicateForSamples(withStart: startDate, end: nil, options: [])
+            let descriptor = HKSampleQueryDescriptor<HKClinicalRecord>(
+                predicates: [.clinicalRecord(type: type, predicate: predicate)],
+                sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)],
+                limit: 100
+            )
+
+            let records: [HKClinicalRecord]
+            do {
+                records = try await descriptor.result(for: store)
+            } catch let error as HKError where Self.isAuthorizationIssue(error) {
+                continue
+            }
+
+            items.append(contentsOf: records.map { record in
+                ClinicalItem(
+                    date: record.startDate,
+                    name: record.displayName,
+                    value: Self.fhirValue(from: record),
+                    category: category
+                )
+            })
+        }
+
+        return items.sorted { $0.date > $1.date }
+    }
+
+    /// 从 FHIR 里挖出数值。
+    ///
+    /// 只认 Observation 的 `valueQuantity`——真正想比较的是"血糖 5.4 mmol/L"这种。
+    /// 其他形状(区间、编码值、组合观测)一律不猜,留空让模型只报名称和日期。
+    private static func fhirValue(from record: HKClinicalRecord) -> String? {
+        guard let data = record.fhirResource?.data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let quantity = json["valueQuantity"] as? [String: Any],
+              let value = quantity["value"] as? Double else {
+            return nil
+        }
+        let unit = (quantity["unit"] as? String) ?? ""
+        let number = value.formatted(.number.precision(.fractionLength(0...2)))
+        return unit.isEmpty ? number : "\(number) \(unit)"
     }
 
     /// 用户没授权某个类型时,统计查询会抛错而不是返回空。血压、血氧这些多数人本来就

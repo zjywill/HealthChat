@@ -11,8 +11,10 @@
 		0481E669EF4F0E0E5CABEC44 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3C81EFA4F5819BA6BEA62B /* SessionStore.swift */; };
 		055303B542D7C5B593624D0C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */; };
 		0C5A80234BBD46447D34BC8F /* CloudCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99342B97067E454CEA41A74C /* CloudCatalog.swift */; };
+		11394994FFE4A02E95C07486 /* CheckInScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52899627630A75079D60920 /* CheckInScheduler.swift */; };
 		2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A96DFA89142899891C5040A /* HealthChatApp.swift */; };
 		2EC1821C50AB2EE063C5456E /* EngineSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */; };
+		36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DD0DA8E7A626878D4D2553 /* AssistantPersona.swift */; };
 		5A8E14B8D4CE94201F1D49F2 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
 		5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F93D5AB337EF321F53CCE7D /* ChatMessage.swift */; };
 		77F66688041E64881D5B7EEF /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3EA5435E4040695ACB0A74B /* SessionListView.swift */; };
@@ -29,6 +31,7 @@
 		CB944C607BBA739BF99BF29E /* SuggestedQuestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CDAE4F1497DFF33B197F69 /* SuggestedQuestions.swift */; };
 		DF4068E17E3C7E38339A7D38 /* HealthSituation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0220BC12F370803EFB063960 /* HealthSituation.swift */; };
 		E94ABD126DE32EFF05FAF16A /* CloudPickerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A349106B1279DFA21FE15B3 /* CloudPickerViews.swift */; };
+		ECEBDE5986643A4BB738D124 /* HealthAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3D7B3F4958B0148BEDA3BA /* HealthAnalysis.swift */; };
 		FDFC3710084BB49D6D5A0EEE /* AgentEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0074F7C3BB04FAD54B8769 /* AgentEngine.swift */; };
 /* End PBXBuildFile section */
 
@@ -48,7 +51,9 @@
 		693B0422A40F1D865403F63B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		6A8FEB8CD9D07CDFAAB8B872 /* ChatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSession.swift; sourceTree = "<group>"; };
 		6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSeeder.swift; sourceTree = "<group>"; };
+		71DD0DA8E7A626878D4D2553 /* AssistantPersona.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantPersona.swift; sourceTree = "<group>"; };
 		72475A88DE4F0DDDF7275FD3 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
+		7E3D7B3F4958B0148BEDA3BA /* HealthAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthAnalysis.swift; sourceTree = "<group>"; };
 		7E650374FC8103EB913304E2 /* HealthTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTools.swift; sourceTree = "<group>"; };
 		7F86DB50065C30617D4EC449 /* HealthChat.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthChat.entitlements; sourceTree = "<group>"; };
 		8428C9546ADF171E7350A3B1 /* QuestionSuggester.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionSuggester.swift; sourceTree = "<group>"; };
@@ -56,6 +61,7 @@
 		99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStore.swift; sourceTree = "<group>"; };
 		CB3C81EFA4F5819BA6BEA62B /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		D3EA5435E4040695ACB0A74B /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		D52899627630A75079D60920 /* CheckInScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInScheduler.swift; sourceTree = "<group>"; };
 		E69E7DE6F21A0E9160A0F628 /* HealthAssistantInstructions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthAssistantInstructions.swift; sourceTree = "<group>"; };
 		F9FCC10525E1BE91F5812F60 /* ChatTopic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTopic.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -111,7 +117,9 @@
 		7229EB7A7508313A4C9E5CBE /* Health */ = {
 			isa = PBXGroup;
 			children = (
+				D52899627630A75079D60920 /* CheckInScheduler.swift */,
 				6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */,
+				7E3D7B3F4958B0148BEDA3BA /* HealthAnalysis.swift */,
 				0220BC12F370803EFB063960 /* HealthSituation.swift */,
 				99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */,
 			);
@@ -150,6 +158,7 @@
 		BEB0F1583ED31D14EC7B660B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				71DD0DA8E7A626878D4D2553 /* AssistantPersona.swift */,
 				99342B97067E454CEA41A74C /* CloudCatalog.swift */,
 				4A349106B1279DFA21FE15B3 /* CloudPickerViews.swift */,
 				488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */,
@@ -232,15 +241,18 @@
 			files = (
 				C361FA106076E33DD4DE3584 /* AIKitEngine.swift in Sources */,
 				FDFC3710084BB49D6D5A0EEE /* AgentEngine.swift in Sources */,
+				36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */,
 				5C28063F82AADBAC8FCEDDEE /* ChatMessage.swift in Sources */,
 				C4C25FAFEAA316D97BAAACCA /* ChatSession.swift in Sources */,
 				9E99DB6119B3D9F194C8F9C8 /* ChatTopic.swift in Sources */,
 				C2C3B4553544E3A79EF770AB /* ChatView.swift in Sources */,
 				7839689D42E2C2728E83AA03 /* ChatViewModel.swift in Sources */,
+				11394994FFE4A02E95C07486 /* CheckInScheduler.swift in Sources */,
 				0C5A80234BBD46447D34BC8F /* CloudCatalog.swift in Sources */,
 				E94ABD126DE32EFF05FAF16A /* CloudPickerViews.swift in Sources */,
 				9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */,
 				2EC1821C50AB2EE063C5456E /* EngineSettings.swift in Sources */,
+				ECEBDE5986643A4BB738D124 /* HealthAnalysis.swift in Sources */,
 				C01C3911E3D20BB7D30FD59B /* HealthAssistantInstructions.swift in Sources */,
 				2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */,
 				DF4068E17E3C7E38339A7D38 /* HealthSituation.swift in Sources */,
@@ -387,6 +399,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = HealthChat;
+				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -410,6 +423,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = HealthChat;
+				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

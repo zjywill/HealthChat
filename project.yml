@@ -25,6 +25,9 @@ targets:
       path: HealthChat/HealthChat.entitlements
       properties:
         com.apple.developer.healthkit: true
+        # 读体检报告和化验单要单独的 access 权限,只申请 health-records 这一项。
+        com.apple.developer.healthkit.access:
+          - health-records
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.junyizhang.HealthChat
@@ -34,5 +37,6 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSHealthShareUsageDescription: 用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: 仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。
+        INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription: 用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_STRICT_CONCURRENCY: targeted
