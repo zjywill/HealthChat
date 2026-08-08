@@ -10,8 +10,8 @@ final class ChatViewModel {
     /// M0 用占位引擎;M3 起按「引擎选择策略」自动选(见 PLAN.md)。
     private let engine: any AgentEngine = EchoEngine()
 
-    func send() {
-        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    func send(_ suggestedQuestion: String? = nil) {
+        let text = (suggestedQuestion ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isReplying else { return }
         input = ""
         messages.append(ChatMessage(role: .user, text: text))
