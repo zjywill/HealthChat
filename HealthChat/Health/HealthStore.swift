@@ -19,6 +19,19 @@ struct DayHeart: Sendable, Equatable {
     let hrv: Double?
 }
 
+struct WorkoutItem: Sendable, Equatable {
+    let date: Date
+    let typeName: String
+    let duration: TimeInterval
+    let activeEnergy: Double?
+}
+
+struct DayBody: Sendable, Equatable {
+    let date: Date
+    let weight: Double?
+    let bodyFat: Double?
+}
+
 /// HealthKit 读取层,只读不写。所有查询返回按天聚合值(工具输出要紧凑)。
 final class HealthStore: Sendable {
     static let shared = HealthStore()
@@ -69,7 +82,7 @@ final class HealthStore: Sendable {
         )
         let collection = try await descriptor.result(for: store)
 
-        return (0..<dayCount).compactMap { offset in
+        return (0..<dayCount).compactMap { offset -> DayValue? in
             guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
                 return nil
             }
@@ -166,7 +179,7 @@ final class HealthStore: Sendable {
         let restingUnit = HKUnit.count().unitDivided(by: .minute())
         let hrvUnit = HKUnit.secondUnit(with: .milli)
 
-        return (0..<dayCount).compactMap { offset in
+        return (0..<dayCount).compactMap { offset -> DayHeart? in
             guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
                 return nil
             }
@@ -184,9 +197,79 @@ final class HealthStore: Sendable {
         }
     }
 
-    // TODO(M2): 其余两个聚合查询,对应 HealthTools。
-    // func workouts(days: Int) async throws -> ...
-    // func bodyMetrics(days: Int) async throws -> ...
+    func workouts(days: Int) async throws -> [WorkoutItem] {
+        let dayCount = min(max(days, 1), 90)
+        let today = calendar.startOfDay(for: Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
+              let endDate = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+
+        let datePredicate = HKQuery.predicateForSamples(
+            withStart: startDate,
+            end: endDate,
+            options: .strictStartDate
+        )
+        let descriptor = HKSampleQueryDescriptor<HKWorkout>(
+            predicates: [.workout(datePredicate)],
+            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)]
+        )
+        let energyType = HKQuantityType(.activeEnergyBurned)
+
+        return try await descriptor.result(for: store).map { workout in
+            WorkoutItem(
+                date: workout.startDate,
+                typeName: workoutName(for: workout.workoutActivityType),
+                duration: workout.duration,
+                activeEnergy: workout
+                    .statistics(for: energyType)?
+                    .sumQuantity()?
+                    .doubleValue(for: .kilocalorie())
+            )
+        }
+    }
+
+    func bodyMetrics(days: Int) async throws -> [DayBody] {
+        let dayCount = min(max(days, 1), 90)
+        let today = calendar.startOfDay(for: Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today),
+              let endDate = calendar.date(byAdding: .day, value: 1, to: today) else {
+            return []
+        }
+
+        async let weightCollection = dailyAverageCollection(
+            type: HKQuantityType(.bodyMass),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+        async let bodyFatCollection = dailyAverageCollection(
+            type: HKQuantityType(.bodyFatPercentage),
+            startDate: startDate,
+            endDate: endDate,
+            anchorDate: today
+        )
+
+        let (weights, bodyFat) = try await (weightCollection, bodyFatCollection)
+        return (0..<dayCount).compactMap { offset -> DayBody? in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
+                return nil
+            }
+            let weight = weights
+                .statistics(for: date)?
+                .averageQuantity()?
+                .doubleValue(for: .gramUnit(with: .kilo))
+            let fat: Double?
+            if let quantity = bodyFat.statistics(for: date)?.averageQuantity() {
+                fat = quantity.doubleValue(for: .percent()) * 100
+            } else {
+                fat = nil
+            }
+
+            guard weight != nil || fat != nil else { return nil }
+            return DayBody(date: date, weight: weight, bodyFat: fat)
+        }
+    }
 
     private func dailyAverageCollection(
         type: HKQuantityType,
@@ -206,6 +289,29 @@ final class HealthStore: Sendable {
             intervalComponents: DateComponents(day: 1)
         )
         return try await descriptor.result(for: store)
+    }
+
+    private func workoutName(for activity: HKWorkoutActivityType) -> String {
+        switch activity {
+        case .running:
+            "跑步"
+        case .cycling:
+            "骑行"
+        case .walking:
+            "步行"
+        case .traditionalStrengthTraining, .functionalStrengthTraining:
+            "力量训练"
+        case .swimming:
+            "游泳"
+        case .hiking:
+            "徒步"
+        case .yoga:
+            "瑜伽"
+        case .highIntensityIntervalTraining:
+            "高强度间歇训练"
+        default:
+            "其他"
+        }
     }
 
     private func minDate(_ lhs: Date?, _ rhs: Date) -> Date {

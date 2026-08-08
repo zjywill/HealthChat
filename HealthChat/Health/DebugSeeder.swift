@@ -76,6 +76,20 @@ final class DebugSeeder: Sendable {
             let hrv = item.hrv.map { String(format: "%.0f ms", $0) } ?? "无 HRV"
             print("\(formatter.string(from: item.date)) \(resting)，\(hrv)")
         }
+
+        print("=== 最近 7 天锻炼 ===")
+        for item in try await HealthStore.shared.workouts(days: 7) {
+            let minutes = Int(item.duration) / 60
+            let energy = item.activeEnergy.map { String(format: "%.0f kcal", $0) } ?? "无能量记录"
+            print("\(formatter.string(from: item.date)) \(item.typeName) \(minutes) 分钟，\(energy)")
+        }
+
+        print("=== 最近 7 天身体指标 ===")
+        for item in try await HealthStore.shared.bodyMetrics(days: 7) {
+            let weight = item.weight.map { String(format: "%.1f kg", $0) } ?? "无体重"
+            let bodyFat = item.bodyFat.map { String(format: "%.1f%%", $0) } ?? "无体脂"
+            print("\(formatter.string(from: item.date)) \(weight)，\(bodyFat)")
+        }
     }
 
     private func dailySamples(for day: Date, offset: Int) -> [HKSample] {
