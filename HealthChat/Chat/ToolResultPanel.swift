@@ -57,15 +57,26 @@ struct ToolCallChip: View {
         call.name == SessionRecallTools.searchToolName || call.name == SessionRecallTools.readToolName
     }
 
+    /// 上网搜过。这条**尤其**要能点开:回答里引的是外部说法,用户有权看到到底搜到了什么、
+    /// 出自哪个站、哪一年——健康结论说不出处,和编的没区别。
+    private var isWebSearch: Bool { call.name == WebSearchTools.searchToolName }
+
     private var canOpenPanel: Bool { call.output != nil && !isMemory }
 
     private var icon: String {
         if call.isError { return "exclamationmark.triangle" }
         if isMemory { return "brain" }
+        if isWebSearch { return "globe" }
         return isRecall ? "clock.arrow.circlepath" : "heart.text.square"
     }
 
     private var note: String {
+        if isWebSearch {
+            guard let query = WebSearchTools.query(fromInput: call.input), !query.isEmpty else {
+                return "上网搜了一下"
+            }
+            return call.isError ? "没能搜到「\(query)」" : "上网搜了「\(query)」"
+        }
         if isMemory {
             guard let text = MemoryTools.text(fromInput: call.input) else { return "记下了一条" }
             return call.isError ? "没能记下「\(text)」" : "记住了「\(text)」"
@@ -141,6 +152,7 @@ struct ToolResultPanel: View {
         switch call.name {
         case SessionRecallTools.searchToolName: "翻过的对话"
         case SessionRecallTools.readToolName: "回顾的对话"
+        case WebSearchTools.searchToolName: "网页搜索结果"
         default: HealthTools.label(for: call.name, activity: HealthTools.activity(fromInput: call.input))
         }
     }

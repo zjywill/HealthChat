@@ -140,6 +140,12 @@ extension CapabilityRegistry {
     ///   话当成「上次」读回来。
     /// - Parameter allowsMedicationWrites: 隐私会话传 false。读的那个照挂——用药表和记忆一样,
     ///   承诺的是不往盘上写,不是失忆;而「他不能吃什么」这一条在隐私会话里尤其不能关掉。
+    /// - Parameter webSearch: 网页搜索。`nil` 就**不挂出去**——没配 key 时给一个只会报错的
+    ///   工具,模型得先调一次才知道不行,用户白等一个往返。默认从 Keychain 现读:key 的有无
+    ///   本身就是这个功能的开关,不另做一个(一个填了 key 却关着的开关,和一个没填 key 的
+    ///   开关,在界面上是两种说法、一个结果)。**隐私会话照挂**:它读的是外部世界,不往盘上
+    ///   写用户的任何东西,而问题本来就要发给云端模型才有人回答。工具描述里另有一句挡着,
+    ///   不许把用户的个人情况写进查询词。
     static func healthChat(
         allowsMemoryWrites: Bool = true,
         allowsRecall: Bool = false,
@@ -147,9 +153,13 @@ extension CapabilityRegistry {
         memoryStore: MemoryStore = .shared,
         sessionStore: SessionStore = .shared,
         medicationStore: MedicationStore = .shared,
-        currentSessionId: UUID? = nil
+        currentSessionId: UUID? = nil,
+        webSearch: WebSearchClient? = .storedKey()
     ) -> CapabilityRegistry {
         var registries = [HealthTools.registry]
+        if let webSearch {
+            registries.append(WebSearchTools.registry(client: webSearch))
+        }
         // 用药表**不归在 `memoryEnabled` 下面**,它有自己的开关:关掉记忆的人不指望 Vana 还
         // 记得他随口说过的话,但仍然会指望这张他一条条录进去的表还在。
         if EngineSettings.medicationsEnabled {

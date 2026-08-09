@@ -18,6 +18,9 @@ struct SettingsView: View {
     @State private var hasStoredAPIKey = false
     @State private var hasLoadedAPIKey = false
     @State private var keyStatus = KeyStatus.notSet
+    @State private var searchKey = ""
+    @State private var persistedSearchKey = ""
+    @State private var searchKeyStatus = KeyStatus.notSet
     @State private var isShowingClearConfirmation = false
     @State private var isRequestingHealth = false
     @State private var healthStatus: HealthAuthStatus?
@@ -151,6 +154,69 @@ struct SettingsView: View {
             }
 
             Section {
+                LabeledContent("Serper key") {
+                    HStack(spacing: 8) {
+                        SecureField("选填", text: $searchKey)
+                            .focused($focusedField, equals: .searchKey)
+                            .multilineTextAlignment(.trailing)
+                            .textContentType(.password)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .privacySensitive()
+                            .onSubmit(saveSearchKey)
+                            .accessibilityLabel("网页搜索 key")
+
+                        if !searchKey.isEmpty {
+                            Button {
+                                searchKey = ""
+                                focusedField = .searchKey
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("清除网页搜索 key")
+                        }
+                    }
+                }
+
+                Label {
+                    if searchKeyStatus == .saved, let hint = maskedKey(persistedSearchKey) {
+                        Text("已保存 · \(Text(hint).monospaced())")
+                    } else {
+                        Text(searchKeyStatus.searchMessage)
+                    }
+                } icon: {
+                    Image(systemName: searchKeyStatus.icon)
+                }
+                .font(.footnote)
+                .foregroundStyle(searchKeyStatus.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                .privacySensitive()
+                .accessibilityElement(children: .combine)
+
+                if !persistedSearchKey.isEmpty {
+                    Button(role: .destructive) {
+                        searchKey = ""
+                        saveSearchKey()
+                    } label: {
+                        Label {
+                            Text("移除搜索 key")
+                        } icon: {
+                            Image(systemName: "trash").foregroundStyle(.red)
+                        }
+                    }
+                }
+            } header: {
+                Text("网页搜索")
+            } footer: {
+                // key 的有无就是开关,所以这句话要说清「填了会怎样、不填会怎样」,
+                // 不然用户会去找一个并不存在的开关。
+                Text("填了 serper.dev 的 key，Vana 遇到自己不知道的事就能上网查一下，并给出出处。"
+                    + "不填就只用它已有的知识回答。搜索词不会带上你的健康数据。key 只保存在本机钥匙串。")
+            }
+
+            Section {
                 Picker("说话方式", selection: $persona) {
                     ForEach(AssistantPersona.allCases) { option in
                         Text(option.name).tag(option.rawValue)
@@ -275,14 +341,28 @@ struct SettingsView: View {
                 keyStatus = .pending
             }
         }
+        .onChange(of: searchKey) { _, newValue in
+            guard hasLoadedAPIKey else { return }
+            if newValue == persistedSearchKey {
+                searchKeyStatus = newValue.isEmpty ? .notSet : .saved
+            } else {
+                searchKeyStatus = .pending
+            }
+        }
         .onChange(of: focusedField) { oldField, newField in
             if oldField == .apiKey, newField != .apiKey {
                 saveAPIKey()
+            }
+            if oldField == .searchKey, newField != .searchKey {
+                saveSearchKey()
             }
         }
         .onDisappear {
             if apiKey != persistedAPIKey {
                 saveAPIKey()
+            }
+            if searchKey != persistedSearchKey {
+                saveSearchKey()
             }
         }
         .onChange(of: checkInsEnabled) { _, enabled in
@@ -388,7 +468,38 @@ struct SettingsView: View {
         } catch {
             keyStatus = .error(error.localizedDescription)
         }
+        // 搜索那把单独读,单独报错。它读失败不该让上面那把也显示成出错——两把 key 是
+        // 两回事,一起报会让用户去改本来没问题的那一把。
+        do {
+            let stored = try KeychainStore.get(account: KeychainStore.searchAPIKeyAccount) ?? ""
+            searchKey = stored
+            persistedSearchKey = stored
+            searchKeyStatus = stored.isEmpty ? .notSet : .saved
+        } catch {
+            searchKeyStatus = .error(error.localizedDescription)
+        }
         hasLoadedAPIKey = true
+    }
+
+    private func saveSearchKey() {
+        guard hasLoadedAPIKey else { return }
+        let value = searchKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            if value.isEmpty {
+                try KeychainStore.delete(account: KeychainStore.searchAPIKeyAccount)
+                searchKey = ""
+                persistedSearchKey = ""
+                searchKeyStatus = .notSet
+            } else {
+                try KeychainStore.set(value, account: KeychainStore.searchAPIKeyAccount)
+                searchKey = value
+                persistedSearchKey = value
+                searchKeyStatus = .saved
+            }
+        } catch {
+            searchKeyStatus = .error(error.localizedDescription)
+        }
     }
 
     private func saveAPIKey() {
@@ -418,6 +529,7 @@ struct SettingsView: View {
 
 private enum Field: Hashable {
     case apiKey
+    case searchKey
 }
 
 private struct HealthAuthStatus {
@@ -440,6 +552,20 @@ private enum KeyStatus: Equatable {
             return "更改尚未保存"
         case .saved:
             return "API key 已保存"
+        case .error(let message):
+            return "无法保存：\(message)"
+        }
+    }
+
+    /// 搜索那把是选填的,「尚未保存」听起来像少配了什么。说清不填会怎样。
+    var searchMessage: String {
+        switch self {
+        case .notSet:
+            return "没填，Vana 不会上网搜"
+        case .pending:
+            return "更改尚未保存"
+        case .saved:
+            return "已保存"
         case .error(let message):
             return "无法保存：\(message)"
         }

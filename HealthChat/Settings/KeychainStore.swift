@@ -3,6 +3,9 @@ import Security
 
 enum KeychainStore {
     static let apiKeyAccount = "aikit-api-key"
+    /// 网页搜索(serper.dev)的 key。和模型的那把分开存:它们来自两个服务、两次注册,
+    /// 换掉其中一把不该动到另一把。
+    static let searchAPIKeyAccount = "serper-api-key"
 
     private static let service = "com.junyizhang.HealthChat"
 
