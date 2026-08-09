@@ -8,7 +8,8 @@ import AIKit
 /// 规划期间的物理内存峰值。
 ///
 /// `phys_footprint` 就是 iOS 用来决定「要不要干掉这个 app」的那个数,所以盯它而不是别的。
-private final class FootprintSampler: @unchecked Sendable {
+/// 两套性能测试共用一份采样器。
+final class FootprintSampler: @unchecked Sendable {
     private var baseline = 0
     private var peak = 0
     private var isRunning = false

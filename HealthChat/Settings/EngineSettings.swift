@@ -7,6 +7,7 @@ enum EngineSettings {
     static let personaKey = "assistantPersona"
     static let thinkingEnabledKey = "thinkingEnabled"
     static let checkInsEnabledKey = "checkInsEnabled"
+    static let memoryEnabledKey = "memoryEnabled"
     static let morningCheckInHourKey = "morningCheckInHour"
     static let eveningCheckInHourKey = "eveningCheckInHour"
 
@@ -26,5 +27,11 @@ enum EngineSettings {
     /// `UserDefaults.bool` 没存过的时候返回 false,直接用会把默认值悄悄翻成「关」。
     static var thinkingEnabled: Bool {
         UserDefaults.standard.object(forKey: thinkingEnabledKey) as? Bool ?? true
+    }
+
+    /// 记住用户说过的长期情况和偏好。默认开,关掉之后既不注入也不再抽取,已经记下的
+    /// 还留在设置页里——关开关是"先别用",不是"删干净",后者有专门的按钮。
+    static var memoryEnabled: Bool {
+        UserDefaults.standard.object(forKey: memoryEnabledKey) as? Bool ?? true
     }
 }

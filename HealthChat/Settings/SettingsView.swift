@@ -140,7 +140,14 @@ struct SettingsView: View {
                         apiKey = ""
                         saveAPIKey()
                     } label: {
-                        Label("移除 API key", systemImage: "trash")
+                        // `role: .destructive` 只染文字,Form 里的图标照样跟着 accent
+                        // 走——一行里红字配蓝图标。`.tint(.red)` 在这儿也管不着,得直接
+                        // 给图标上色。
+                        Label {
+                            Text("移除 API key")
+                        } icon: {
+                            Image(systemName: "trash").foregroundStyle(.red)
+                        }
                     }
                 }
             } header: {
@@ -161,6 +168,12 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
 
                 Toggle("回答前先思考", isOn: $thinkingEnabled)
+
+                NavigationLink {
+                    MemoryView()
+                } label: {
+                    Label("Vana 记住的事", systemImage: "brain")
+                }
             } header: {
                 Text("助手")
             } footer: {
@@ -233,7 +246,11 @@ struct SettingsView: View {
                 Button(role: .destructive) {
                     isShowingClearConfirmation = true
                 } label: {
-                    Label("清空对话", systemImage: "trash")
+                    Label {
+                        Text("清空对话")
+                    } icon: {
+                        Image(systemName: "trash").foregroundStyle(.red)
+                    }
                 }
                 .disabled(!canClearConversation)
             } header: {

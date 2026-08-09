@@ -12,6 +12,14 @@ enum CheckInScheduler {
     /// 通知里带的话题 id,点开时用来定位会话话题。
     static let topicKey = "topicId"
     static let questionKey = "question"
+    /// 这条通知是在兑现哪条「待跟进」。点开之后那条记忆就该消失了——说好回头看的事已经
+    /// 看了,还留着只会在接下来几天的早上重复同一句。
+    static let followUpKey = "followUpId"
+    /// 点开之后回到哪条延续线。
+    ///
+    /// 由这里写死而不是让 app 那头去推:通知文案是排程那一刻定下的,它说的是哪条线,点开就该
+    /// 落在哪条线。留给收件方现算的话,两边的判断迟早分叉。
+    static let threadKey = "threadId"
 
     private static let morningIdentifier = "checkin.morning"
     private static let eveningIdentifier = "checkin.evening"
@@ -40,33 +48,102 @@ enum CheckInScheduler {
             return
         }
 
-        let situation = await HealthSituation.detect()
+        let situation = await HealthSituation.detect(interests: await SessionStore.shared.interests())
+        let dueFollowUps = EngineSettings.memoryEnabled
+            ? await MemoryStore.shared.snapshot().due(at: Date())
+            : []
+        var conclusions: [UUID: String] = [:]
+        for followUp in dueFollowUps {
+            conclusions[followUp.id] = await FollowUpRunner.conclusion(for: followUp)
+        }
+        let goalNote = await morningGoalNote()
         let morningHour = hour(forKey: EngineSettings.morningCheckInHourKey, fallback: EngineSettings.defaultMorningHour)
         let eveningHour = hour(forKey: EngineSettings.eveningCheckInHourKey, fallback: EngineSettings.defaultEveningHour)
 
         await schedule(
             identifier: morningIdentifier,
             hour: morningHour,
-            content: content(for: .morning, situation: situation)
+            content: content(
+                for: .morning,
+                situation: situation,
+                dueFollowUps: dueFollowUps,
+                followUpConclusions: conclusions,
+                goalNote: goalNote
+            )
         )
         await schedule(
             identifier: eveningIdentifier,
             hour: eveningHour,
-            content: content(for: .evening, situation: situation)
+            content: content(for: .evening, situation: situation, dueFollowUps: dueFollowUps)
         )
     }
 
     // MARK: - 文案
 
-    private struct CheckIn {
+    /// 不是 private:「说好今天回头看的事有没有被提起」得有测试盯着,而这段只在早上八点跑。
+    struct CheckIn {
         let title: String
         let body: String
         let topicId: String?
         let question: String?
+        var followUpId: UUID?
+        /// 点开之后该回到哪条延续线。
+        var threadId: String?
+    }
+
+    /// 一条目标线今天值不值得说一句。
+    struct GoalNote: Equatable {
+        let threadId: String
+        let title: String
+        /// `GoalDigest` 已经替他问过一轮得出的结论。没有就不进通知——空口说一句
+        /// 「你的『减脂』还在进行中」对用户是零信息。
+        let conclusion: String
     }
 
     /// 挑一个跟这个时段相关的触发点。挑不到就用一句通用的邀请,不硬编故事。
-    private static func content(for period: DayPeriod, situation: HealthSituation) -> CheckIn {
+    ///
+    /// 说好要回头看的事排在所有触发点前面:那是用户自己定下的约定,而触发点只是数据里
+    /// 冒出来的一个现象。约到今天早上的事没被提起,这个功能就等于没有。
+    /// - Parameter followUpConclusions: `FollowUpRunner` 已经替这几条待跟进跑出来的结论。
+    ///   有结论就把它当正文——「说好两周后看深睡」是一句提醒,「深睡回到 1 小时 20 分了,
+    ///   比两周前多了 25 分钟」才是他当初定下这个约定想要的东西。
+    /// - Parameter goalNote: 有进展可说的那条目标线,由 `GoalDigest` 每周替他问一次得出。
+    static func content(
+        for period: DayPeriod,
+        situation: HealthSituation,
+        dueFollowUps: [MemoryItem] = [],
+        followUpConclusions: [UUID: String] = [:],
+        goalNote: GoalNote? = nil
+    ) -> CheckIn {
+        // 只放在早上那条里。晚上再说一遍同一件事,是两条通知讲一个内容。
+        if period == .morning, let followUp = dueFollowUps.first {
+            let conclusion = followUpConclusions[followUp.id]
+            return CheckIn(
+                title: conclusion == nil ? "说好今天回头看的" : "说好今天回头看的，看过了",
+                body: conclusion ?? followUp.text,
+                topicId: nil,
+                // 问的还是原来那句。点开是要接着聊的,不是要它把通知上那行再念一遍。
+                question: followUp.text,
+                followUpId: followUp.id,
+                threadId: SessionThread.followUp(followUp.id).id
+            )
+        }
+
+        // 目标排在触发点前面,和待跟进同一个道理:那是**用户自己定下的**一件事,而触发点
+        // 只是数据里冒出来的现象。它一周才说一次(`GoalDigest.minimumInterval`),
+        // 挤不掉几天的触发点。
+        if period == .morning, let goalNote {
+            return CheckIn(
+                title: goalNote.title,
+                body: goalNote.conclusion,
+                topicId: nil,
+                // 点开落回那条线,接着聊。不预填问题——进展已经在通知里说了,再替他问一遍
+                // 「进展怎么样」只会得到同一段话。
+                question: nil,
+                threadId: goalNote.threadId
+            )
+        }
+
         let relevant = situation.triggers.first { trigger in
             switch period {
             case .morning:
@@ -115,6 +192,17 @@ enum CheckInScheduler {
         }
     }
 
+    /// 最近动过的那条目标,如果 `GoalDigest` 已经替他问出了结论。
+    ///
+    /// 只挑一条。两条目标各占一行,早上那条通知就成了一份日报——而通知只有一行的位置。
+    private static func morningGoalNote() async -> GoalNote? {
+        for goal in await SessionStore.shared.goals() {
+            guard let conclusion = await GoalDigest.conclusion(for: goal) else { continue }
+            return GoalNote(threadId: goal.threadId, title: goal.title, conclusion: conclusion)
+        }
+        return nil
+    }
+
     private static func topicId(for trigger: HealthTrigger) -> String? {
         switch trigger {
         case .justTrained: "running"
@@ -139,8 +227,22 @@ enum CheckInScheduler {
             return "还没有通知权限，先打开每日 check-in。"
         }
 
-        let situation = await HealthSituation.detect()
-        let checkIn = content(for: DayPeriod(), situation: situation)
+        let situation = await HealthSituation.detect(interests: await SessionStore.shared.interests())
+        let dueFollowUps = EngineSettings.memoryEnabled
+            ? await MemoryStore.shared.snapshot().due(at: Date())
+            : []
+        var conclusions: [UUID: String] = [:]
+        for followUp in dueFollowUps {
+            conclusions[followUp.id] = await FollowUpRunner.conclusion(for: followUp)
+        }
+        let checkIn = content(
+            for: DayPeriod(),
+            situation: situation,
+            dueFollowUps: dueFollowUps,
+            // 少传一个参数,这条测试通知就在验一条线上根本不存在的路。
+            followUpConclusions: conclusions,
+            goalNote: await morningGoalNote()
+        )
         await schedule(
             identifier: "checkin.test",
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false),
@@ -174,7 +276,10 @@ enum CheckInScheduler {
         notification.sound = .default
         notification.userInfo = [
             topicKey: content.topicId ?? "",
-            questionKey: content.question ?? ""
+            questionKey: content.question ?? "",
+            followUpKey: content.followUpId?.uuidString ?? "",
+            // 没写线程的走 check-in 那条线,和这个功能上线之前一样。
+            threadKey: content.threadId ?? SessionThread.checkIn.id
         ]
 
         try? await UNUserNotificationCenter.current().add(

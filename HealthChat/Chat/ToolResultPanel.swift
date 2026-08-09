@@ -11,41 +11,73 @@ struct ToolCallChip: View {
 
     var body: some View {
         Button {
-            guard call.output != nil else { return }
+            guard canOpenPanel else { return }
             isPresented = true
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: call.isError ? "exclamationmark.triangle" : "heart.text.square")
+                Image(systemName: icon)
+                // 记一件事的那条能有二三十个字。不截断的话胶囊会被撑成两行,圆角跟着变成
+                // 一个椭圆——看着像渲染坏了。
                 Text(note)
+                    .truncationMode(.tail)
                 if call.output == nil {
                     ProgressView().controlSize(.mini)
-                } else {
+                } else if canOpenPanel {
                     if let count = call.report?.rows.count, count > 0 {
                         Text("\(count) 行")
                             .foregroundStyle(.tertiary)
+                            .layoutPriority(1)
                     }
                     Image(systemName: "chevron.right")
                         .font(.caption2)
+                        .layoutPriority(1)
                 }
             }
-            .font(.caption)
-            .foregroundStyle(call.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-            .padding(.horizontal, 10)
-            .frame(minHeight: 32)
-            .background(.fill.quaternary, in: Capsule())
-            .contentShape(.capsule)
+            .inlineChipStyle(
+                tint: call.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary)
+            )
         }
         .buttonStyle(.plain)
+        // 只有"还在查"才该显示成灰的。记一件事的那条已经完成了,拿 disabled 去表达
+        // "点不开"会把它一起变淡,看起来像失败了。
         .disabled(call.output == nil)
         .accessibilityLabel(note)
-        .accessibilityHint(call.output == nil ? "正在查询" : "打开查询到的数据")
+        .accessibilityHint(canOpenPanel ? "打开查询到的数据" : "")
         .sheet(isPresented: $isPresented) {
             ToolResultPanel(call: call)
         }
     }
 
+    /// 记一件事没有「查到的数据」可看:面板里只会是同一句话再抄一遍。
+    private var isMemory: Bool { call.name == MemoryTools.rememberToolName }
+
+    /// 翻过往对话。这两条有东西可看——用户有权知道 Vana 到底翻到了哪次对话、读回了什么,
+    /// 「它怎么知道的」说不清楚,记性好就变成了让人不安。
+    private var isRecall: Bool {
+        call.name == SessionRecallTools.searchToolName || call.name == SessionRecallTools.readToolName
+    }
+
+    private var canOpenPanel: Bool { call.output != nil && !isMemory }
+
+    private var icon: String {
+        if call.isError { return "exclamationmark.triangle" }
+        if isMemory { return "brain" }
+        return isRecall ? "clock.arrow.circlepath" : "heart.text.square"
+    }
+
     private var note: String {
-        HealthTools.note(
+        if isMemory {
+            guard let text = MemoryTools.text(fromInput: call.input) else { return "记下了一条" }
+            return call.isError ? "没能记下「\(text)」" : "记住了「\(text)」"
+        }
+        if isRecall {
+            guard call.name == SessionRecallTools.readToolName else { return "翻了翻过往对话" }
+            // 一轮里常常连着回顾好几次。三个一模一样的胶囊等于没说,而日期正好在读回来的
+            // 那段开头——它本来就是给模型标日期用的,顺手也给了用户。
+            return SessionRecallTranscript.dateLabel(inOutput: call.output)
+                .map { "回顾了 \($0) 的对话" } ?? "回顾了之前的一次对话"
+        }
+        return HealthTools.note(
             for: call.name,
             days: HealthTools.days(fromInput: call.input),
             activity: HealthTools.activity(fromInput: call.input)
@@ -91,10 +123,7 @@ struct ToolResultPanel: View {
                 .padding(20)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle(HealthTools.label(
-                for: call.name,
-                activity: HealthTools.activity(fromInput: call.input)
-            ))
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -104,6 +133,16 @@ struct ToolResultPanel: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    /// 召回那两条不是健康数据,套 `HealthTools.label` 会得到一个「健康数据」的标题,
+    /// 而面板里摆的是过往对话——对不上的标题比没有标题更让人困惑。
+    private var title: String {
+        switch call.name {
+        case SessionRecallTools.searchToolName: "翻过的对话"
+        case SessionRecallTools.readToolName: "回顾的对话"
+        default: HealthTools.label(for: call.name, activity: HealthTools.activity(fromInput: call.input))
+        }
     }
 
     private func header(_ report: HealthReport) -> some View {

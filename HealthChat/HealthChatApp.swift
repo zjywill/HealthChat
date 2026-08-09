@@ -28,6 +28,14 @@ struct HealthChatApp: App {
             // 越接近使用时刻重排,内容越新。
             guard phase == .active || phase == .background else { return }
             Task { await CheckInScheduler.reschedule() }
+            // 到期的待跟进、该报进展的目标——有一件就替他跑一轮,跑出结论了再重排一次,
+            // 让早上那条通知带上它。**不能**并进上面那个 `reschedule`:那一轮是完整的模型
+            // 调用加几轮工具,让通知排程等着它,就是拿一件确定的事去赌一件不确定的事。
+            Task {
+                if await BackgroundDigest.runIfDue() {
+                    await CheckInScheduler.reschedule()
+                }
+            }
         }
     }
 
@@ -44,6 +52,13 @@ struct CheckInLaunch: Equatable {
     let question: String?
     /// 通知是**邀请**,让用户看一眼再决定问不问;Siri 是用户已经把问题说出口了,该直接发。
     var autoSend = false
+    /// 这次是在兑现哪条「待跟进」。开完这条会话它就该退休了。
+    var followUpId: UUID?
+    /// 接到哪条延续线上。
+    ///
+    /// check-in 通知有(每天早上那句该连成一条线),Siri 没有——那是一句临时想到的问题,
+    /// 把它接到昨天的 check-in 后面,只会让两件事互相干扰。
+    var thread: SessionThread?
 }
 
 /// `UNUserNotificationCenterDelegate` 得是个类,这里只做一件事:把点击转成上面那个值。
@@ -58,11 +73,18 @@ final class NotificationRelay: NSObject, UNUserNotificationCenterDelegate {
         let info = response.notification.request.content.userInfo
         let topicId = info[CheckInScheduler.topicKey] as? String
         let question = info[CheckInScheduler.questionKey] as? String
+        let followUpId = (info[CheckInScheduler.followUpKey] as? String).flatMap(UUID.init(uuidString:))
+        // 回到哪条线是排程时就写好的。这里现算的话,通知说的是「减脂」、点开却落在 check-in,
+        // 而两边谁对谁错没人说得清。旧通知里没有这个键,退回 check-in——和这个功能上线前一样。
+        let thread = (info[CheckInScheduler.threadKey] as? String)
+            .flatMap(SessionThread.init(id:)) ?? .checkIn
 
         await MainActor.run {
             onOpen?(CheckInLaunch(
                 topicId: topicId?.isEmpty == false ? topicId : nil,
-                question: question?.isEmpty == false ? question : nil
+                question: question?.isEmpty == false ? question : nil,
+                followUpId: followUpId,
+                thread: thread
             ))
         }
     }

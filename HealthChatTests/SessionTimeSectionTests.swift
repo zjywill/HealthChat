@@ -77,9 +77,6 @@ struct SessionTimeSectionTests {
     }
 
     private func summary(updatedAt: Date, title: String) -> SessionSummary {
-        SessionSummary(ChatSession(
-            messages: [ChatMessage(role: .user, text: title)],
-            updatedAt: updatedAt
-        ))
+        SessionSummary(title: title, updatedAt: updatedAt, messageCount: 1)
     }
 }

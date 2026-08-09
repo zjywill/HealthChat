@@ -74,6 +74,24 @@ enum HealthTrigger: Sendable, Equatable {
         }
     }
 
+    /// 这个触发点归哪个工具管。用来和「他平时爱问什么」对上号。
+    var relatedTool: String? {
+        switch self {
+        case .justTrained, .noWorkouts:
+            return "workouts"
+        case .shortSleep, .longSleepStillLow, .missingLastNight, .lateBedtimeDrift:
+            return "sleep_summary"
+        case .elevatedRestingHR, .suppressedHRV:
+            return "heart_rate_summary"
+        case .bigActivityDay, .sedentaryStreak, .noStepsToday:
+            return "daily_steps"
+        case .weightShift:
+            return "body_metrics"
+        case .weeklyReview:
+            return nil
+        }
+    }
+
     /// 给模型的事实描述。带上具体数字,它才写得出具体的问题。
     var brief: String {
         switch self {
@@ -112,6 +130,8 @@ struct HealthSituation: Sendable {
     let period: DayPeriod
     /// 已按"最可能是打开原因"排序。
     let triggers: [HealthTrigger]
+    /// 他平时爱问什么。只用来在**同等重要**的触发点之间挑,不用来推翻排序。
+    var interests: InterestProfile = .empty
 
     /// 首屏问题:触发点优先,不够三条用时段默认补齐,去重。
     var questions: [SuggestedQuestion] {
@@ -126,9 +146,15 @@ struct HealthSituation: Sendable {
 
     /// 给模型的场景说明。没有触发点时只有时段,让它写通用的三条。
     var brief: String {
-        guard !triggers.isEmpty else { return period.context }
-        let lines = triggers.prefix(4).map { "- \($0.brief)" }.joined(separator: "\n")
-        return "\(period.context)\n\n从数据里读到的情况：\n\(lines)"
+        var text = period.context
+        if !triggers.isEmpty {
+            let lines = triggers.prefix(4).map { "- \($0.brief)" }.joined(separator: "\n")
+            text += "\n\n从数据里读到的情况：\n\(lines)"
+        }
+        if let interests = interests.summary {
+            text += "\n\n他平时的关注点：\(interests)"
+        }
+        return text
     }
 }
 
@@ -137,7 +163,11 @@ extension HealthSituation {
     ///
     /// 全是本地查询,没有网络,失败的那一项直接跳过——识别不出触发点只是少了个性化,
     /// 不该让首屏出不来。
-    static func detect(now: Date = Date(), calendar: Calendar = .autoupdatingCurrent) async -> HealthSituation {
+    static func detect(
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        interests: InterestProfile = .empty
+    ) async -> HealthSituation {
         let period = DayPeriod(at: now, calendar: calendar)
         let store = HealthStore.shared
 
@@ -160,8 +190,36 @@ extension HealthSituation {
 
         return HealthSituation(
             period: period,
-            triggers: triggers.sorted { $0.rank(in: period) < $1.rank(in: period) }
+            triggers: ordered(triggers, period: period, interests: interests),
+            interests: interests
         )
+    }
+
+    /// 排序:先按「最可能是打开原因」,同名次之间才看他平时爱问什么。
+    ///
+    /// 兴趣**只做同级裁决**,不做加权。刚练完永远排在体重变化前面——哪怕他这半年一次锻炼
+    /// 都没问过。数据里刚发生的事比历史偏好强,把「他爱问什么」做成能翻盘的权重,第一条
+    /// 建议就会开始答非所问。
+    static func ordered(
+        _ triggers: [HealthTrigger],
+        period: DayPeriod,
+        interests: InterestProfile
+    ) -> [HealthTrigger] {
+        triggers
+            .enumerated()
+            .sorted { lhs, rhs in
+                let left = lhs.element.rank(in: period)
+                let right = rhs.element.rank(in: period)
+                if left != right { return left < right }
+
+                let leftWeight = interests.weight(forTool: lhs.element.relatedTool)
+                let rightWeight = interests.weight(forTool: rhs.element.relatedTool)
+                if leftWeight != rightWeight { return leftWeight > rightWeight }
+
+                // 权重也一样时按原顺序,别让 sort 的不稳定把首屏变成每次刷新都不一样。
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
     }
 
     // MARK: - 各项判定

@@ -6,6 +6,7 @@ struct ChatView: View {
 
     @State private var model = ChatViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     init(openedCheckIn: Binding<CheckInLaunch?> = .constant(nil)) {
         _openedCheckIn = openedCheckIn
@@ -15,21 +16,37 @@ struct ChatView: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 16) {
+                    // 不是 Lazy。`LazyVStack` 对屏幕外的气泡只有估算高度,第一条滚出屏幕
+                    // 被回收的那一刻真实高度换成估算值,整段内容高度变一下,贴着底的偏移
+                    // 就跟着跳——"尤其是第一条消息"说的就是这个。
+                    // 代价可控:一段会话最多几十条(`SessionThreadPolicy` 攒够 40 条就
+                    // 另起一段),全量布局一次远比每帧猜错一次便宜。
+                    VStack(spacing: 16) {
                         if model.isLoadingConversation {
                             ProgressView("正在载入对话")
                                 .padding(.top, 40)
                         } else if model.messages.isEmpty {
-                            WelcomeCard(
-                                setupGuidance: model.engineGuidance,
-                                questions: model.suggestions,
-                                selectedTopic: model.session.topic,
-                                onSelectTopic: model.selectTopic,
-                                onSelectQuestion: model.send
-                            )
+                            // 锚点挂在整个首屏上,不是只挂欢迎卡:开新会话时归位归到
+                            // 欢迎卡顶部的话,排在它上面的那段隐私说明正好被顶出屏幕。
+                            VStack(spacing: 16) {
+                                // 排在欢迎卡**前面**。挂在后面的话它落在一屏话题加一屏
+                                // 建议之后,人点完开关根本看不到——而这段话正是这个开关的
+                                // 全部内容。
+                                if model.session.isPrivate {
+                                    Self.privacyNote
+                                }
+
+                                WelcomeCard(
+                                    setupGuidance: model.engineGuidance,
+                                    questions: model.suggestions,
+                                    selectedTopic: model.session.topic,
+                                    onSelectTopic: model.selectTopic,
+                                    onSelectQuestion: model.send
+                                )
+                            }
                             .padding(.top, 24)
                             .id(Self.welcomeAnchor)
-                            // 挂在卡片上而不是整个视图:只有真的要显示问题时才去生成,
+                            // 挂在这儿而不是整个视图:只有真的要显示问题时才去生成,
                             // 挂 onAppear 会在会话还没载入完(此时 messages 是空的)就先跑一次。
                             .task { model.refreshSuggestionsIfNeeded() }
                         } else {
@@ -43,6 +60,10 @@ struct ChatView: View {
                                     onRetry: { model.retry(message.id) },
                                     onBranch: { model.branch(from: message.id) }
                                 )
+                                    // 手写判等,见 `MessageBubble.==`。气泡带着闭包,
+                                    // SwiftUI 自己判不了,于是流式期间整列气泡每帧全部
+                                    // 重跑一遍 body——包括每条都重新解析一次 markdown。
+                                    .equatable()
                                     .id(message.id)
 
                                 if let folded = message.foldedSpan {
@@ -63,20 +84,38 @@ struct ChatView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
                 }
-                // 有消息时贴底跟着流式内容走;空会话贴顶,否则欢迎卡会被压到屏幕底部。
-                .defaultScrollAnchor(model.messages.isEmpty ? .top : .bottom)
+                // 三个角色分开写,别再合回一句 `.defaultScrollAnchor(.bottom)`——那一句
+                // 等于把下面三件事一起交给系统,其中两件正好和贴底打架。
+                //
+                // 进来时落在哪儿:有消息就是最后一条,空会话贴顶(否则欢迎卡被压到屏幕底部)。
+                .defaultScrollAnchor(model.messages.isEmpty ? .top : .bottom, for: .initialOffset)
+                // 内容不满一屏时顶部对齐。底部对齐的话第一条消息贴着输入区,回复长出来时
+                // 整段往上爬,而贴底又在同时改偏移,两边各推各的——那阵跳动就是这么来的。
+                .defaultScrollAnchor(.top, for: .alignment)
+                // 内容变高时系统不要动偏移。贴底这件事由下面那个 `onChange` 一家说了算:
+                // 两套机制盯着同一段内容,谁都不知道对方已经推过一次了。
+                .defaultScrollAnchor(nil, for: .sizeChanges)
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: model.messages) {
-                    scroll(with: proxy)
+                // 输入区是浮在内容上的玻璃,内容从它下面过。软边让文字在那儿淡出,
+                // 不然一行字会被硬生生切成两半。
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .onChange(of: scrollKey) { old, new in
+                    // 新气泡出现是一次跳转,该有动画。其余都是内容自己长高,贴着走就行
+                    // ——流式一秒几十次,每次再起一个 0.25 秒的动画,十几个叠在一起各自
+                    // 朝一个已经过期的目标去,那就是抖动。
+                    scroll(with: proxy, animated: new.messageCount != old.messageCount)
                 }
                 // 换会话/开新会话时消息可能一样(两条空会话),得跟着 id 再归位一次。
                 .onChange(of: model.session.id) {
-                    scroll(with: proxy)
+                    scroll(with: proxy, animated: true)
                 }
             }
-            .safeAreaInset(edge: .bottom) { inputBar }
+            .safeAreaInset(edge: .bottom) { ComposerBar(model: model) }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Vana")
+            // 隐私是整条会话的属性,不是刚才点过的一个动作,所以它得一直在视线里。放在
+            // 标题下面而不是 chip 排里:那排会随着开聊消失,而这条承诺要一直有效。
+            .navigationSubtitle(model.session.isPrivate ? "隐私对话 · 不保存" : "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -88,26 +127,8 @@ struct ChatView: View {
                     .accessibilityLabel("会话列表")
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            model.startNewSession()
-                        } label: {
-                            Label("新对话", systemImage: "square.and.pencil")
-                        }
-
-                        Button {
-                            model.startNewSession(ephemeral: true)
-                        } label: {
-                            Label("临时对话（不保存）", systemImage: "eye.slash")
-                        }
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                    .disabled(model.isReplying || model.messages.isEmpty)
-                    .accessibilityLabel("新对话")
-                }
-
+                // 「新对话 / 临时对话」只留输入区那颗 `+`:两个入口做同一件事,而且
+                // toolbar 这颗在空会话时是 disabled 的,首屏永远挂着一个灰按钮。
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         SettingsView(
@@ -122,6 +143,11 @@ struct ChatView: View {
             }
             .onAppear {
                 model.refreshEngineAvailability()
+            }
+            // 多数会话是聊完直接切走的,不在这儿抽记忆,那段对话可能几天都轮不到抽一次。
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .background else { return }
+                model.harvestCurrentSessionMemory()
             }
             .onChange(of: openedCheckIn) { _, checkIn in
                 guard let checkIn else { return }
@@ -140,87 +166,79 @@ struct ChatView: View {
 
     private static let welcomeAnchor = "welcome"
 
+    /// 会改变内容高度的一切。贴底的触发信号。
+    ///
+    /// 不拿 `model.messages` 当信号:那要把整条会话深比较一遍,里面含 `storedTurn`
+    /// (整份工具原文和逐小时序列),每帧比一遍纯属白干。
+    ///
+    /// 但也**不能只看正文长度**。回复写完的那一刻正文不再变,而这一帧里高度还在动:
+    /// markdown 解析完把星号吃掉、复制那排按钮冒出来、重试提示消失、"正在回复"三个点
+    /// 换成正文。少算一样,最后就差那么一截滚不到位——原来差的正是复制那排的高度。
+    private struct ScrollKey: Equatable {
+        var messageCount = 0
+        var isReplying = false
+        var hasRetryNotice = false
+        var textLength = 0
+        var reasoningLength = 0
+        var toolCallCount = 0
+        /// 已经出结果的工具数。chip 从转圈换成箭头,那一下也在改高度。
+        var settledToolCallCount = 0
+    }
+
+    private var scrollKey: ScrollKey {
+        let last = model.messages.last
+        return ScrollKey(
+            messageCount: model.messages.count,
+            isReplying: model.isReplying,
+            hasRetryNotice: model.retryNotice != nil,
+            textLength: last?.text.count ?? 0,
+            reasoningLength: last?.reasoning.count ?? 0,
+            toolCallCount: last?.toolCalls.count ?? 0,
+            settledToolCallCount: last?.toolCalls.count { $0.output != nil } ?? 0
+        )
+    }
+
+    /// 开着隐私对话、还没开口时说清楚它到底挡住了什么。
+    ///
+    /// 逐条列出来,而不是笼统一句「保护你的隐私」:这个功能的全部价值就是那句承诺可信,
+    /// 而承诺只有具体到「不进哪儿」才可信。最后那句同样要紧——问题终究要发给云端模型才
+    /// 有人回答,不说这一句,用户迟早会自己想到,那时候前面几条也跟着不算数了。
+    @ViewBuilder
+    private static var privacyNote: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("这条对话不会被保存", systemImage: "eye.slash")
+                .font(.subheadline.weight(.medium))
+            Text("不进会话列表，不写进记忆，也不影响之后给你的建议。关掉就没了。")
+            // 和上面两条同一个灰度。把这句压成最淡的一行,等于承认它是不想让人看见的
+            // 小字——那正好毁掉了写它的意义。
+            Text("能问的照样能问——健康数据还是照常查。只是问题本身仍然要发给你配置的模型才能回答，这一步隐私对话挡不住。")
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.fill.quaternary, in: .rect(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
     /// 滚到该看的地方:有消息就是最后一条,空会话就是欢迎卡顶部。
-    private func scroll(with proxy: ScrollViewProxy) {
+    ///
+    /// `animated` 由调用方决定,不是由 `reduceMotion` 一家说了算:贴着流式内容走本来就
+    /// 不该有动画,那是"位置跟着内容",不是一次跳转。
+    private func scroll(with proxy: ScrollViewProxy, animated: Bool) {
         let target: (id: AnyHashable, anchor: UnitPoint) = model.messages.last
             .map { (AnyHashable($0.id), UnitPoint.bottom) }
             ?? (AnyHashable(Self.welcomeAnchor), UnitPoint.top)
 
-        if reduceMotion {
-            proxy.scrollTo(target.id, anchor: target.anchor)
-        } else {
+        if animated, !reduceMotion {
             withAnimation(.smooth(duration: 0.25)) {
                 proxy.scrollTo(target.id, anchor: target.anchor)
             }
+        } else {
+            proxy.scrollTo(target.id, anchor: target.anchor)
         }
     }
 
-    private var inputBar: some View {
-        VStack(spacing: 8) {
-            // 开聊之后话题还留在提示词里,界面上也得看得见,否则用户不知道
-            // 为什么模型一直在围着跑步说。
-            if model.session.isEphemeral || (model.session.topic != nil && !model.messages.isEmpty) {
-                HStack(spacing: 6) {
-                    if let topic = model.session.topic, !model.messages.isEmpty {
-                        Image(systemName: topic.icon)
-                        Text("话题：\(topic.name)")
-                    }
-                    if model.session.isEphemeral {
-                        Image(systemName: "eye.slash")
-                        Text("临时对话，不会保存")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
-            }
-
-            messageField
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.regularMaterial)
-    }
-
-    private var messageField: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            TextField("问问你的健康数据…", text: $model.input, axis: .vertical)
-                .lineLimit(1...5)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8))
-                .onSubmit { model.send() }
-                .submitLabel(.send)
-                .accessibilityLabel("消息")
-
-            Button {
-                if model.isReplying {
-                    model.stopReply()
-                } else {
-                    model.send()
-                }
-            } label: {
-                Image(systemName: model.isReplying ? "stop.fill" : "arrow.up")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        model.isReplying ? Color(.systemRed) : Color.accentColor,
-                        in: Circle()
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(
-                !model.isReplying
-                    && (
-                        model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || model.isLoadingConversation
-                    )
-            )
-            .accessibilityLabel(model.isReplying ? "停止回复" : "发送")
-        }
-    }
 }
 
 /// 折叠分隔线:从这里往上,模型记得的只有一句摘要,不再是逐字的对话。
@@ -288,12 +306,7 @@ private struct ReasoningChip: View {
                         .font(.caption2)
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 32)
-            .background(.fill.quaternary, in: Capsule())
-            .contentShape(.capsule)
+            .inlineChipStyle()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isThinking ? "正在思考" : "思考过程")
@@ -335,7 +348,7 @@ private struct ReasoningPanel: View {
     }
 }
 
-private struct MessageBubble: View {
+private struct MessageBubble: View, Equatable {
     let message: ChatMessage
     /// 这条正在生成:生成期间不给操作按钮,retry 一条还没写完的回复没有意义。
     let isStreaming: Bool
@@ -343,6 +356,21 @@ private struct MessageBubble: View {
     let canBranch: Bool
     let onRetry: () -> Void
     let onBranch: () -> Void
+
+    /// 只比画出来会不一样的东西。
+    ///
+    /// 两个闭包让 SwiftUI 判不了等,于是流式期间上面那二三十条早就定稿的气泡每帧陪着
+    /// 重跑一遍 body。闭包捕获的只有 `message.id` 和 view model,判等时忽略它们是安全的
+    /// ——不重跑 body 时留在手里的那份捕获的仍然是同一个 id。
+    ///
+    /// 也顺手绕开 `ChatMessage` 自动合成的 `==`:那里面有 `storedTurn`,整份工具原文加
+    /// 每份 `HealthReport` 的逐小时序列,而界面上一个字都不显示。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.isStreaming == rhs.isStreaming
+            && lhs.canRetry == rhs.canRetry
+            && lhs.canBranch == rhs.canBranch
+            && lhs.message.rendersIdentically(to: rhs.message)
+    }
 
     private var isWaiting: Bool {
         isStreaming && message.text.isEmpty && message.reasoning.isEmpty
@@ -378,7 +406,8 @@ private struct MessageBubble: View {
     }
 
     private var assistantMessage: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // 6 而不是 8:chip 自己带了撑到 44 的点击区,间距再按 8 算,几颗 chip 摞起来会散。
+        VStack(alignment: .leading, spacing: 6) {
             if !message.reasoning.isEmpty {
                 ReasoningChip(
                     text: message.reasoning,
@@ -409,13 +438,15 @@ private struct MessageBubble: View {
             }
 
             if message.errorDescription != nil, canRetry {
+                // 用 bordered 不用 glass:它跟着对话一起滚,不是浮在内容上的那一层。
+                // 见 `inlineChipStyle` 里那条边界。
                 Button(action: onRetry) {
                     Label("重试", systemImage: "arrow.clockwise")
                         .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
+                        .frame(minHeight: 30)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
                 .accessibilityHint("重新发送上一条问题")
             } else if !isStreaming, !message.text.isEmpty {
                 actions
@@ -442,7 +473,7 @@ private struct MessageBubble: View {
                 Image(systemName: "ellipsis")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                     .contentShape(.rect)
             }
             .accessibilityLabel("更多操作")
@@ -498,7 +529,7 @@ private struct CopyButton: View {
             Image(systemName: hasCopied ? "checkmark" : "doc.on.doc")
                 .font(.footnote)
                 .foregroundStyle(hasCopied ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -559,24 +590,28 @@ private struct TopicPicker: View {
                 Button {
                     onSelect(isSelected ? nil : topic)
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: topic.icon)
                             .font(.caption)
                         Text(topic.name)
                             .font(.subheadline)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            // 一格宽 104,「高强度间歇」这种五个字的名字缩到 0.75 才进得去。
+                            // 缩字比截断好:截成「高强度…」等于没说是哪个话题。
+                            .minimumScaleFactor(0.75)
                     }
                     .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    // 胶囊,和输入区上面那颗话题 chip 同一个样子:同一件事在一屏里出现
+                    // 两种长相,用户会以为它们不是一回事。
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .background(
                         isSelected
                             ? AnyShapeStyle(Color.accentColor)
                             : AnyShapeStyle(.fill.tertiary),
-                        in: RoundedRectangle(cornerRadius: 8)
+                        in: .capsule
                     )
-                    .contentShape(.rect)
+                    .contentShape(.capsule)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("话题：\(topic.name)")
@@ -645,7 +680,10 @@ private struct WelcomeCard: View {
                         }
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .padding(.horizontal, 12)
-                        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8))
+                        .background(
+                            .fill.tertiary,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("提问：\(question.text)")
@@ -665,7 +703,12 @@ private struct WelcomeCard: View {
             }
         }
         .padding(20)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+        // 圆角分三档:大容器 20、卡片里的行 12、气泡 18,chip 和控件一律胶囊。
+        // 之前从卡片到行到格子全是 8,一张六百多点高的卡片配这个圆角在 iOS 26 里太方了。
+        .background(
+            Color(.secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
         .accessibilityElement(children: .contain)
     }
 }

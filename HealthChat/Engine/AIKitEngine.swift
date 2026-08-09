@@ -89,17 +89,26 @@ struct AIKitEngine: AgentEngine {
     private let providerId: String
     private let model: String
     private let topic: ChatTopic?
+    /// 这条会话属于哪件长期的事。目标线才有。
+    private let goal: String?
+    /// 会话开始时取好的记忆。引擎自己不去读盘:同一条会话里 system 段变来变去,既打掉
+    /// prompt 缓存,也让模型对用户的认知中途跳变。
+    private let memory: MemorySnapshot
     private let capabilityRegistry: CapabilityRegistry
 
     init(
         providerId: String = "anthropic",
         model: String = "claude-sonnet-5",
         topic: ChatTopic? = nil,
-        capabilityRegistry: CapabilityRegistry = HealthTools.registry
+        goal: String? = nil,
+        memory: MemorySnapshot = .empty,
+        capabilityRegistry: CapabilityRegistry = .healthChat()
     ) {
         self.providerId = providerId
         self.model = model
         self.topic = topic
+        self.goal = goal
+        self.memory = memory
         self.capabilityRegistry = capabilityRegistry
     }
 
@@ -146,10 +155,36 @@ struct AIKitEngine: AgentEngine {
         return key
     }
 
-    private func systemInstruction() -> String {
+    /// 不是 private:记忆有没有真的进到 system 段,得有测试盯着。
+    func systemInstruction() -> String {
         var instructions = HealthAssistantInstructions.text()
         if let topic {
             instructions += "\n\n本次对话的话题：\(topic.name)。\(topic.focus)"
+        }
+        // 目标线跨很多天,而这条会话里多半只有最近那一段。不说这一句,模型会把「减脂」
+        // 当成他今天临时想问的一件事,而不是已经聊了三个星期的那件事。
+        if let goal, !goal.isEmpty {
+            instructions += "\n\n这条对话属于他一件长期在做的事：\(goal)。"
+                + "这件事已经聊过一段时间了，眼前这几句可能只是最近的一段——"
+                + "需要知道之前聊到哪儿，用 search_sessions 找同一件事的更早几段再往下说。"
+                + "回答时把数据和这件事挂上钩，不要每次都从头介绍一遍他的情况。"
+        }
+        // 记忆排在人格前面:先知道对面是谁,再决定用什么语气说。
+        if let block = memory.instructionBlock {
+            instructions += "\n\n\(block)"
+        }
+        // 召回排在记忆后面:记忆块已经把「他是谁」摆出来了,这一段说的是「不够时去哪找」。
+        if capabilityRegistry.definition(named: SessionRecallTools.searchToolName) != nil {
+            instructions += "\n\n用户提到「上次」「之前说过」，或者这个问题明显接着一段历史"
+                + "（正在进行的计划、之前解释过的异常、说好要回头看的事）时，"
+                + "先用 search_sessions 找到那次对话，再用 read_session 读它，然后接着他上次的说法往下讲。"
+                + "读回来的都是当时说过的话，里面的数值一律当作已经过期——要用就重新查一遍健康工具。"
+                + "没找到就直接说没聊过，不要编一段「我们上次说过」出来。"
+        }
+        if capabilityRegistry.definition(named: MemoryTools.rememberToolName) != nil {
+            instructions += "\n\n用户明确要求记住某件事，或者说出一个长期成立的个人情况"
+                + "（作息、工作安排、伤病限制、目标、他希望你怎么说话）时，调用 remember 记下来，"
+                + "并在回复里说一句已经记住了。具体数值不要记，那些每次都会重新查。"
         }
         let persona = EngineSettings.persona.instruction
         if !persona.isEmpty {

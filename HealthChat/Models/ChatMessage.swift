@@ -32,6 +32,17 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         self.report = report
         self.isError = isError
     }
+
+    /// 同 `ChatMessage.rendersIdentically`。`report` 只比行数:它和 `output` 是
+    /// `finishToolCall` 里一次写进去的,`output` 变了这条自然就不等了,而逐小时序列
+    /// 逐点比一遍是这里唯一真正贵的操作。
+    func rendersIdentically(to other: ToolCallRecord) -> Bool {
+        id == other.id
+            && name == other.name
+            && isError == other.isError
+            && output == other.output
+            && report?.rows.count == other.report?.rows.count
+    }
 }
 
 struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
@@ -195,6 +206,24 @@ extension ChatMessage {
     /// 看起来就是说到一半自己停了。
     var stoppedAtToolRoundLimit: Bool {
         storedTurn.finishReason?.raw == AgentLoop.toolRoundLimitReason
+    }
+
+    /// 这两条画在屏幕上会不会有区别。
+    ///
+    /// 给气泡判等用(`MessageBubble.==`),不是给业务逻辑用。合成的 `==` 会把 `storedTurn`
+    /// 一起深比较——整份工具原文加每份 `HealthReport` 的逐小时序列,而这些界面上一个字都
+    /// 不显示。流式一秒几十帧,每帧比一遍是这一屏最贵的一次白干。
+    ///
+    /// 加字段时记得跟上:这里漏一个,界面上就是那个字段改了不刷新。
+    func rendersIdentically(to other: ChatMessage) -> Bool {
+        id == other.id
+            && text == other.text
+            && reasoning == other.reasoning
+            && errorDescription == other.errorDescription
+            && createdAt == other.createdAt
+            && stoppedAtToolRoundLimit == other.stoppedAtToolRoundLimit
+            && toolCalls.count == other.toolCalls.count
+            && zip(toolCalls, other.toolCalls).allSatisfy { $0.rendersIdentically(to: $1) }
     }
 
     /// 交给 runtime 的形态。落盘和回放走的是同一份,不会出现"存的和发的不一样"。
