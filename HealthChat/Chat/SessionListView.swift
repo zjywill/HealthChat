@@ -1,10 +1,100 @@
 import SwiftUI
 
-/// 会话列表:切换、新建、删除。按时间分段(今天 / 昨天 / 最近 7 天 / 更早)。
-struct SessionListView: View {
+/// 会话列表整屏盖上来,但是从**左边**进,不是从右边。
+///
+/// 入口那颗按钮在导航栏最左边,而 `NavigationLink` 的推入永远从右边来:手指点在左上角,
+/// 东西却从对面飞过来,一次点击里方向就翻了一回。改成从按钮所在的那条边长出来之后,进、
+/// 出、和往回收的手势是同一根轴,不用记。
+///
+/// 仍然是**整屏**:列表要放下目标区加四组按时间分的会话,留一条缝给下面的对话换不来什么,
+/// 反而把每一行的标题挤短。
+///
+/// 代价是从此没有系统那条「从左边缘往右滑返回」的手势可用——那条手势的方向和这一屏的进出
+/// 方向正好反着,留着它,同一根手指往右滑是退出、往左滑也是退出。所以收手势自己实现成
+/// 往左滑(和它进来的方向反向),另外在原位留一颗关闭按钮。
+struct SessionDrawer: View {
+    @Binding var isPresented: Bool
     let model: ChatViewModel
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 收手势收到一半的位移。负值,夹在 `[-width, 0]`。
+    @State private var dragOffset: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                if isPresented {
+                    panel(width: geo.size.width)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        // 动画挂在容器上而不是交给每个调用点 `withAnimation`:关闭有四个出口(关闭按钮、
+        // 往左滑、选中一条会话、新建),漏掉任何一个都是它自己那一下没有动画。
+        //
+        // 减弱动效时换成淡入淡出:这套东西的意义就是那段位移,位移不能要的话,留一个更短的
+        // 淡出比留一个更慢的位移诚实。
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.18) : .snappy(duration: 0.32, extraBounce: 0.02),
+            value: isPresented
+        )
+        // 收起来的时候这层是空的,但 `GeometryReader` 仍然铺满整屏——不摘掉命中测试,
+        // 对话上的气泡和输入框会全部点不动。
+        .allowsHitTesting(isPresented)
+    }
+
+    private func panel(width: CGFloat) -> some View {
+        NavigationStack {
+            SessionListView(model: model, onClose: close)
+        }
+        // 整屏不透明。少了这一层,推进来的那 0.3 秒里两屏内容会叠在一起。
+        .background {
+            Rectangle()
+                .fill(Color(.systemGroupedBackground))
+                .ignoresSafeArea()
+        }
+        // 影子压在朝向对话的那一侧,滑到一半时那条边就是「它盖在上面」这件事;浅色下两屏
+        // 底色一样,没有它看着像内容自己换了。
+        .shadow(color: .black.opacity(0.18), radius: 12, x: 2, y: 0)
+        .offset(x: dragOffset)
+        .gesture(closeDrag(width: width))
+        .transition(.move(edge: .leading))
+    }
+
+    /// 往左滑收起来。
+    ///
+    /// 只认横向:列表本身在竖着滚,不先比一下两个方向的话,滑列表会顺手把这一屏拖走。
+    /// 松手时看滑过的距离**加上甩的速度**——快速一甩不该因为只走了 40pt 就弹回去。
+    private func closeDrag(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                dragOffset = min(0, max(-width, value.translation.width))
+            }
+            .onEnded { value in
+                let projected = value.translation.width + value.predictedEndTranslation.width
+                if projected < -width * 0.35 {
+                    close()
+                } else {
+                    withAnimation(.snappy(duration: 0.25)) { dragOffset = 0 }
+                }
+            }
+    }
+
+    private func close() {
+        isPresented = false
+        // 位移归零不带动画:这一屏正在往左滑出去,这时候再让它自己滑回 0,两个位移会打架。
+        dragOffset = 0
+    }
+}
+
+/// 会话列表:切换、新建、删除。按时间分段(今天 / 昨天 / 最近 7 天 / 更早)。
+///
+/// 由 `SessionDrawer` 从左边推进来,所以关闭走注进来的 `onClose` 而不是 `@Environment(\.dismiss)`
+/// ——抽屉里那个 `NavigationStack` 的根就是这一层,`dismiss()` 在这儿什么都不做。
+struct SessionListView: View {
+    let model: ChatViewModel
+    var onClose: () -> Void
 
     /// 列表打开时定一次「现在」。段的边界不该在用户滚动到一半时跳过去。
     @State private var now = Date()
@@ -42,7 +132,7 @@ struct SessionListView: View {
                         ForEach(group.summaries) { summary in
                             Button {
                                 model.openSession(id: summary.id)
-                                dismiss()
+                                onClose()
                             } label: {
                                 row(for: summary, in: group.section)
                             }
@@ -62,25 +152,39 @@ struct SessionListView: View {
         .navigationTitle("会话")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Menu {
+            // 关闭落在**打开它的那颗按钮原来的位置**上:进出是同一个坐标,手指不用挪窝。
+            // 不用 `chevron.left`——那个箭头是在说"要回去的东西在左边",而这一屏是从左边
+            // 盖上来的,对话在它右边。方向说反了不如不说。
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    model.startNewSession()
-                    dismiss()
+                    onClose()
                 } label: {
-                    Label("新对话", systemImage: "square.and.pencil")
+                    Image(systemName: "xmark")
                 }
-                Button {
-                    draftName = ""
-                    naming = nil
-                    isNamingNewGoal = true
-                } label: {
-                    Label("新目标", systemImage: "target")
-                }
-            } label: {
-                Image(systemName: "square.and.pencil")
+                .accessibilityLabel("返回对话")
             }
-            .disabled(model.isReplying)
-            .accessibilityLabel("新建")
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        model.startNewSession()
+                        onClose()
+                    } label: {
+                        Label("新对话", systemImage: "square.and.pencil")
+                    }
+                    Button {
+                        draftName = ""
+                        naming = nil
+                        isNamingNewGoal = true
+                    } label: {
+                        Label("新目标", systemImage: "target")
+                    }
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                }
+                .disabled(model.isReplying)
+                .accessibilityLabel("新建")
+            }
         }
         .alert(isNamingNewGoal ? "新目标" : "改个名字", isPresented: isNamingPresented) {
             TextField("比如：减脂、备半马、把作息掰回来", text: $draftName)
@@ -92,7 +196,7 @@ struct SessionListView: View {
                     model.startGoal(named: draftName)
                     // 起完名字直接进去问第一句。留在列表里再点一次,那条线还是空的。
                     if !draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        dismiss()
+                        onClose()
                     }
                 }
                 endNaming()
@@ -124,7 +228,7 @@ struct SessionListView: View {
                 ForEach(model.goals) { goal in
                     Button {
                         model.openGoal(goal)
-                        dismiss()
+                        onClose()
                     } label: {
                         goalRow(goal)
                     }

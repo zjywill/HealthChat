@@ -8,6 +8,7 @@ enum EngineSettings {
     static let thinkingEnabledKey = "thinkingEnabled"
     static let checkInsEnabledKey = "checkInsEnabled"
     static let memoryEnabledKey = "memoryEnabled"
+    static let medicationsEnabledKey = "medicationsEnabled"
     static let morningCheckInHourKey = "morningCheckInHour"
     static let eveningCheckInHourKey = "eveningCheckInHour"
 
@@ -33,5 +34,15 @@ enum EngineSettings {
     /// 还留在设置页里——关开关是"先别用",不是"删干净",后者有专门的按钮。
     static var memoryEnabled: Bool {
         UserDefaults.standard.object(forKey: memoryEnabledKey) as? Bool ?? true
+    }
+
+    /// 让模型看到用药与补剂清单。默认开。
+    ///
+    /// **不归在 `memoryEnabled` 下面。** 关掉记忆的人不指望 Vana 还记得他随口说过的话,但他
+    /// 仍然会指望这张自己一条条录进去的表还在——那是他的东西,不是模型对他的印象。
+    /// 关掉之后 system 段不带名单、三个工具都不挂,但**列表页照常能看能改**:关开关是
+    /// 「先别用」,不是「看不见」。
+    static var medicationsEnabled: Bool {
+        UserDefaults.standard.object(forKey: medicationsEnabledKey) as? Bool ?? true
     }
 }

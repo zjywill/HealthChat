@@ -17,12 +17,18 @@ enum SessionThread: Equatable, Sendable {
     /// 名字由用户起,存在会话的 `threadTitle` 上,不另开一张"目标表"——一段一段往下传看着
     /// 冗余,换来的是这条线的名字和它的内容永远在同一个文件里。
     case goal(UUID)
+    /// 围绕清单里某一样药或补剂的一条线(`MedicationItem.id`)。
+    ///
+    /// 和目标线同构:「我在试褪黑素」是一件长期的事,下次从详情页进来该接着上次那条聊,
+    /// 而不是每次重新解释一遍他为什么在吃它。
+    case medication(UUID)
 
     var id: String {
         switch self {
         case .checkIn: "checkin"
         case .followUp(let uuid): "followup:\(uuid.uuidString)"
         case .goal(let uuid): "goal:\(uuid.uuidString)"
+        case .medication(let uuid): "med:\(uuid.uuidString)"
         }
     }
 
@@ -38,6 +44,8 @@ enum SessionThread: Equatable, Sendable {
             self = .followUp(followUp)
         } else if let goal = uuid(after: "goal:") {
             self = .goal(goal)
+        } else if let medication = uuid(after: "med:") {
+            self = .medication(medication)
         } else {
             return nil
         }
@@ -49,6 +57,7 @@ enum SessionThread: Equatable, Sendable {
         case .checkIn: "每日 check-in"
         case .followUp: "说好回头看的事"
         case .goal: "长期目标"
+        case .medication: "药和补剂"
         }
     }
 
@@ -57,6 +66,14 @@ enum SessionThread: Equatable, Sendable {
         if case .goal = self { return true }
         return false
     }
+
+    var isMedication: Bool {
+        if case .medication = self { return true }
+        return false
+    }
+
+    /// 用户自己管着的一件长期的事,断得比 check-in 宽(见 `SessionThreadPolicy`)。
+    var isLongRunning: Bool { isGoal || isMedication }
 }
 
 /// 一条目标线在界面上的样子。
@@ -94,15 +111,15 @@ enum SessionThreadPolicy {
     /// 一条线程会话最多攒这么多条消息。
     static let maxMessages = 40
 
-    /// 目标线隔多久不动才算断。
+    /// 目标线和用药线隔多久不动才算断。
     ///
-    /// 比 check-in 宽得多:「减脂」这件事请一周假回来还是同一件事,而每天的 check-in 隔一周
-    /// 就是新的一段了。用户自己开的线,凭一次出差把它掐断很没道理。
+    /// 比 check-in 宽得多:「减脂」这件事请一周假回来还是同一件事,「我在试褪黑素」同理,
+    /// 而每天的 check-in 隔一周就是新的一段了。用户自己管着的线,凭一次出差把它掐断很没道理。
     static let maxGoalIdleDays = 21
 
     static func canContinue(_ entry: SessionIndexEntry, at now: Date = Date()) -> Bool {
         guard !entry.isEmpty, entry.messageCount < maxMessages else { return false }
-        let idleDays = entry.thread?.isGoal == true ? maxGoalIdleDays : maxIdleDays
+        let idleDays = entry.thread?.isLongRunning == true ? maxGoalIdleDays : maxIdleDays
         return now.timeIntervalSince(entry.updatedAt) < Double(idleDays) * 86_400
     }
 }

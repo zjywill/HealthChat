@@ -43,6 +43,10 @@ public struct AgentLoop: Sendable {
     /// 这句是给模型看的,所以要写清楚「没执行」和「该怎么办」——它读完得知道重发一次,
     /// 而不是以为工具坏了。
     public var truncatedToolCallNotice: String
+    /// 生命周期上的旁观者。给 nil 就一次派发都不发生,和没有这套东西时一样贵。
+    ///
+    /// 宿主由 app 持有(见 `AgentHookDispatcher`):hook 跨轮有状态,而 loop 每次回复现造。
+    public var hooks: AgentHookDispatcher?
 
     public init(
         client: any AgentModelClient,
@@ -58,7 +62,8 @@ public struct AgentLoop: Sendable {
         truncatedToolCallNotice: String = """
             This tool call was not executed: the response hit the output token limit, so its \
             arguments may be incomplete. Re-issue it with complete arguments.
-            """
+            """,
+        hooks: AgentHookDispatcher? = nil
     ) {
         self.client = client
         self.capabilities = capabilities
@@ -71,6 +76,7 @@ public struct AgentLoop: Sendable {
         self.maxToolRounds = maxToolRounds
         self.pendingInput = pendingInput
         self.truncatedToolCallNotice = truncatedToolCallNotice
+        self.hooks = hooks
     }
 
     /// 工具轮数用光时写进 finish reason 的记号。
@@ -123,8 +129,57 @@ private extension AgentLoop {
         case failed(any Error, emitted: EmittedCharacters)
     }
 
+    /// 这一轮到目前为止攒下来的东西。
+    ///
+    /// 单独拎出来是为了让**失败和取消也有一份**:被停掉的那一轮同样说过几句话、查过几次
+    /// 数据,hook 那条 `turnFinished` 得把它们带上,而不是交一份空的。
+    struct TurnProgress {
+        var transcript = AgentTranscript()
+        var usage: AgentUsage?
+        var snapshot: TurnContextSnapshotDTO?
+    }
+
     func execute(
         history: [AgentChatMessageDTO],
+        continuation: AsyncThrowingStream<AgentTurnEvent, any Error>.Continuation
+    ) async throws {
+        guard let hooks else {
+            var progress = TurnProgress()
+            try await runRounds(history: history, progress: &progress, continuation: continuation)
+            return
+        }
+
+        let turnId = UUID()
+        await hooks.post(.init(turnId: turnId, kind: .turnStarted(.init(
+            history: history,
+            profile: client.profile
+        ))))
+
+        var progress = TurnProgress()
+        do {
+            try await runRounds(
+                history: history,
+                progress: &progress,
+                turnId: turnId,
+                continuation: continuation
+            )
+        } catch {
+            // 出口只有这一个:救不回来的错误和用户按停止都走这儿。少一条出口,hook 就得靠
+            // 超时去猜自己在等的那一轮是不是已经不会来了。
+            await hooks.post(.init(turnId: turnId, kind: .turnFinished(.init(
+                state: error is CancellationError ? .stopped : .failed(Self.describe(error)),
+                transcript: progress.transcript,
+                usage: progress.usage,
+                context: progress.snapshot
+            ))))
+            throw error
+        }
+    }
+
+    func runRounds(
+        history: [AgentChatMessageDTO],
+        progress: inout TurnProgress,
+        turnId: UUID? = nil,
         continuation: AsyncThrowingStream<AgentTurnEvent, any Error>.Continuation
     ) async throws {
         let profile = client.profile
@@ -132,7 +187,6 @@ private extension AgentLoop {
         let reserved = Self.reservedOutputTokens(for: profile)
 
         var calibration = ContextCalibration(history: history, profile: profile)
-        var runtimeTranscript = AgentTranscript()
         // 本轮用的历史。整段摘要生成后就地写进去,同时通过事件让 app 存下来。
         var history = history
         // 一轮里最多总结一次。工具轮之间再压也只能压历史,压不动这一轮刚拿到的大结果,
@@ -142,8 +196,6 @@ private extension AgentLoop {
         var isRecoveringFromOverflow = false
         var attempt = 0
         var round = 0
-        var lastUsage: AgentUsage?
-        var lastSnapshot: TurnContextSnapshotDTO?
 
         while round < maxToolRounds {
             try Task.checkCancellation()
@@ -157,7 +209,7 @@ private extension AgentLoop {
             if let pendingInput {
                 let pending = await pendingInput()
                 if !pending.isEmpty {
-                    runtimeTranscript.messages.append(contentsOf: pending.map { .user($0.text) })
+                    progress.transcript.messages.append(contentsOf: pending.map { .user($0.text) })
                     continuation.yield(.pendingInputAccepted(pending))
                 }
             }
@@ -166,7 +218,7 @@ private extension AgentLoop {
             // 放在发请求之前,而不是撞墙之后——撞墙时已经没有从容处理的余地了。
             if !didSummarize, let compacted = try await summarize(
                 history: history,
-                runtimeTranscript: runtimeTranscript,
+                runtimeTranscript: progress.transcript,
                 profile: profile,
                 definitions: definitions,
                 reserved: reserved,
@@ -186,7 +238,7 @@ private extension AgentLoop {
 
             let prepared = plan(
                 history: history,
-                runtimeTranscript: runtimeTranscript,
+                runtimeTranscript: progress.transcript,
                 profile: profile,
                 definitions: definitions,
                 reserved: reserved,
@@ -250,7 +302,7 @@ private extension AgentLoop {
             isRecoveringFromOverflow = false
 
             if let assistant = response.assistantMessage, !assistant.parts.isEmpty {
-                runtimeTranscript.messages.append(assistant)
+                progress.transcript.messages.append(assistant)
             }
 
             calibration.note(
@@ -261,16 +313,22 @@ private extension AgentLoop {
                 servedModelId: response.servedModelId,
                 actualPromptTokens: response.usage?.inputTokens.total
             )
-            lastUsage = response.usage
-            lastSnapshot = snapshot
+            progress.usage = response.usage
+            progress.snapshot = snapshot
 
             guard !response.pendingCalls.isEmpty else {
                 continuation.yield(.turnCompleted(
-                    transcript: runtimeTranscript,
+                    transcript: progress.transcript,
                     finishReason: response.finishReason,
                     usage: response.usage,
                     context: snapshot
                 ))
+                await finish(
+                    turnId,
+                    state: .completed,
+                    progress: progress,
+                    finishReason: response.finishReason
+                )
                 return
             }
 
@@ -287,6 +345,7 @@ private extension AgentLoop {
                     input: call.input
                 )))
 
+                let startedAt = ContinuousClock.now
                 let result = wasTruncated
                     ? CapabilityExecutionResult(
                         output: .init(kind: .text, text: truncatedToolCallNotice),
@@ -299,24 +358,54 @@ private extension AgentLoop {
                     output: result.output,
                     isError: result.isError
                 ))
-                runtimeTranscript.messages.append(.toolResult(
+                progress.transcript.messages.append(.toolResult(
                     toolCallId: call.toolCallId,
                     toolName: call.name,
                     result: .string(result.output.text),
                     isError: result.isError
                 ))
+                if let turnId, let hooks {
+                    await hooks.post(.init(turnId: turnId, kind: .toolFinished(.init(
+                        toolCallId: call.toolCallId,
+                        name: call.name,
+                        isError: result.isError,
+                        outputCharacters: result.output.text.count,
+                        duration: ContinuousClock.now - startedAt
+                    ))))
+                }
             }
 
             round += 1
         }
 
         // 轮数用光。已经查到的东西照常交出去——丢掉它们去报一个错,对用户是净损失。
+        let limitReason = AgentFinishReason(unified: .other, raw: Self.toolRoundLimitReason)
         continuation.yield(.turnCompleted(
-            transcript: runtimeTranscript,
-            finishReason: .init(unified: .other, raw: Self.toolRoundLimitReason),
-            usage: lastUsage,
-            context: lastSnapshot
+            transcript: progress.transcript,
+            finishReason: limitReason,
+            usage: progress.usage,
+            context: progress.snapshot
         ))
+        // 轮数用光对 hook 也**不是**失败,和答完走同一个 state:该查的多半已经查到了。要区分
+        // 的看 `finishReason.raw`。
+        await finish(turnId, state: .completed, progress: progress, finishReason: limitReason)
+    }
+
+    /// 这一轮的收尾通知。`turnId` 为 nil 就是没挂 hook,一次派发都不发生。
+    func finish(
+        _ turnId: UUID?,
+        state: AgentHookTurnOutcome.State,
+        progress: TurnProgress,
+        finishReason: AgentFinishReason?
+    ) async {
+        guard let turnId, let hooks else { return }
+        await hooks.post(.init(turnId: turnId, kind: .turnFinished(.init(
+            state: state,
+            transcript: progress.transcript,
+            finishReason: finishReason,
+            usage: progress.usage,
+            context: progress.snapshot
+        ))))
     }
 
     /// 跑一次能力,并把进上下文的那段输出截到预算之内。

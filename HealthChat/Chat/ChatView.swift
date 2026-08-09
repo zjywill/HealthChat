@@ -5,6 +5,11 @@ struct ChatView: View {
     @Binding var openedCheckIn: CheckInLaunch?
 
     @State private var model = ChatViewModel()
+    /// 用药表以 sheet 呈现:详情页那颗「问问 Vana」要回到聊天界面,而从 push 出来的两层里
+    /// 退回根视图没有干净的写法。它本来也是一次离开对话的 detour,模态是对的形状。
+    @State private var isShowingMedications = false
+    /// 会话列表是从左边推进来的抽屉(`SessionDrawer`),不是 push 出去的一页。
+    @State private var isShowingSessions = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -119,29 +124,9 @@ struct ChatView: View {
             // 标题下面而不是 chip 排里:那排会随着开聊消失,而这条承诺要一直有效。
             .navigationSubtitle(model.session.isPrivate ? "隐私对话 · 不保存" : "")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        SessionListView(model: model)
-                    } label: {
-                        Image(systemName: "list.bullet")
-                    }
-                    .accessibilityLabel("会话列表")
-                }
-
-                // 「新对话 / 临时对话」只留输入区那颗 `+`:两个入口做同一件事,而且
-                // toolbar 这颗在空会话时是 disabled 的,首屏永远挂着一个灰按钮。
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        SettingsView(
-                            canClearConversation: !model.messages.isEmpty && !model.isReplying,
-                            onClearConversation: model.clearConversation
-                        )
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("设置")
-                }
+            .toolbar { toolbarItems }
+            .sheet(isPresented: $isShowingMedications) {
+                MedicationListView(model: model)
             }
             .onAppear {
                 model.refreshEngineAvailability()
@@ -163,6 +148,50 @@ struct ChatView: View {
                     print("HealthKit 授权请求失败：\(error.localizedDescription)")
                 }
             }
+        }
+        // 盖在整个 `NavigationStack` 上,导航栏也要被它压住:抽屉推出来的时候,底下那颗
+        // 「会话列表」按钮不该还能再按一次。
+        .overlay {
+            SessionDrawer(isPresented: $isShowingSessions, model: model)
+        }
+    }
+
+    /// 拆出来不是为了整洁:连着 toolbar 一起写在 `body` 里,类型检查器就开始超时。
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isShowingSessions = true
+            } label: {
+                Image(systemName: "list.bullet")
+            }
+            .accessibilityLabel("会话列表")
+        }
+
+        // 和会话列表并排:这两件都是「离开当前对话去看别的东西」,而设置在另一边是另一类。
+        // 用药表不放进设置页——记忆一年改两次可以藏,这张表用户会反复打开看「我上次试的那个
+        // 叫啥来着」。也不两处都放:两个入口做同一件事已经踩过一次。
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isShowingMedications = true
+            } label: {
+                Image(systemName: "pills")
+            }
+            .accessibilityLabel("用药与补剂")
+        }
+
+        // 「新对话 / 临时对话」只留输入区那颗 `+`:两个入口做同一件事,而且 toolbar 这颗在
+        // 空会话时是 disabled 的,首屏永远挂着一个灰按钮。
+        ToolbarItem(placement: .topBarTrailing) {
+            NavigationLink {
+                SettingsView(
+                    canClearConversation: !model.messages.isEmpty && !model.isReplying,
+                    onClearConversation: model.clearConversation
+                )
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("设置")
         }
     }
 

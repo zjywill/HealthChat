@@ -43,7 +43,9 @@ struct QuestionSuggester: Sendable {
                 .user("\(situation.brief)\n\n最近数据：\n\(await digest())")
             ],
             maxOutputTokens: 200,
-            temperature: 0.7
+            temperature: 0.7,
+            // 同 `FollowUpSuggester`:留空是接受模型的默认,而好几家的默认是思考。
+            thinking: .off
         ))
 
         let questions = Self.parse(response.text)
@@ -67,14 +69,30 @@ struct QuestionSuggester: Sendable {
     }
 
     private static func parse(_ text: String) -> [SuggestedQuestion] {
-        text.split(separator: "\n")
-            .map { line in
-                line.trimmingCharacters(in: .whitespaces)
-                    // 模型经常还是会带上 "1. " "- " "「」" 之类的壳。
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "0123456789.、-–—*·「」\"“” "))
-            }
-            .filter { $0.count >= 4 && $0.count <= 14 }
-            .prefix(3)
+        ModelLines.parse(text, minCharacters: 4, maxCharacters: 14, limit: 3)
             .map { SuggestedQuestion(icon: "sparkles", text: $0) }
     }
+}
+
+/// 「让模型写几行短句」这件事的收尾:剥壳、按长度筛、取前几条。
+///
+/// 首屏建议和追问 chip 共用一份。各写一遍迟早漂,而漂的后果是不对称的——一边照常显示,
+/// 另一边悄悄空着,谁都不会发现。
+enum ModelLines {
+    static func parse(
+        _ text: String,
+        minCharacters: Int,
+        maxCharacters: Int,
+        limit: Int
+    ) -> [String] {
+        let lines: [String] = text.split(separator: "\n").map { line in
+            line.trimmingCharacters(in: .whitespaces)
+                // 模型经常还是会带上 "1. " "- " "「」" 之类的壳。
+                .trimmingCharacters(in: shell)
+        }
+        let usable = lines.filter { $0.count >= minCharacters && $0.count <= maxCharacters }
+        return Array(usable.prefix(limit))
+    }
+
+    private static let shell = CharacterSet(charactersIn: "0123456789.、-–—*·「」\"“” ")
 }

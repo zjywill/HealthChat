@@ -94,7 +94,16 @@ struct AIKitEngine: AgentEngine {
     /// 会话开始时取好的记忆。引擎自己不去读盘:同一条会话里 system 段变来变去,既打掉
     /// prompt 缓存,也让模型对用户的认知中途跳变。
     private let memory: MemorySnapshot
+    /// 会话开始时取好的用药与补剂表。理由同 `memory`。
+    private let medications: MedicationSnapshot
+    /// 这条会话围绕清单里的哪一条(`SessionThread.medication`)。普通对话没有。
+    private let focusMedication: MedicationItem?
     private let capabilityRegistry: CapabilityRegistry
+    /// 生命周期上的旁观者。引擎每轮现造,而 hook 跨轮有状态,所以宿主由 app 传进来,
+    /// 不在这儿造(见 `AgentHookDispatcher`)。
+    ///
+    /// 后台派生的那几轮默认不挂:没有用户在场,答完之后要生成的那点东西没人会看。
+    private let hooks: AgentHookDispatcher?
 
     init(
         providerId: String = "anthropic",
@@ -102,14 +111,20 @@ struct AIKitEngine: AgentEngine {
         topic: ChatTopic? = nil,
         goal: String? = nil,
         memory: MemorySnapshot = .empty,
-        capabilityRegistry: CapabilityRegistry = .healthChat()
+        medications: MedicationSnapshot = .empty,
+        focusMedication: MedicationItem? = nil,
+        capabilityRegistry: CapabilityRegistry = .healthChat(),
+        hooks: AgentHookDispatcher? = nil
     ) {
         self.providerId = providerId
         self.model = model
         self.topic = topic
         self.goal = goal
         self.memory = memory
+        self.medications = medications
+        self.focusMedication = focusMedication
         self.capabilityRegistry = capabilityRegistry
+        self.hooks = hooks
     }
 
     func reply(
@@ -136,7 +151,8 @@ struct AIKitEngine: AgentEngine {
                         policy: .healthChat,
                         maxToolRounds: Self.maxToolRounds,
                         pendingInput: pendingInput,
-                        truncatedToolCallNotice: healthChatTruncatedToolCallNotice
+                        truncatedToolCallNotice: healthChatTruncatedToolCallNotice,
+                        hooks: hooks
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {
                         continuation.yield(event)
@@ -187,6 +203,19 @@ struct AIKitEngine: AgentEngine {
         if let block = memory.instructionBlock {
             instructions += "\n\n\(block)"
         }
+        // 用药表紧跟着记忆:两块都是「关于这位用户」,而这一块还是别的所有回答的前提。
+        //
+        // 它**不做触发式挂载**(和 `search_sessions` 相反),因为漏的代价不对称:召回漏了,
+        // 用户补一句「上次不是说」就回来了;这里漏一次,是模型在不知道他吃着 β 阻滞剂的
+        // 情况下解释他的静息心率,或者推荐了一个他过敏的东西。要它自己想起来去查,
+        // 它想不起来的那次恰好就是最该说的那次。
+        if let block = medications.instructionBlock {
+            instructions += "\n\n\(block)"
+        }
+        // 以某一条为话题的那种会话。放在名单后面:先看见整张表,再收窄到其中一条。
+        if let focusMedication {
+            instructions += "\n\n\(focusMedication.focusInstruction)"
+        }
         // 召回排在记忆后面:记忆块已经把「他是谁」摆出来了,这一段说的是「不够时去哪找」。
         // 措辞要窄:健康对话句句都连着上一句,写成「问题接着一段历史时就翻」等于每轮都翻一次,
         // 而用户正等着回复。默认是不翻,只有他自己提起过去才翻。
@@ -198,10 +227,25 @@ struct AIKitEngine: AgentEngine {
                 + "读回来的都是当时说过的话，里面的数值一律当作已经过期——要用就重新查一遍健康工具。"
                 + "没找到就直接说没聊过，不要编一段「我们上次说过」出来。"
         }
+        // 写用药表的两个工具。同 `remember`:照着 registry 里有没有它来拼,对着一个没挂出去的
+        // 工具发指令,模型只会调一次、失败一次,再自己想办法圆场。
+        if capabilityRegistry.definition(named: MedicationTools.logToolName) != nil {
+            instructions += "\n\n用户说出他和某样药或补剂的关系时——决定开始吃、已经在吃、需要时会吃、"
+                + "对什么过敏或不能吃——调用 \(MedicationTools.logToolName) 记下来，并在回复里说一句记下了。"
+                + "他后来给出结果时（有用、没用、有不良反应、已经停了），"
+                + "一定要用 \(MedicationTools.updateToolName) 更新那一条——"
+                + "「试过没用」这件事记下来，下次才拦得住你再推荐一遍。"
+                + "只是在讨论、他还没说要不要吃，就先别记；剂量一概不要记。"
+        }
         if capabilityRegistry.definition(named: MemoryTools.rememberToolName) != nil {
             instructions += "\n\n用户明确要求记住某件事，或者说出一个长期成立的个人情况"
                 + "（作息、工作安排、伤病限制、目标、他希望你怎么说话）时，调用 remember 记下来，"
                 + "并在回复里说一句已经记住了。具体数值不要记，那些每次都会重新查。"
+            // 两条写入路径落到同一件事上,就是两份会各自被改的记录。用药那张表有独立的界面,
+            // 记忆没有,所以谁让路是明确的。
+            if capabilityRegistry.definition(named: MedicationTools.logToolName) != nil {
+                instructions += "药和补剂不要用 remember 记，那有专门的 \(MedicationTools.logToolName)。"
+            }
         }
         // 插话会以一条普通 user 消息的样子出现在工具结果之后。不说这一句,模型多半会当成
         // 一个全新的问题,从头把刚说过的再讲一遍——而用户补那一句的意思恰恰是「别那样」。

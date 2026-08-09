@@ -24,6 +24,12 @@ final class ChatViewModel {
     private(set) var retryNotice: String?
     /// 先给按时段挑的默认问题,AI 生成的回来了再替换。
     var suggestions = SuggestedQuestions.defaults()
+    /// 接着刚才那段回答问的几条追问。
+    ///
+    /// 空着不是错误状态,是常态的一半:还没答完、生成失败、没配 key 都是空的,那时候
+    /// `ComposerBar` 用固定那几条顶上。所以这里不需要"正在生成"这种状态——多一个状态就多
+    /// 一个转圈,而它转的那两秒里用户什么都不缺。
+    private(set) var followUps: [String] = []
 
     private var currentReplyTask: Task<Void, Never>?
     /// 思考的增量攒一小会儿再落盘。
@@ -48,10 +54,19 @@ final class ChatViewModel {
     /// 用户的认知在一条对话里跳变。抽取写在会话结束、快照读在会话开始,正好配套——这条
     /// 会话学到的东西,下一条会话生效。
     private(set) var memory: MemorySnapshot = .empty
+    /// 这条会话开始时的用药与补剂表,同样**会话之内不换**。理由和 `memory` 一样。
+    private(set) var medications: MedicationSnapshot = .empty
+    /// 这条会话围绕清单里的哪一条(`SessionThread.medication`)。
+    private(set) var focusMedication: MedicationItem?
     /// 当前这条会话已经发过请求了。发过之后就不再换快照,哪怕后台刚抽完新记忆。
     private var didStartReplyInSession = false
     /// 抽取排成一队。两个抽取同时读同一份记忆再各写各的,会写出两条一样的。
     private var harvestTail: Task<Void, Never>?
+    /// 挂在 loop 生命周期上的那几个旁观者(眼下只有追问 chip)。
+    ///
+    /// **一条会话一个**,换会话时整个丢掉:hook 记着"上一句问了什么",那是这条会话的事。
+    /// 第一次真的要发请求时才建——没聊过的会话不该为它多做任何事。
+    private var hooks: AgentHookDispatcher?
 
     /// 每轮现造引擎。测试注入一个脚本化的假引擎,就能在不碰 Keychain 和网络的前提下
     /// 走完整条 loop。
@@ -60,6 +75,7 @@ final class ChatViewModel {
     private let engineFactory: EngineFactory?
     private let memoryStore: MemoryStore
     private let sessionStore: SessionStore
+    private let medicationStore: MedicationStore
 
     var messages: [ChatMessage] { session.messages }
 
@@ -76,15 +92,19 @@ final class ChatViewModel {
     ///     `MemoryStore.shared` 就是模拟器上那份真的 `memory.json`。
     ///   - sessionStore: 同上。`loadsPersistedSession: false` 只挡住了**写**,而延续线要
     ///     去读盘找上一段——读到用户真实的会话,测试就会把它拽进来当成自己的。
+    ///   - medicationStore: 同上。`MedicationStore.shared` 是模拟器上那份真的
+    ///     `medications.json`,测试写它等于把用户录的药删了。
     init(
         engineFactory: EngineFactory? = nil,
         loadsPersistedSession: Bool = true,
         memoryStore: MemoryStore = .shared,
-        sessionStore: SessionStore = .shared
+        sessionStore: SessionStore = .shared,
+        medicationStore: MedicationStore = .shared
     ) {
         self.engineFactory = engineFactory
         self.memoryStore = memoryStore
         self.sessionStore = sessionStore
+        self.medicationStore = medicationStore
         refreshEngineAvailability()
         guard loadsPersistedSession else {
             session = ChatSession(isPrivate: true)
@@ -210,6 +230,14 @@ final class ChatViewModel {
                 refreshMemory()
             }
         }
+        // 用药那边的回访同理,但**只清掉约定,不删那条记录**——那样东西他还在吃,要走的只是
+        // 「回头问一句」这个约定。从详情页那颗按钮进来的不走这条路,那不是在兑现约定。
+        if case .medication(let id) = checkIn.thread {
+            Task {
+                _ = try? await medicationStore.clearFollowUp(id: id)
+                refreshMedications()
+            }
+        }
 
         // 找线程要读盘,这几十毫秒里 `sendWhenReady` 会被 `isLoadingConversation` 挡着等,
         // 正好——Siri 冷启动那条路本来就在等它。
@@ -308,6 +336,36 @@ final class ChatViewModel {
                 let next = (try? await sessionStore.mostRecent()) ?? ChatSession()
                 replaceSession(with: next, harvestingPrevious: false)
             }
+            await refreshSummaries()
+        }
+    }
+
+    // MARK: - 用药线
+
+    /// 从用药详情页那颗「问问 Vana」进来。接得上就接着上一段,接不上就在同一条线上另起一段。
+    ///
+    /// 和 `openGoal` 同一套。**不预填问题**:预填一句「这个有什么副作用」会把对话推向一个他
+    /// 可能没想问的方向,而那三条开场建议本来就按状态分好了(`MedicationItem.openingQuestions`)。
+    func openMedication(_ item: MedicationItem) {
+        guard !isReplying else { return }
+        let thread = SessionThread.medication(item.id)
+
+        isLoadingConversation = true
+        Task {
+            let continued = await sessionStore.openThread(thread)
+            replaceSession(
+                // 名字存在每一段的 `threadTitle` 上,同目标线:改了名字要改到每一段,
+                // 但换来的是这条线的名字和内容永远在同一个文件里。
+                with: continued ?? ChatSession(threadId: thread.id, threadTitle: item.name),
+                harvestingPrevious: true
+            )
+            // 快照那条路是异步的,而这一条的 focus 我们此刻就拿在手上——不在这儿设的话,
+            // 空会话的头几百毫秒里 system 段还没有它。
+            focusMedication = item
+            suggestions = item.openingQuestions.map {
+                SuggestedQuestion(icon: item.status.icon, text: $0)
+            }
+            isLoadingConversation = false
             await refreshSummaries()
         }
     }
@@ -420,10 +478,15 @@ final class ChatViewModel {
         guard next.id != previous.id else { return }
         session = next
         didStartReplyInSession = false
+        // hook 记着的是上一条会话问到哪儿了,跟着会话一起丢。还在飞的那次生成由交付那一步
+        // 的会话号挡住。
+        hooks = nil
+        followUps = []
         if harvestingPrevious {
             harvestMemory(from: previous)
         }
         refreshMemory()
+        refreshMedications()
     }
 
     /// app 退到后台。多数会话是聊完就切走的,不在这儿抽,那段对话可能几天都轮不到抽一次。
@@ -443,6 +506,29 @@ final class ChatViewModel {
             // 回来得太晚:人已经换到别的会话,或者已经在这条里问出第一句了。
             guard session.id == targetId, !didStartReplyInSession else { return }
             memory = snapshot
+        }
+    }
+
+    /// 用药表的快照跟着会话换。
+    ///
+    /// **关掉开关只是不给模型看**,不清空盘上那份——列表页照常能看能改。这和 `memory` 的
+    /// 处理一致,区别只在开关是另一个(见 `EngineSettings.medicationsEnabled`)。
+    private func refreshMedications() {
+        guard EngineSettings.medicationsEnabled else {
+            medications = .empty
+            focusMedication = nil
+            return
+        }
+        let targetId = session.id
+        // 会话属于哪一条药,由 threadId 说了算——名字会被改,id 不会。
+        let focusId: UUID? = if case .medication(let id) = session.thread { id } else { nil }
+        Task {
+            let snapshot = await medicationStore.snapshot()
+            let focus = focusId.flatMap { id in snapshot.items.first { $0.id == id } }
+            // 回来得太晚:人已经换到别的会话,或者已经在这条里问出第一句了。
+            guard session.id == targetId, !didStartReplyInSession else { return }
+            medications = snapshot
+            focusMedication = focus
         }
     }
 
@@ -499,6 +585,9 @@ final class ChatViewModel {
         isReplying = true
         didStartReplyInSession = true
         retryNotice = nil
+        // 那几条接的是上一段回答,新的一段就要开始写了。留着比空着糟:它们和固定那几条
+        // 长得一模一样,而点下去问的是三句话之前的事。
+        followUps = []
 
         currentReplyTask = Task {
             // 一次「回复」可能跨好几轮。队列里的话赶在最后一次请求之后才到时,loop 已经没有
@@ -680,6 +769,8 @@ final class ChatViewModel {
 
     private func resolveEngine() throws -> any AgentEngine {
         if let engineFactory {
+            // 注入假引擎的那条路不挂 hook:hook 的行为由 `FollowUpChipTests` 直接对着
+            // `AgentLoop` 验,不必穿过这个状态机。
             return try engineFactory(session.topic)
         }
         let settings = try cloudSettings()
@@ -691,17 +782,47 @@ final class ChatViewModel {
             // 隐私会话照样**读**记忆:承诺的是不往盘上写,不是失忆。真要把已经知道的也关掉,
             // 用户恰恰是在想问点私密事的时候拿到一个不认识他的助手,那这个开关只会没人用。
             memory: memory,
+            // 用药表同理:隐私会话照样**读**——「他不能吃什么」这一条在想问点私密事的时候
+            // 尤其不能关掉。承诺的是不留痕迹,不是不管他死活。
+            medications: medications,
+            focusMedication: focusMedication,
             // 写的那一头堵死:`remember` 在这条会话里根本不挂出去。
             capabilityRegistry: .healthChat(
                 allowsMemoryWrites: !session.isPrivate,
                 // 他自己提起过去,才有「过去」可翻。没提就连工具都不挂——留着的话模型每轮都要
                 // 判一次要不要翻,而健康对话句句连着上一句,那个判断天然偏向"要"。
                 allowsRecall: SessionRecallTrigger.unlocksRecall(in: session.messages),
+                allowsMedicationWrites: !session.isPrivate,
                 memoryStore: memoryStore,
                 sessionStore: sessionStore,
+                medicationStore: medicationStore,
                 currentSessionId: session.id
-            )
+            ),
+            hooks: followUpHooks(settings)
         )
+    }
+
+    /// 追问 chip 的宿主。第一次要发请求时才建,之后这条会话一直用它。
+    private func followUpHooks(_ settings: (provider: String, model: String)) -> AgentHookDispatcher {
+        if let hooks { return hooks }
+
+        let suggester = FollowUpSuggester(providerId: settings.provider, model: settings.model)
+        // 交付时校验会话号。宿主跟着会话丢了,但上一条会话还在飞的那次生成仍然握着自己的
+        // hook——它回来得晚一点,就会把三条属于上一段对话的追问摆到这一条下面。
+        let sessionId = session.id
+        let hook = FollowUpSuggestionHook(
+            generate: { context in
+                // 失败即放弃。追问 chip 没生成出来,用户手上还有固定那几条和输入框。
+                (try? await suggester.suggestions(for: context)) ?? []
+            },
+            deliver: { [weak self] suggestions in
+                guard let self, session.id == sessionId, !isReplying else { return }
+                followUps = suggestions
+            }
+        )
+        let dispatcher = AgentHookDispatcher([hook])
+        hooks = dispatcher
+        return dispatcher
     }
 
     /// 云端调用要齐的三样:key、provider、model。缺一样就别发请求。
@@ -750,6 +871,9 @@ final class ChatViewModel {
         defer { isLoadingConversation = false }
         if EngineSettings.memoryEnabled {
             memory = await memoryStore.snapshot()
+        }
+        if EngineSettings.medicationsEnabled {
+            medications = await medicationStore.snapshot()
         }
         await refreshSummaries()
     }

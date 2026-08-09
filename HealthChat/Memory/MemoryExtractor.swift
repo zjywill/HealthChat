@@ -28,7 +28,9 @@ struct MemoryExtractor: Sendable {
     /// 一条记忆写成一段话就说明模型跑偏了。截断只会截出半句莫名其妙的话,不如整条丢掉。
     private static let maxItemCharacters = 120
 
-    private static let instructions = """
+    /// 不是 private:「用药不归抽取器管」这条边界有测试盯着。两条写入路径落到同一件事上,
+    /// 就是两份会各自被改的记录,而对不上的那次可能是禁忌那一条。
+    static let instructions = """
     你在为一个健康分析 app 维护「关于这位用户」的长期记忆。这份记忆会放进之后每一次对话的系统提示里，
     所以它必须是长期成立的，而且要少而准。
 
@@ -41,6 +43,8 @@ struct MemoryExtractor: Sendable {
     绝对不要记：
     - 任何具体的健康数值和某一天的数据（步数、睡眠时长、心率、体重……）。这些每次都会重新查，
       记下来第二天就是错的。
+    - 他在吃什么药或补剂、对什么过敏、试过什么没用。这些有专门的地方存（用户能在那儿直接编辑），
+      记进这里就是同一件事两份，改了一份另一份还是旧的。
     - 只在这次对话里成立的话题，或者一次性的提问。
     - 诊断结论。可以记「他说自己有房颤」，不能记「他有房颤，需要重点关注」。
 
@@ -79,7 +83,10 @@ struct MemoryExtractor: Sendable {
             ],
             maxOutputTokens: 800,
             // 记事实不是写文案,别让它发挥。
-            temperature: 0.2
+            temperature: 0.2,
+            // 从对话里挑出该记的几句是抽取,不是推理。这一轮用户看不见,省下的是他的钱和
+            // 电量——而留空是接受模型的默认,好几家的默认是思考。
+            thinking: .off
         ))
 
         return Self.parse(response.text, snapshot: snapshot)

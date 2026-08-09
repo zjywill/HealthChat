@@ -138,14 +138,26 @@ extension CapabilityRegistry {
     ///   还要在这一轮的上下文里吃一段过期数字。
     /// - Parameter currentSessionId: 跨会话召回要排掉正在进行的这条,否则模型会把自己刚说过的
     ///   话当成「上次」读回来。
+    /// - Parameter allowsMedicationWrites: 隐私会话传 false。读的那个照挂——用药表和记忆一样,
+    ///   承诺的是不往盘上写,不是失忆;而「他不能吃什么」这一条在隐私会话里尤其不能关掉。
     static func healthChat(
         allowsMemoryWrites: Bool = true,
         allowsRecall: Bool = false,
+        allowsMedicationWrites: Bool = true,
         memoryStore: MemoryStore = .shared,
         sessionStore: SessionStore = .shared,
+        medicationStore: MedicationStore = .shared,
         currentSessionId: UUID? = nil
     ) -> CapabilityRegistry {
         var registries = [HealthTools.registry]
+        // 用药表**不归在 `memoryEnabled` 下面**,它有自己的开关:关掉记忆的人不指望 Vana 还
+        // 记得他随口说过的话,但仍然会指望这张他一条条录进去的表还在。
+        if EngineSettings.medicationsEnabled {
+            registries.append(MedicationTools.registry(
+                store: medicationStore,
+                allowsWrites: allowsMedicationWrites
+            ))
+        }
         // 跨会话召回归在同一个开关下面。它和记忆是同一件事的两半——一个记「关于他的长期事实」,
         // 一个找回「那次聊出来的结论」;关掉记忆的人不会指望 Vana 还在引用他上个月说过的话。
         // 隐私会话照样能**读**:承诺的是不往盘上留痕迹,不是失忆,而且它自己从不落盘,

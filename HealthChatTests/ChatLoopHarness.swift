@@ -135,6 +135,8 @@ struct LoopEngine: AgentEngine {
     var summarizer: (any AgentSummarizer)?
     /// 退避时间设成 0:测的是「重试了没有」,不是「等够了没有」。次数和线上一致。
     var retryPolicy = RetryPolicy(baseDelay: .zero, maxDelay: .zero)
+    /// 和线上同一个位置挂:hook 是 loop 发的通知,不是引擎自己造的。
+    var hooks: AgentHookDispatcher?
 
     func reply(
         to history: [ChatMessage],
@@ -152,7 +154,8 @@ struct LoopEngine: AgentEngine {
                         policy: .healthChat,
                         retryPolicy: retryPolicy,
                         pendingInput: pendingInput,
-                        truncatedToolCallNotice: healthChatTruncatedToolCallNotice
+                        truncatedToolCallNotice: healthChatTruncatedToolCallNotice,
+                        hooks: hooks
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {
                         continuation.yield(event)

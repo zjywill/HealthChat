@@ -56,6 +56,9 @@ enum CheckInScheduler {
         for followUp in dueFollowUps {
             conclusions[followUp.id] = await FollowUpRunner.conclusion(for: followUp)
         }
+        let dueMedications = EngineSettings.medicationsEnabled
+            ? await MedicationStore.shared.dueFollowUps()
+            : []
         let goalNote = await morningGoalNote()
         let morningHour = hour(forKey: EngineSettings.morningCheckInHourKey, fallback: EngineSettings.defaultMorningHour)
         let eveningHour = hour(forKey: EngineSettings.eveningCheckInHourKey, fallback: EngineSettings.defaultEveningHour)
@@ -68,6 +71,7 @@ enum CheckInScheduler {
                 situation: situation,
                 dueFollowUps: dueFollowUps,
                 followUpConclusions: conclusions,
+                dueMedications: dueMedications,
                 goalNote: goalNote
             )
         )
@@ -108,11 +112,18 @@ enum CheckInScheduler {
     ///   有结论就把它当正文——「说好两周后看深睡」是一句提醒,「深睡回到 1 小时 20 分了,
     ///   比两周前多了 25 分钟」才是他当初定下这个约定想要的东西。
     /// - Parameter goalNote: 有进展可说的那条目标线,由 `GoalDigest` 每周替他问一次得出。
+    /// - Parameter dueMedications: 说好回头问「有没有用」的那几样。排在记忆的待跟进后面、
+    ///   目标进展前面——它和待跟进是同一种东西(一个带日子的约定),只是记在另一张表上;
+    ///   而目标进展一周才有一次,晚一天说没什么损失。
+    ///
+    ///   **这是用药表的闭环。** 没有这一下,`outcome` 那一列永远是空的:用户试了两周之后
+    ///   不会主动回来告诉 app 结果,而那一列正是这张表最值钱的东西。
     static func content(
         for period: DayPeriod,
         situation: HealthSituation,
         dueFollowUps: [MemoryItem] = [],
         followUpConclusions: [UUID: String] = [:],
+        dueMedications: [MedicationItem] = [],
         goalNote: GoalNote? = nil
     ) -> CheckIn {
         // 只放在早上那条里。晚上再说一遍同一件事,是两条通知讲一个内容。
@@ -126,6 +137,21 @@ enum CheckInScheduler {
                 question: followUp.text,
                 followUpId: followUp.id,
                 threadId: SessionThread.followUp(followUp.id).id
+            )
+        }
+
+        // 说好回头问「有没有用」的那一样。同样只放早上那条。
+        //
+        // 不替他先跑一轮(不像 `FollowUpRunner`):「褪黑素有没有用」这件事**数据里没有答案**,
+        // 只有他自己知道。替他查一遍睡眠再说「你的深睡多了 12 分钟」是在用一个碰巧的数字
+        // 替他回答一个主观问题——而这一列要的恰恰是他那句「没什么感觉」。
+        if period == .morning, let medication = dueMedications.first {
+            return CheckIn(
+                title: "说好回头问你一句",
+                body: "\(medication.name)试下来怎么样？",
+                topicId: nil,
+                question: "\(medication.name)试下来有感觉吗？",
+                threadId: SessionThread.medication(medication.id).id
             )
         }
 
