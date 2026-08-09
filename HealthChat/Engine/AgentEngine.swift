@@ -139,5 +139,17 @@ protocol AgentEngine: Sendable {
     var name: String { get }
 
     /// 发送一轮对话,流式返回事件。工具调用在引擎内部完成。
-    func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error>
+    ///
+    /// - Parameter pendingInput: 用户在这一轮跑的过程中补的话从哪儿取。给 nil 就是
+    ///   「这一轮只有开头那一句」——后台派生的那几轮(没有用户在场)走的正是这条。
+    func reply(
+        to history: [ChatMessage],
+        pendingInput: AgentPendingInputProvider?
+    ) -> AsyncThrowingStream<AgentEvent, Error>
+}
+
+extension AgentEngine {
+    func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
+        reply(to: history, pendingInput: nil)
+    }
 }

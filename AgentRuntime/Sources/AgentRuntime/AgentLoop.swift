@@ -32,6 +32,12 @@ public struct AgentLoop: Sendable {
     public var policy: ContextPolicy
     public var retryPolicy: RetryPolicy
     public var maxToolRounds: Int
+    /// 用户在这一轮跑的过程中补的话从哪儿来。给 nil 就是老行为:一轮里只有开头那一句。
+    ///
+    /// 只在**工具轮边界**问,不在流中途问。中途打断要撤掉已经吐出去的半句(用户正读着的
+    /// 那段字会当场消失),还得把刚花掉的那次生成整个扔了;而边界处什么都不用撤,模型
+    /// 下一句就能改道。真要立刻停下,用户手上一直有停止按钮。
+    public var pendingInput: AgentPendingInputProvider?
     /// 模型在吐 tool_use 的中途被输出上限截断时,顶替执行结果的那句话。
     ///
     /// 这句是给模型看的,所以要写清楚「没执行」和「该怎么办」——它读完得知道重发一次,
@@ -48,6 +54,7 @@ public struct AgentLoop: Sendable {
         policy: ContextPolicy = .default,
         retryPolicy: RetryPolicy = .default,
         maxToolRounds: Int = 6,
+        pendingInput: AgentPendingInputProvider? = nil,
         truncatedToolCallNotice: String = """
             This tool call was not executed: the response hit the output token limit, so its \
             arguments may be incomplete. Re-issue it with complete arguments.
@@ -62,6 +69,7 @@ public struct AgentLoop: Sendable {
         self.policy = policy
         self.retryPolicy = retryPolicy
         self.maxToolRounds = maxToolRounds
+        self.pendingInput = pendingInput
         self.truncatedToolCallNotice = truncatedToolCallNotice
     }
 
@@ -139,6 +147,20 @@ private extension AgentLoop {
 
         while round < maxToolRounds {
             try Task.checkCancellation()
+
+            // 用户在上一次请求跑的时候补的话,在这儿接进来。
+            //
+            // 排在总结前面:这几句也要占预算,压缩得按包含它们的那份 prompt 来算。接在
+            // `runtimeTranscript` 尾部而不是 `history` 里,因为它到得比这一轮已经发生的
+            // 工具调用还晚——放进 history 会让模型看成「他先追问、我才去查」,而实际顺序
+            // 正相反。
+            if let pendingInput {
+                let pending = await pendingInput()
+                if !pending.isEmpty {
+                    runtimeTranscript.messages.append(contentsOf: pending.map { .user($0.text) })
+                    continuation.yield(.pendingInputAccepted(pending))
+                }
+            }
 
             // 过了水位线就叫模型把远处的对话总结掉,再去发这一轮。
             // 放在发请求之前,而不是撞墙之后——撞墙时已经没有从容处理的余地了。

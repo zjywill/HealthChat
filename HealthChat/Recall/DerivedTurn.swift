@@ -48,6 +48,10 @@ enum DerivedTurn {
             // 读记忆照旧——不认识用户的话,这一轮回答的质量还不如不跑。写的那头堵死。
             capabilityRegistry: .healthChat(
                 allowsMemoryWrites: false,
+                // 和用户那条走同一把尺子:问的是「这段时间有没有进展」(`GoalDigest.question`)
+                // 才挂召回,问「昨晚睡得怎么样」不挂。这一轮没人在等,但多翻一次同样是多花的钱,
+                // 而且翻回来的旧数字一样会污染那条通知里的结论。
+                allowsRecall: SessionRecallTrigger.mentionsPast(question),
                 memoryStore: memoryStore,
                 sessionStore: sessionStore,
                 currentSessionId: session.id

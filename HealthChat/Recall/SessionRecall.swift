@@ -81,6 +81,11 @@ struct SessionRecallIndex: Equatable, Sendable {
     }
 
     /// 按相关度找几条。查询词为空就给最近的几条——「上次我们聊到哪了」是个合法的问法。
+    ///
+    /// 门槛是**相对**的:只留和最相关那条差不太多的(`relevanceFloor`)。健康对话里「睡眠」
+    /// 「累」这种词几乎每条会话都沾一点,`score > 0` 等于任何查询都能捞回一把弱匹配,而模型
+    /// 分不出哪条才是用户说的那次,只好挨条 `read_session` 读过去——一次试探性检索就这么
+    /// 变成了三四轮。宁可返回「没有找到」:那是一个有效答案,模型据此就该去查数据。
     func search(query: String, since: Date? = nil, limit: Int = 6) -> [SessionDigest] {
         let candidates = since.map { cutoff in digests.filter { $0.updatedAt >= cutoff } } ?? digests
         let terms = SessionRecall.terms(in: query)
@@ -91,12 +96,23 @@ struct SessionRecallIndex: Equatable, Sendable {
             let score = terms.count { digest.searchText.contains($0) }
             if score > 0 { scored.append((digest, score)) }
         }
+        guard let best = scored.map(\.score).max() else { return [] }
+        // 整数比较,不引浮点:`score / best >= relevanceFloor` 两边同乘。
+        let (numerator, denominator) = Self.relevanceFloor
+        scored.removeAll { $0.score * denominator < best * numerator }
         // 同分按更近的在前:同样相关的两次对话,新的那次才是他说的「上次」。
         scored.sort { lhs, rhs in
             lhs.score == rhs.score ? lhs.digest.updatedAt > rhs.digest.updatedAt : lhs.score > rhs.score
         }
         return scored.prefix(limit).map(\.digest)
     }
+
+    /// 一条会话要拿到最高分的多少才算数。
+    ///
+    /// 三分之二是「差一个词还行,差一半不行」:「睡眠 加班 熬夜」里命中两个的留下,只命中
+    /// 「睡眠」的不留。查询只有一两个词时这个门槛自动失效(最高分就是 1,谁都够得着),那也
+    /// 正是该失效的时候——用户就给了这么点信息,再挑就是瞎挑。
+    private static let relevanceFloor = (numerator: 2, denominator: 3)
 }
 
 private extension SessionDigest {

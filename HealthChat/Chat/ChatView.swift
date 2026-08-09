@@ -52,13 +52,15 @@ struct ChatView: View {
                         } else {
                             ForEach(model.messages) { message in
                                 MessageBubble(
+                                    // 正在写的那条不一定是最后一条了:用户能在回复期间接着
+                                    // 发消息,那几条排在它后面。
                                     message: message,
-                                    isStreaming: model.isReplying
-                                        && message.id == model.messages.last?.id,
+                                    isStreaming: message.id == model.replyingMessageID,
                                     canRetry: model.canRetry(message.id),
                                     canBranch: !model.isReplying,
                                     onRetry: { model.retry(message.id) },
-                                    onBranch: { model.branch(from: message.id) }
+                                    onBranch: { model.branch(from: message.id) },
+                                    onWithdraw: { model.withdrawQueued(message.id) }
                                 )
                                     // 手写判等,见 `MessageBubble.==`。气泡带着闭包,
                                     // SwiftUI 自己判不了,于是流式期间整列气泡每帧全部
@@ -179,22 +181,34 @@ struct ChatView: View {
         var isReplying = false
         var hasRetryNotice = false
         var textLength = 0
-        var reasoningLength = 0
+        /// 思考**有没有**,不是有多长。
+        ///
+        /// 那颗 chip 是固定尺寸的,思考从 100 字长到 3000 字它一个像素都不动——按长度算的话,
+        /// 思考模型每吐一个 token 都会换来一次 `scrollTo`,而 `scrollTo` 要把整列非 Lazy 的
+        /// 气泡重新布一遍。真正改高度的只有「从无到有」那一下:chip 冒出来。
+        var hasReasoning = false
         var toolCallCount = 0
         /// 已经出结果的工具数。chip 从转圈换成箭头,那一下也在改高度。
         var settledToolCallCount = 0
+        /// 排队中的条数。它变的时候不只是多一个气泡:被取走的那条底下那行「Vana 还没看到」
+        /// 会消失,整段跟着矮一截。
+        var queuedCount = 0
     }
 
     private var scrollKey: ScrollKey {
-        let last = model.messages.last
+        // 正在长高的是那条回复,不一定是最后一条——用户插话之后它后面还跟着几个气泡。
+        let replying = model.replyingMessageID.flatMap { id in
+            model.messages.last { $0.id == id }
+        } ?? model.messages.last
         return ScrollKey(
             messageCount: model.messages.count,
             isReplying: model.isReplying,
             hasRetryNotice: model.retryNotice != nil,
-            textLength: last?.text.count ?? 0,
-            reasoningLength: last?.reasoning.count ?? 0,
-            toolCallCount: last?.toolCalls.count ?? 0,
-            settledToolCallCount: last?.toolCalls.count { $0.output != nil } ?? 0
+            textLength: replying?.text.count ?? 0,
+            hasReasoning: !(replying?.reasoning.isEmpty ?? true),
+            toolCallCount: replying?.toolCalls.count ?? 0,
+            settledToolCallCount: replying?.toolCalls.count { $0.output != nil } ?? 0,
+            queuedCount: model.messages.count { $0.isQueued }
         )
     }
 
@@ -327,13 +341,11 @@ private struct ReasoningPanel: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                Text(text)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(20)
+                thought.padding(20)
             }
+            // 内容长出来时贴着底走:开着面板就是想看它**现在**在想什么,而不是盯着开头那段
+            // 不动,新的字全长在屏幕外面。
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .background(Color(.systemGroupedBackground))
             .navigationTitle(isThinking ? "正在思考" : "思考过程")
             .navigationBarTitleDisplayMode(.inline)
@@ -346,6 +358,24 @@ private struct ReasoningPanel: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
+
+    /// 还在想的时候**不挂** `.textSelection`(默认就是不可选)。
+    ///
+    /// 可选文本走的是另一条明显更重的排版路径,而这段每秒要重排十几次;何况正在动的文字
+    /// 本来也选不住。想完了再挂上——那时候它一个字都不会再变了。
+    @ViewBuilder
+    private var thought: some View {
+        let body = Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+        if isThinking {
+            body
+        } else {
+            body.textSelection(.enabled)
+        }
+    }
 }
 
 private struct MessageBubble: View, Equatable {
@@ -356,6 +386,7 @@ private struct MessageBubble: View, Equatable {
     let canBranch: Bool
     let onRetry: () -> Void
     let onBranch: () -> Void
+    let onWithdraw: () -> Void
 
     /// 只比画出来会不一样的东西。
     ///
@@ -385,24 +416,47 @@ private struct MessageBubble: View, Equatable {
         }
     }
 
+    /// 用户的气泡。排队中的那几条淡一档,底下补一句说清它到底怎么了。
+    ///
+    /// 「Vana 还没看到」写得这么直白是有原因的:排队和已送达在屏幕上是同一个气泡,而猜错的
+    /// 那个方向恰好是最糟的——以为说过了,其实没说。写「发送中」会让人以为只是慢一点,
+    /// 而它可能一直排到这一轮结束。
     private var userMessage: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            Spacer(minLength: 52)
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(alignment: .bottom, spacing: 0) {
+                Spacer(minLength: 52)
 
-            Text(displayText)
-                .foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-                .accessibilityLabel(message.text)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    Color.accentColor,
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
-                .layoutPriority(1)
+                Text(displayText)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityLabel(message.text)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        message.isQueued ? Color.accentColor.opacity(0.45) : Color.accentColor,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .layoutPriority(1)
+            }
+
+            if message.isQueued {
+                Label("Vana 还没看到", systemImage: "clock")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("这条还在排队，Vana 还没看到")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .contextMenu {
+            if message.isQueued {
+                // 只有排队中的能收回。已经发出去的那句模型已经看过了,从列表里抹掉它只会让
+                // 屏幕上的对话和模型记得的对话对不上。
+                Button(role: .destructive, action: onWithdraw) {
+                    Label("收回", systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
     }
 
     private var assistantMessage: some View {
@@ -421,7 +475,9 @@ private struct MessageBubble: View, Equatable {
 
             if isWaiting {
                 TypingIndicator()
-            } else if !message.text.isEmpty || !isStreaming {
+            // 一个字都没说完就被插话劈开的前半段,留着思考和工具 chip 就够了——那儿再挂一个
+            // "…" 会让人以为模型说了句什么没看清。真的整条空白才用它顶位。
+            } else if !message.text.isEmpty || (!isStreaming && !message.hasVisibleTurnContent) {
                 Text(displayText)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)

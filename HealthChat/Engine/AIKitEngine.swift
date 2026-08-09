@@ -112,7 +112,10 @@ struct AIKitEngine: AgentEngine {
         self.capabilityRegistry = capabilityRegistry
     }
 
-    func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
+    func reply(
+        to history: [ChatMessage],
+        pendingInput: AgentPendingInputProvider? = nil
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -125,13 +128,14 @@ struct AIKitEngine: AgentEngine {
                     let loop = AgentLoop(
                         client: client,
                         capabilities: capabilityRegistry,
-                        systemInstruction: systemInstruction(),
+                        systemInstruction: systemInstruction(acceptsInterjections: pendingInput != nil),
                         compactor: .healthChat,
                         // 总结走同一个模型。理论上换个便宜的更划算,但那要用户再配一份 key
                         // 和模型;等真有人抱怨这笔钱再说。
                         summarizer: ModelSummarizer.healthChat(client: client),
                         policy: .healthChat,
                         maxToolRounds: Self.maxToolRounds,
+                        pendingInput: pendingInput,
                         truncatedToolCallNotice: healthChatTruncatedToolCallNotice
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {
@@ -156,8 +160,15 @@ struct AIKitEngine: AgentEngine {
     }
 
     /// 不是 private:记忆有没有真的进到 system 段,得有测试盯着。
-    func systemInstruction() -> String {
+    ///
+    /// - Parameter acceptsInterjections: 这一轮有可能被用户中途插话(前台对话都是)。
+    ///   后台派生的那几轮没有用户在场,那段话对它们只是白占 token。
+    func systemInstruction(acceptsInterjections: Bool = false) -> String {
         var instructions = HealthAssistantInstructions.text()
+        // 召回工具是按「用户提没提过去」逐条会话挂的(`SessionRecallTrigger`),所以下面每一处
+        // 提到 search_sessions 的话都得先问一句它在不在。对着一个没挂出去的工具发指令,模型
+        // 只会调一次、失败一次,再自己想办法圆场。
+        let canRecall = capabilityRegistry.definition(named: SessionRecallTools.searchToolName) != nil
         if let topic {
             instructions += "\n\n本次对话的话题：\(topic.name)。\(topic.focus)"
         }
@@ -165,19 +176,25 @@ struct AIKitEngine: AgentEngine {
         // 当成他今天临时想问的一件事,而不是已经聊了三个星期的那件事。
         if let goal, !goal.isEmpty {
             instructions += "\n\n这条对话属于他一件长期在做的事：\(goal)。"
-                + "这件事已经聊过一段时间了，眼前这几句可能只是最近的一段——"
-                + "需要知道之前聊到哪儿，用 search_sessions 找同一件事的更早几段再往下说。"
-                + "回答时把数据和这件事挂上钩，不要每次都从头介绍一遍他的情况。"
+                + "这件事已经聊过一段时间了，眼前这几句可能只是最近的一段。"
+            if canRecall {
+                instructions += "他问起之前的进展、或者你要拿现在和刚开始时比，才用 search_sessions 往前翻；"
+                    + "平常照常查数据回答就行。"
+            }
+            instructions += "回答时把数据和这件事挂上钩，不要每次都从头介绍一遍他的情况。"
         }
         // 记忆排在人格前面:先知道对面是谁,再决定用什么语气说。
         if let block = memory.instructionBlock {
             instructions += "\n\n\(block)"
         }
         // 召回排在记忆后面:记忆块已经把「他是谁」摆出来了,这一段说的是「不够时去哪找」。
-        if capabilityRegistry.definition(named: SessionRecallTools.searchToolName) != nil {
-            instructions += "\n\n用户提到「上次」「之前说过」，或者这个问题明显接着一段历史"
-                + "（正在进行的计划、之前解释过的异常、说好要回头看的事）时，"
-                + "先用 search_sessions 找到那次对话，再用 read_session 读它，然后接着他上次的说法往下讲。"
+        // 措辞要窄:健康对话句句都连着上一句,写成「问题接着一段历史时就翻」等于每轮都翻一次,
+        // 而用户正等着回复。默认是不翻,只有他自己提起过去才翻。
+        if canRecall {
+            instructions += "\n\n默认不要去翻过往对话。只有用户自己提起过去"
+                + "（「上次」「之前说过」「我们聊过」「你还记得」，或者问一件他以前交代过、这次没再说的事）时，"
+                + "才用 search_sessions 找到那次对话，再用 read_session 读它，然后接着他上次的说法往下讲。"
+                + "他问的是眼前的数据或趋势就直接查健康工具，别先翻一遍历史——那里只有过期的数字。"
                 + "读回来的都是当时说过的话，里面的数值一律当作已经过期——要用就重新查一遍健康工具。"
                 + "没找到就直接说没聊过，不要编一段「我们上次说过」出来。"
         }
@@ -185,6 +202,13 @@ struct AIKitEngine: AgentEngine {
             instructions += "\n\n用户明确要求记住某件事，或者说出一个长期成立的个人情况"
                 + "（作息、工作安排、伤病限制、目标、他希望你怎么说话）时，调用 remember 记下来，"
                 + "并在回复里说一句已经记住了。具体数值不要记，那些每次都会重新查。"
+        }
+        // 插话会以一条普通 user 消息的样子出现在工具结果之后。不说这一句,模型多半会当成
+        // 一个全新的问题,从头把刚说过的再讲一遍——而用户补那一句的意思恰恰是「别那样」。
+        if acceptsInterjections {
+            instructions += "\n\n用户可能在你还在查数据、还没说完的时候补一句话，它会作为一条新的用户消息"
+                + "出现在工具结果后面。看到就顺着它调整这一轮要做的事，不用重新开场，也不用把前面说过的再讲一遍。"
+                + "它和原来的问题冲突时以后来这句为准。"
         }
         let persona = EngineSettings.persona.instruction
         if !persona.isEmpty {

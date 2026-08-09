@@ -23,6 +23,22 @@ enum BackgroundDigest {
               DerivedTurn.cloudSettings() != nil
         else { return false }
 
+        // **在飞守卫。** 下面那几道闸("今天跑过没有"、"这周报过没有")读的是**盘上那条会话**,
+        // 而它要等这一轮跑完(几十秒)才存下来。`scenePhase` 一次开合就触发两次
+        // (`.active` 和 `.background`),第二次进来时第一轮还在飞,闸门读到的还是"没跑过"——
+        // 于是两轮并行,两份钱,最后还互相顶掉对方那条会话。
+        let ran = await BackgroundModelWork.shared.run {
+            await runOnce(now: now, memoryStore: memoryStore, sessionStore: sessionStore)
+        }
+        // 没抢到位子 → nil → 这次什么都没跑,也就没有新结论要去重排通知。
+        return ran ?? false
+    }
+
+    private static func runOnce(
+        now: Date,
+        memoryStore: MemoryStore,
+        sessionStore: SessionStore
+    ) async -> Bool {
         if let followUp = await FollowUpRunner.pending(
             now: now,
             memoryStore: memoryStore,

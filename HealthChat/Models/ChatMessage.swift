@@ -67,6 +67,12 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
     var toolCalls: [ToolCallRecord]
     var storedTurn: StoredAgentTurn
     var errorDescription: String?
+    /// 这条是用户在上一条回复还在跑的时候补发的,还没进过任何一次请求。
+    ///
+    /// 打出去的字必须马上看得见,所以气泡立刻就在;但模型还没看见它。两种状态一定要分得开
+    /// ——猜错的那个方向恰好是最糟的(以为说了,其实没说)。什么时候翻面由
+    /// `AgentPendingInputProvider` 说了算:被取走的那一刻就是它进上下文的那一刻。
+    var isQueued: Bool
     /// 这条消息是什么时候产生的。
     ///
     /// 可空:这个字段是后加的,之前存下来的会话里没有——与其编一个时间,不如在菜单里
@@ -82,6 +88,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         case toolCalls
         case storedTurn
         case errorDescription
+        case isQueued
         case createdAt
 
         // 旧会话格式:transcript 曾经直接落的是 AIKit 的 Message。
@@ -101,6 +108,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         toolCalls: [ToolCallRecord] = [],
         storedTurn: StoredAgentTurn = .init(),
         errorDescription: String? = nil,
+        isQueued: Bool = false,
         createdAt: Date? = Date()
     ) {
         self.id = id
@@ -111,6 +119,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         self.toolCalls = toolCalls
         self.storedTurn = storedTurn
         self.errorDescription = errorDescription
+        self.isQueued = isQueued
         self.createdAt = createdAt
     }
 
@@ -123,6 +132,9 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         toolCalls = dto.toolCalls.map(ToolCallRecord.init)
         storedTurn = dto.storedTurn
         errorDescription = dto.errorDescription
+        // 排队是 app 这一侧的事:runtime 那边只认「取走了没有」,取走之前它压根不知道
+        // 有这条消息。从 DTO 转回来的一律是已经发出去的。
+        isQueued = false
         createdAt = dto.createdAt
     }
 
@@ -136,6 +148,9 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         reasoning = try container.decodeIfPresent(String.self, forKey: .reasoning) ?? ""
         toolCalls = try container.decodeIfPresent([ToolCallRecord].self, forKey: .toolCalls) ?? []
         errorDescription = try container.decodeIfPresent(String.self, forKey: .errorDescription)
+        // 停止回复时队列里剩下的那几条会**带着排队状态存下来**——用户打的字不能替他扔掉。
+        // 重开这条会话,它们还排在那儿,按一下发送就出去。
+        isQueued = try container.decodeIfPresent(Bool.self, forKey: .isQueued) ?? false
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
 
         // 要问 `contains`,不能用 `try? decodeIfPresent`:键不存在时后者是"成功地解出了 nil",
@@ -174,6 +189,9 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         try container.encode(toolCalls, forKey: .toolCalls)
         try container.encode(normalizedStoredTurn, forKey: .storedTurn)
         try container.encodeIfPresent(errorDescription, forKey: .errorDescription)
+        if isQueued {
+            try container.encode(isQueued, forKey: .isQueued)
+        }
         try container.encodeIfPresent(createdAt, forKey: .createdAt)
     }
 }
@@ -200,6 +218,14 @@ extension ChatMessage {
         return compaction
     }
 
+    /// 这条气泡上有没有东西给用户看。
+    ///
+    /// 用来判断一条被插话劈开的回复,前半段值不值得留下来——只吐了思考也算,那颗 chip
+    /// 是点得开的。
+    var hasVisibleTurnContent: Bool {
+        !text.isEmpty || !reasoning.isEmpty || !toolCalls.isEmpty
+    }
+
     /// 这一轮是被单轮查询次数上限截住的。
     ///
     /// 不是失败:已经查到的东西都在,只是模型还想接着查。用户需要知道这件事——不然它
@@ -221,6 +247,7 @@ extension ChatMessage {
             && reasoning == other.reasoning
             && errorDescription == other.errorDescription
             && createdAt == other.createdAt
+            && isQueued == other.isQueued
             && stoppedAtToolRoundLimit == other.stoppedAtToolRoundLimit
             && toolCalls.count == other.toolCalls.count
             && zip(toolCalls, other.toolCalls).allSatisfy { $0.rendersIdentically(to: $1) }
@@ -307,6 +334,10 @@ extension ChatMessage: AgentTurnSink {
     mutating func rollBackReasoning(_ characterCount: Int) {
         guard characterCount > 0 else { return }
         reasoning.removeLast(min(characterCount, reasoning.count))
+    }
+
+    mutating func acceptPendingInput(_ inputs: [AgentPendingInput]) {
+        storedTurn.inlinedMessageIDs.append(contentsOf: inputs.map(\.id))
     }
 
     mutating func markStopped() {

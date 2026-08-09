@@ -369,6 +369,15 @@ private extension ConversationHistoryPlanner {
     func absorbedMessageIDs(in history: [AgentChatMessageDTO]) -> Set<UUID> {
         var absorbed: Set<UUID> = []
         for message in history {
+            // 在工具轮边界并进那一轮的插话。列表里还留着一条(界面要显示),但 transcript
+            // 中间已经有了。
+            //
+            // 要先确认 transcript 真的存下来了:那一轮被停掉或者失败时它是空的,回放走的是
+            // `reconstructedReplayMessages`——那份是从 app 侧的工具记录重建的,里面没有插话。
+            // 这时候还跳过,用户补的那句就凭空消失了。
+            if !message.storedTurn.exactTranscript.messages.isEmpty {
+                absorbed.formUnion(message.storedTurn.inlinedMessageIDs)
+            }
             guard let artifact = message.storedTurn.compaction,
                   artifact.sourceMessageIDs.count > 1 else {
                 continue

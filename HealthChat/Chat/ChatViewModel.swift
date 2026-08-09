@@ -10,6 +10,11 @@ final class ChatViewModel {
     var goals: [GoalSummary] = []
     var input = ""
     var isReplying = false
+    /// 正在写的那条回复。事件的收件人,也是气泡判断「我是不是正在流」的依据。
+    ///
+    /// 不能再用 `messages.last`:用户可以在回复期间接着发消息,那几条排在正在写的这条
+    /// **后面**——照旧取最后一条的话,模型吐出来的字会一个个落进用户刚打的那句话里。
+    private(set) var replyingMessageID: UUID?
     var isLoadingConversation = true
     var engineGuidance: String?
     /// 正在退避重试时给用户看的一句话。
@@ -21,6 +26,18 @@ final class ChatViewModel {
     var suggestions = SuggestedQuestions.defaults()
 
     private var currentReplyTask: Task<Void, Never>?
+    /// 思考的增量攒一小会儿再落盘。
+    ///
+    /// 思考模型一秒能吐几十个 delta,而每一次落进 `session.messages` 都是一次
+    /// `@Observable` 失效:整列气泡重新判等,思考面板开着的话那一整段文字还要重新排一遍。
+    /// 攒到 `reasoningFlushInterval` 再一次性落,观感是一样的(一秒十二次已经比眼睛快),
+    /// 重排的次数少一个数量级。
+    ///
+    /// 正文不走这条:它一进来就要撤掉重试提示,而且 provider 给正文的 chunk 本来就不碎——
+    /// 碎的是思考。
+    private var pendingReasoning = ""
+    private var reasoningFlushTask: Task<Void, Never>?
+    private static let reasoningFlushInterval = Duration.milliseconds(80)
     private var hasRequestedSuggestions = false
     /// 没选话题时该显示的那几条,取消话题选择时用它复位。
     private var situationSuggestions = SuggestedQuestions.defaults()
@@ -45,6 +62,12 @@ final class ChatViewModel {
     private let sessionStore: SessionStore
 
     var messages: [ChatMessage] { session.messages }
+
+    /// 还有话排着没进上下文。
+    ///
+    /// 回复期间由 loop 在下一个工具轮边界取走;停止回复之后队列**不会**自动清空——用户
+    /// 打的字不该被替他扔掉,发送按钮会一直亮着等他决定。
+    var hasQueuedInput: Bool { session.messages.contains { $0.isQueued } }
 
     /// - Parameters:
     ///   - loadsPersistedSession: 关掉就不读盘、不写盘,`isLoadingConversation` 直接是
@@ -73,12 +96,35 @@ final class ChatViewModel {
         }
     }
 
+    /// 发一句话。**正在回复时照发不误**。
+    ///
+    /// 等上一句答完才能开口,是这个 app 里最不像跟人说话的一处:模型跑六轮工具要十几秒,
+    /// 而人在这十几秒里想起来的那句「顺便也看看心率」根本没地方说。所以这里不再拦——
+    /// 打出去的字立刻变成气泡,由 loop 在下一个工具轮边界接进上下文。
+    ///
+    /// 空文本也是有意义的一次调用:队列里还剩着东西时(停止回复之后),它就是「把排着的
+    /// 那几句发出去」。
     func send(_ suggestedQuestion: String? = nil) {
+        guard !isLoadingConversation else { return }
         let text = (suggestedQuestion ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isReplying, !isLoadingConversation else { return }
-        input = ""
-        session.messages.append(ChatMessage(role: .user, text: text))
+        if !text.isEmpty {
+            input = ""
+            session.messages.append(ChatMessage(role: .user, text: text, isQueued: true))
+        }
+        // 正在回复:这一句排进队列就完了,不再开一轮。取走它的是 `takeQueuedInput`。
+        guard !isReplying, hasQueuedInput else { return }
         startReply()
+    }
+
+    /// 收回一条还没进上下文的消息,文字放回输入框。
+    ///
+    /// 只有排队中的能收回:已经发出去的那一句模型已经看过了,从列表里抹掉它只会让屏幕上
+    /// 的对话和模型记得的对话对不上。
+    func withdrawQueued(_ messageID: UUID) {
+        guard let index = index(of: messageID), session.messages[index].isQueued else { return }
+        let text = session.messages[index].text
+        session.messages.remove(at: index)
+        input = input.isEmpty ? text : "\(text)\n\(input)"
     }
 
     func stopReply() {
@@ -410,22 +456,34 @@ final class ChatViewModel {
         let messageCount = harvested.messages.count
         harvestTail = Task {
             await previous?.value
-            // 用此刻盘上的记忆,不是这条会话开始时那份快照——中间可能已经抽过别的会话了,
-            // 拿旧的会把同一件事再记一遍。
-            let snapshot = await memoryStore.snapshot()
-            let extractor = MemoryExtractor(
-                providerId: settings.provider,
-                model: settings.model,
-                snapshot: snapshot
-            )
-            guard let operations = try? await extractor.operations(from: harvested) else { return }
-            _ = try? await memoryStore.apply(operations, sessionId: harvested.id)
-            try? await sessionStore.markMemoryHarvested(
-                id: harvested.id,
-                messageCount: messageCount
-            )
-            refreshMemory()
+            // 和后台派生的那一轮抢同一个位子。抢不到就这次不抽——`memoryHarvestedMessageCount`
+            // 没往前走,下次切会话/退后台照样会抽到这一段,一个字都不会漏。
+            await BackgroundModelWork.shared.run {
+                await harvest(harvested, messageCount: messageCount, settings: settings)
+            }
         }
+    }
+
+    private func harvest(
+        _ harvested: ChatSession,
+        messageCount: Int,
+        settings: (provider: String, model: String)
+    ) async {
+        // 用此刻盘上的记忆,不是这条会话开始时那份快照——中间可能已经抽过别的会话了,
+        // 拿旧的会把同一件事再记一遍。
+        let snapshot = await memoryStore.snapshot()
+        let extractor = MemoryExtractor(
+            providerId: settings.provider,
+            model: settings.model,
+            snapshot: snapshot
+        )
+        guard let operations = try? await extractor.operations(from: harvested) else { return }
+        _ = try? await memoryStore.apply(operations, sessionId: harvested.id)
+        try? await sessionStore.markMemoryHarvested(
+            id: harvested.id,
+            messageCount: messageCount
+        )
+        refreshMemory()
     }
 
     func refreshEngineAvailability() {
@@ -438,42 +496,125 @@ final class ChatViewModel {
     // MARK: - 回复
 
     private func startReply() {
-        session.messages.append(ChatMessage(role: .assistant, text: ""))
         isReplying = true
         didStartReplyInSession = true
         retryNotice = nil
 
         currentReplyTask = Task {
-            do {
-                let engine = try resolveEngine()
-                for try await event in engine.reply(to: session.messages) {
-                    apply(event)
-                }
-                // AsyncThrowingStream 的消费者被取消时,`for try await` 是**正常**结束的,
-                // 不抛 CancellationError。只靠 catch 抓不到"用户按了停止",那条回复会既没
-                // 文本也没状态地存下去。
-                if Task.isCancelled {
-                    markStopped()
-                }
-            } catch is CancellationError {
-                markStopped()
-            } catch {
-                if Task.isCancelled {
-                    markStopped()
-                } else {
-                    markFailed(error)
-                }
+            // 一次「回复」可能跨好几轮。队列里的话赶在最后一次请求之后才到时,loop 已经没有
+            // 边界可以接它了——那几句在这儿接着跑一轮,不用用户再按一次发送。停止之后不续跑:
+            // 他按停止的意思就是别再发了,队列原样留着等他自己决定。
+            while !Task.isCancelled {
+                dequeueAll()
+                beginAssistantMessage()
+                await runTurn()
+                guard !Task.isCancelled, hasQueuedInput else { break }
             }
             isReplying = false
+            replyingMessageID = nil
             retryNotice = nil
             currentReplyTask = nil
             await saveSession()
         }
     }
 
-    /// 事件落到最后一条(正在写的那条回复)上。语义在 `AgentTurnSink.apply` 里,
-    /// 这里只负责找到收件人——每个 delta 都把整条会话翻一遍 DTO 太贵了。
+    /// 在列表末尾起一条空回复,并把它定为接下来所有事件的收件人。
+    @discardableResult
+    private func beginAssistantMessage(inlining inlined: [UUID] = []) -> UUID {
+        let message = ChatMessage(
+            role: .assistant,
+            text: "",
+            storedTurn: .init(inlinedMessageIDs: inlined)
+        )
+        session.messages.append(message)
+        replyingMessageID = message.id
+        return message.id
+    }
+
+    /// 插话被接进上下文的那一刻:把这一轮的回复**从这里劈开**,后半段另起一条,排在插话下面。
+    ///
+    /// 不劈开的话,答这句话的正是它上面那条还在写的回复——用户看到的是「我问了,它没理我」,
+    /// 而实际上模型早就答了。这是这套东西最容易被误读成坏掉的一处:消息列表是线性的,
+    /// 而一条跨过插话的回复在时间上是压着它的,没有哪个位置是对的。劈开之后每一段都落在
+    /// 它该在的位置上。
+    ///
+    /// 前半段一个字没说、也没查东西时直接扔掉:那只是一个空气泡。
+    private func splitReplyAroundInterjection() {
+        guard let previousID = replyingMessageID, let index = replyingIndex() else { return }
+
+        var inlined: [UUID] = []
+        if session.messages[index].hasVisibleTurnContent {
+            // 前半段和后半段在 runtime 眼里是**同一轮**:整轮的 transcript 到最后会一次性
+            // 落在后半段上,里面已经含了前半段说过的话。回放时要跳过前半段那条气泡。
+            inlined.append(previousID)
+        } else {
+            session.messages.remove(at: index)
+        }
+        beginAssistantMessage(inlining: inlined)
+    }
+
+    /// 排队中的那几条这就要作为普通历史发出去了,不再是「还没进上下文」。
+    private func dequeueAll() {
+        for index in session.messages.indices where session.messages[index].isQueued {
+            session.messages[index].isQueued = false
+        }
+    }
+
+    private func runTurn() async {
+        do {
+            let engine = try resolveEngine()
+            let stream = engine.reply(to: session.messages, pendingInput: pendingInputProvider())
+            for try await event in stream {
+                apply(event)
+            }
+            // AsyncThrowingStream 的消费者被取消时,`for try await` 是**正常**结束的,
+            // 不抛 CancellationError。只靠 catch 抓不到"用户按了停止",那条回复会既没
+            // 文本也没状态地存下去。
+            if Task.isCancelled {
+                markStopped()
+            }
+        } catch is CancellationError {
+            markStopped()
+        } catch {
+            if Task.isCancelled {
+                markStopped()
+            } else {
+                markFailed(error)
+            }
+        }
+    }
+
+    /// loop 每个工具轮边界来问一次。**返回即消费**——拿到的这几句它马上就会发出去,
+    /// 所以队列标记必须在同一步清掉,否则下一个边界会把同一句再发一遍。
+    private func pendingInputProvider() -> AgentPendingInputProvider {
+        { [weak self] in
+            await MainActor.run { self?.takeQueuedInput() ?? [] }
+        }
+    }
+
+    private func takeQueuedInput() -> [AgentPendingInput] {
+        var taken: [AgentPendingInput] = []
+        for index in session.messages.indices where session.messages[index].isQueued {
+            session.messages[index].isQueued = false
+            taken.append(AgentPendingInput(
+                id: session.messages[index].id,
+                text: session.messages[index].text
+            ))
+        }
+        return taken
+    }
+
+    /// 事件落到正在写的那条回复上。语义在 `AgentTurnSink.apply` 里,这里只负责找到收件人
+    /// ——每个 delta 都把整条会话翻一遍 DTO 太贵了。
     private func apply(_ event: AgentEvent) {
+        if case .reasoningDelta(let delta) = event {
+            bufferReasoning(delta)
+            return
+        }
+        // 别的事件一律先把攒着的思考落下去。撤字尤其要紧:`reasoningRolledBack` 报的字数
+        // 里含着还在缓冲区里的那几个,先落再撤才对得上。
+        flushReasoning()
+
         switch event {
         // 例外:整段摘要挂在早先某条上。存下来,下轮就不用再叫一次模型重算。
         case .historyCompacted(let messageID, let artifact):
@@ -485,21 +626,54 @@ final class ChatViewModel {
         case .textDelta:
             // 重试成功了,模型开口了。
             retryNotice = nil
+        case .pendingInputAccepted:
+            // 先劈开,再让事件落到后半段上——记「这一轮内联了哪几条」的正是后半段。
+            splitReplyAroundInterjection()
         default:
             break
         }
-        guard let last = session.messages.indices.last else { return }
-        session.messages[last].apply(event)
+        guard let index = replyingIndex() else { return }
+        session.messages[index].apply(event)
     }
 
+    private func bufferReasoning(_ delta: String) {
+        pendingReasoning += delta
+        guard reasoningFlushTask == nil else { return }
+        reasoningFlushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.reasoningFlushInterval)
+            guard let self, !Task.isCancelled else { return }
+            flushReasoning()
+        }
+    }
+
+    private func flushReasoning() {
+        reasoningFlushTask?.cancel()
+        reasoningFlushTask = nil
+        guard !pendingReasoning.isEmpty else { return }
+        let delta = pendingReasoning
+        pendingReasoning = ""
+        guard let index = replyingIndex() else { return }
+        session.messages[index].apply(.reasoningDelta(delta))
+    }
+
+    /// 从后往前找:收件人几乎总是最后一条,只有用户中途插话时才往前挪那么一两格。
+    private func replyingIndex() -> Int? {
+        guard let replyingMessageID else { return nil }
+        return session.messages.lastIndex { $0.id == replyingMessageID }
+    }
+
+    /// 这两条走的是流结束之后的路,没有事件替它们把缓冲区落下去——按停止的那一刻思考已经
+    /// 想了半段,丢掉它等于用户看到的比实际发生的少。
     private func markStopped() {
-        guard let last = session.messages.indices.last else { return }
-        session.messages[last].markStopped()
+        flushReasoning()
+        guard let index = replyingIndex() else { return }
+        session.messages[index].markStopped()
     }
 
     private func markFailed(_ error: any Error) {
-        guard let last = session.messages.indices.last else { return }
-        session.messages[last].markFailed(error.localizedDescription)
+        flushReasoning()
+        guard let index = replyingIndex() else { return }
+        session.messages[index].markFailed(error.localizedDescription)
     }
 
     // MARK: - 引擎
@@ -520,6 +694,9 @@ final class ChatViewModel {
             // 写的那一头堵死:`remember` 在这条会话里根本不挂出去。
             capabilityRegistry: .healthChat(
                 allowsMemoryWrites: !session.isPrivate,
+                // 他自己提起过去,才有「过去」可翻。没提就连工具都不挂——留着的话模型每轮都要
+                // 判一次要不要翻,而健康对话句句连着上一句,那个判断天然偏向"要"。
+                allowsRecall: SessionRecallTrigger.unlocksRecall(in: session.messages),
                 memoryStore: memoryStore,
                 sessionStore: sessionStore,
                 currentSessionId: session.id

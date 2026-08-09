@@ -132,10 +132,15 @@ extension CapabilityRegistry {
     ///   是最扎眼的那种(用户亲口说的事)。两条路都得堵,「不留痕迹」才是一句真话。
     ///   工具不挂出去,`AIKitEngine.systemInstruction()` 里那段「该记就调 remember」也跟着
     ///   不发——它本来就是照着 registry 里有没有这个工具来拼的。
+    /// - Parameter allowsRecall: 这条会话里用户提起过过去吗(`SessionRecallTrigger`)。
+    ///   没提就连工具都不挂:召回不是一个该一直摆在模型眼前的能力,把「要不要翻历史」留成
+    ///   一个每轮都要做的判断,它就会每轮都判成要翻,而每翻一次用户都要多等两个往返,
+    ///   还要在这一轮的上下文里吃一段过期数字。
     /// - Parameter currentSessionId: 跨会话召回要排掉正在进行的这条,否则模型会把自己刚说过的
     ///   话当成「上次」读回来。
     static func healthChat(
         allowsMemoryWrites: Bool = true,
+        allowsRecall: Bool = false,
         memoryStore: MemoryStore = .shared,
         sessionStore: SessionStore = .shared,
         currentSessionId: UUID? = nil
@@ -145,7 +150,7 @@ extension CapabilityRegistry {
         // 一个找回「那次聊出来的结论」;关掉记忆的人不会指望 Vana 还在引用他上个月说过的话。
         // 隐私会话照样能**读**:承诺的是不往盘上留痕迹,不是失忆,而且它自己从不落盘,
         // 天然不在别人的索引里。
-        if EngineSettings.memoryEnabled {
+        if EngineSettings.memoryEnabled && allowsRecall {
             registries.append(SessionRecallTools.registry(
                 store: sessionStore,
                 currentSessionId: currentSessionId

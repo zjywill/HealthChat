@@ -32,36 +32,37 @@ struct ComposerBar: View {
 
     // MARK: - 快捷 chip
 
+    /// 回复期间这排不再收起来。
+    ///
+    /// 原来收起来是因为那时候点了也没用。现在点一下就排进队列,下一个工具轮边界就送到模型
+    /// 眼前——「详细一点」正是最想在它还在写的时候说的那句。话题和隐私那两颗本来就只在空
+    /// 会话时出现,回复期间不会露面。
     @ViewBuilder
     private var quickRow: some View {
-        // 正在回复时全部收起来:这时候点哪个都只会排到后面去,留着只是一排点不动的东西。
-        if !model.isReplying {
-            ScrollView(.horizontal) {
-                // 一个容器里的玻璃互相认识:靠近时会融到一起,而不是各糊各的背景。
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        goalChip
-                        topicChip
-                        privacyChip
+        ScrollView(.horizontal) {
+            // 一个容器里的玻璃互相认识:靠近时会融到一起,而不是各糊各的背景。
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    goalChip
+                    topicChip
+                    privacyChip
 
-                        if !model.messages.isEmpty {
-                            ForEach(Self.followUps, id: \.self) { question in
-                                Button {
-                                    model.send(question)
-                                } label: {
-                                    ChipLabel(icon: nil, title: question, isOn: false)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("追问：\(question)")
+                    if !model.messages.isEmpty {
+                        ForEach(Self.followUps, id: \.self) { question in
+                            Button {
+                                model.send(question)
+                            } label: {
+                                ChipLabel(icon: nil, title: question, isOn: false)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("追问：\(question)")
                         }
                     }
-                    .padding(.horizontal, 12)
                 }
+                .padding(.horizontal, 12)
             }
-            .scrollIndicators(.hidden)
-            .transition(.opacity)
         }
+        .scrollIndicators(.hidden)
     }
 
     /// 正在哪条目标线里。
@@ -248,31 +249,50 @@ struct ComposerBar: View {
         .accessibilityLabel("更多")
     }
 
+    /// 这颗按钮做什么,只看输入框里有没有字。
+    ///
+    /// 以前是「正在回复就是停止」,因为那时候根本发不出去。现在打了字就一定是要发的——
+    /// 手指刚敲完一句话,按下去却把上一条答到一半的回复掐了,是这一版最容易惹恼人的一个
+    /// 误触。停止仍然一直够得着:输入框空着的时候它就在原位。
+    private enum SendAction {
+        case send
+        case stop
+        case idle
+    }
+
+    private var sendAction: SendAction {
+        guard !model.isLoadingConversation else { return .idle }
+        if !model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .send }
+        if model.isReplying { return .stop }
+        // 停止之后队列里可能还剩着东西,这颗就是「把排着的那几句发出去」。
+        return model.hasQueuedInput ? .send : .idle
+    }
+
     private var sendButton: some View {
-        let isDisabled = !model.isReplying
-            && (
-                model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || model.isLoadingConversation
-            )
+        let action = sendAction
 
         return Button {
-            if model.isReplying {
-                model.stopReply()
-            } else {
-                model.send()
+            switch action {
+            case .send: model.send()
+            case .stop: model.stopReply()
+            case .idle: break
             }
         } label: {
             RoundIcon(
-                systemName: model.isReplying ? "stop.fill" : "arrow.up",
-                foreground: AnyShapeStyle(isDisabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white)),
-                background: model.isReplying
-                    ? AnyShapeStyle(Color(.systemRed))
-                    : (isDisabled ? AnyShapeStyle(.fill.tertiary) : AnyShapeStyle(Color.accentColor))
+                systemName: action == .stop ? "stop.fill" : "arrow.up",
+                foreground: AnyShapeStyle(action == .idle ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white)),
+                background: {
+                    switch action {
+                    case .stop: AnyShapeStyle(Color(.systemRed))
+                    case .send: AnyShapeStyle(Color.accentColor)
+                    case .idle: AnyShapeStyle(.fill.tertiary)
+                    }
+                }()
             )
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel(model.isReplying ? "停止回复" : "发送")
+        .disabled(action == .idle)
+        .accessibilityLabel(action == .stop ? "停止回复" : "发送")
     }
 }
 

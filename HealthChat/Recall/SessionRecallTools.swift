@@ -9,6 +9,11 @@ import AgentRuntime
 /// 重查一遍数据也拿不回来。它属于**那次会话**。
 ///
 /// 所以这里只做一件事:让模型能翻到那次会话并读回当时说了什么。数字一概不信,现查。
+///
+/// **触发要窄。** 这两个工具的默认答案是「不调」:绝大多数问题问的是眼前的健康数据,现查
+/// 就有,翻历史只是在用户等回复的时候多花一整轮去换一批过期数字。写成「问题明显接着一段
+/// 历史时也调」那种口径,模型会把几乎每个问题都读成接着一段历史——健康对话本来就都是连着的。
+/// 所以触发条件收在**用户自己提起过去**这一件可观察的事上:他说了「上次」,才有上次。
 enum SessionRecallTools {
     static let searchToolName = "search_sessions"
     static let readToolName = "read_session"
@@ -49,18 +54,19 @@ enum SessionRecallTools {
             name: searchToolName,
             description: """
             在过往对话里找出相关的那几次，返回摘要列表（不含健康数据）。\
-            用户提到「上次」「之前说过」「我们聊过」，或者你要回答的问题明显接着一段历史\
-            （正在进行的计划、之前解释过的异常、说好要回头看的事）时调用。\
-            只想知道最近聊了什么就把 query 留空。\
-            找到相关的那条之后用 read_session 读它。\
-            这里返回的是当时说过的话，不是现在的健康数据——具体数值一律用健康工具现查。
+            只在用户自己提起过去时调用：他说了「上次」「之前说过」「我们聊过」「你还记得」，\
+            或者直接问一件他以前交代过、这次没再说的事。\
+            健康数据本身不走这里——今天怎么样、最近的趋势、某项指标要不要担心，\
+            一律直接调健康工具现查。过往对话里只有当时的旧数字，翻出来既慢又不准。\
+            用户没提过去就不要试探性地找一次；一次对话里通常一次都不需要，更不该找第二次。\
+            找到相关的那条之后用 read_session 读它。
             """,
             inputSchema: .object([
                 "type": "object",
                 "properties": .object([
                     "query": .object([
                         "type": "string",
-                        "description": "要找的话题，用中文关键词，比如「睡眠 加班」「减脂计划」。留空则返回最近几次对话"
+                        "description": "要找的话题，用中文关键词，比如「睡眠 加班」「减脂计划」。只有用户问「我们之前都聊过什么」这类问题时才留空"
                     ]),
                     "since_days": .object([
                         "type": "integer",
@@ -117,7 +123,14 @@ enum SessionRecallTools {
         }
 
         let listing = matches.map { $0.listing(now: now, calendar: .current) }.joined(separator: "\n")
-        return .success("找到 \(matches.count) 次相关对话：\n\(listing)\n\n用 read_session 读其中一条。")
+        // 末尾这句是条件句,不是祈使句。写成「用 read_session 读其中一条」的话,检索结果本身
+        // 就成了下一次调用的指令——哪怕列出来的这几条明显不是用户说的那次,模型也会挨个读下去。
+        return .success("""
+            找到 \(matches.count) 次相关对话：
+            \(listing)
+
+            其中确实是用户说的那次，用 read_session 读它；都对不上就别读了，照常回答。
+            """)
     }
 
     private static func read(

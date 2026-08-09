@@ -269,6 +269,23 @@ public struct StoredAgentTurn: Equatable, Codable, Sendable {
     public var usage: AgentUsage?
     public var state: State?
     public var context: TurnContextSnapshotDTO?
+    /// 列表上另有气泡、但内容已经在这份 `exactTranscript` 里的那几条。
+    ///
+    /// 两种来源,同一个问题:用户在工具轮边界补的话(列表里要有气泡,transcript 中间也有
+    /// 一份),以及被那句话劈开的前半段回复(界面上另起了一条气泡,transcript 里它和后半段
+    /// 是连着的一轮)。回放时都得跳过列表上那一条,否则同一段内容在 prompt 里出现两遍。
+    public var inlinedMessageIDs: [UUID]
+
+    // 自己写了 init(from:) 和 encode(to:),CodingKeys 就不再合成了。
+    private enum CodingKeys: String, CodingKey {
+        case exactTranscript
+        case compaction
+        case finishReason
+        case usage
+        case state
+        case context
+        case inlinedMessageIDs
+    }
 
     public init(
         exactTranscript: AgentTranscript = .init(),
@@ -276,7 +293,8 @@ public struct StoredAgentTurn: Equatable, Codable, Sendable {
         finishReason: AgentFinishReason? = nil,
         usage: AgentUsage? = nil,
         state: State? = nil,
-        context: TurnContextSnapshotDTO? = nil
+        context: TurnContextSnapshotDTO? = nil,
+        inlinedMessageIDs: [UUID] = []
     ) {
         self.exactTranscript = exactTranscript
         self.compaction = compaction
@@ -284,6 +302,34 @@ public struct StoredAgentTurn: Equatable, Codable, Sendable {
         self.usage = usage
         self.state = state
         self.context = context
+        self.inlinedMessageIDs = inlinedMessageIDs
+    }
+
+    // inlinedMessageIDs 是后加的:之前存下来的会话里没有这个键。合成的 decoder 对
+    // 非可选字段一律用 `decode`,缺键就抛——老会话会整条读不出来。
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        exactTranscript = try container.decodeIfPresent(AgentTranscript.self, forKey: .exactTranscript) ?? .init()
+        compaction = try container.decodeIfPresent(CompactionArtifact.self, forKey: .compaction)
+        finishReason = try container.decodeIfPresent(AgentFinishReason.self, forKey: .finishReason)
+        usage = try container.decodeIfPresent(AgentUsage.self, forKey: .usage)
+        state = try container.decodeIfPresent(State.self, forKey: .state)
+        context = try container.decodeIfPresent(TurnContextSnapshotDTO.self, forKey: .context)
+        inlinedMessageIDs = try container.decodeIfPresent([UUID].self, forKey: .inlinedMessageIDs) ?? []
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(exactTranscript, forKey: .exactTranscript)
+        try container.encodeIfPresent(compaction, forKey: .compaction)
+        try container.encodeIfPresent(finishReason, forKey: .finishReason)
+        try container.encodeIfPresent(usage, forKey: .usage)
+        try container.encodeIfPresent(state, forKey: .state)
+        try container.encodeIfPresent(context, forKey: .context)
+        // 绝大多数轮次没有中途插话,不给每条消息平白加一个空数组。
+        if !inlinedMessageIDs.isEmpty {
+            try container.encode(inlinedMessageIDs, forKey: .inlinedMessageIDs)
+        }
     }
 }
 

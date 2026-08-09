@@ -20,6 +20,11 @@ public enum AgentTurnEvent: Sendable {
     case compactionStarted(AgentCompactionReason)
     /// 总结没写成。不是致命错误——退回机械压缩继续跑,但要留下痕迹。
     case compactionFailed(reason: AgentCompactionReason, message: String)
+    /// 用户在这一轮跑的过程中补的那几句,已经并进这一轮的上下文了。
+    ///
+    /// 排队和已送达必须分得开:排着的那句模型还没看见,而用户看到的是同一个气泡。不发这个
+    /// 事件,他就只能靠猜——而猜错的方向恰好是最糟的那个(以为说了,其实没说)。
+    case pendingInputAccepted([AgentPendingInput])
     /// 早先某一段被总结掉了,artifact 挂在 `messageID` 这条上。
     ///
     /// 唯一一个不落在"正在写的那条回复"上的事件——总结是一次真实的模型调用,算完必须存下来,
@@ -55,6 +60,11 @@ public protocol AgentTurnSink {
     mutating func rollBackText(_ characterCount: Int)
     /// 同上,撤的是思考。
     mutating func rollBackReasoning(_ characterCount: Int)
+    /// 这几条用户消息在工具轮边界被并进了这一轮的 transcript。
+    ///
+    /// 记在**这一轮**上,不是记在那几条消息上:回放时要跳过它们,而「跳过谁」的依据只有
+    /// 「谁吸收了它」说得清——同一条消息在别的会话里(分叉出去的那条)可能根本没被吸收。
+    mutating func acceptPendingInput(_ inputs: [AgentPendingInput])
     /// 用户手动停下。已经收到的文本和工具结果都留着。
     mutating func markStopped()
     mutating func markFailed(_ description: String)
@@ -82,6 +92,8 @@ public extension AgentTurnSink {
             rollBackText(characterCount)
         case .reasoningRolledBack(let characterCount):
             rollBackReasoning(characterCount)
+        case .pendingInputAccepted(let inputs):
+            acceptPendingInput(inputs)
         case .retryScheduled, .compactionStarted, .compactionFailed:
             // 观测用。落到哪条消息上都不合适,由 app 自己决定要不要显示或记日志。
             break
@@ -136,6 +148,10 @@ extension AgentChatMessageDTO: AgentTurnSink {
     public mutating func rollBackReasoning(_ characterCount: Int) {
         guard characterCount > 0 else { return }
         reasoning.removeLast(min(characterCount, reasoning.count))
+    }
+
+    public mutating func acceptPendingInput(_ inputs: [AgentPendingInput]) {
+        storedTurn.inlinedMessageIDs.append(contentsOf: inputs.map(\.id))
     }
 
     public mutating func markStopped() {

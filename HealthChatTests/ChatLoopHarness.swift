@@ -136,7 +136,10 @@ struct LoopEngine: AgentEngine {
     /// 退避时间设成 0:测的是「重试了没有」,不是「等够了没有」。次数和线上一致。
     var retryPolicy = RetryPolicy(baseDelay: .zero, maxDelay: .zero)
 
-    func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
+    func reply(
+        to history: [ChatMessage],
+        pendingInput: AgentPendingInputProvider? = nil
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -148,6 +151,7 @@ struct LoopEngine: AgentEngine {
                         summarizer: summarizer,
                         policy: .healthChat,
                         retryPolicy: retryPolicy,
+                        pendingInput: pendingInput,
                         truncatedToolCallNotice: healthChatTruncatedToolCallNotice
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {

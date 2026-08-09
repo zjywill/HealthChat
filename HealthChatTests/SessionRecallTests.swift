@@ -158,6 +158,35 @@ struct SessionRecallTests {
         #expect(hits.first?.id == aboutSleep.id)
     }
 
+    @Test("a barely-related session is dropped when a clearly better match exists")
+    func searchDropsWeakMatches() async throws {
+        let store = Self.freshStore()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let onPoint = Self.session("最近加班熬夜，睡眠是不是被拖垮了", createdAt: base)
+        // 只沾上「睡眠」两个字。健康 app 里这种会话有的是,而 `score > 0` 会把它们全端回去
+        // ——模型分不出哪条才是用户说的那次,只好挨条 read_session 读过去,一次试探性检索
+        // 就变成了三四轮。
+        let barelyRelated = Self.session("昨晚睡眠多少小时", createdAt: base + Self.day)
+        for one in [onPoint, barelyRelated] { try await store.save(one) }
+
+        let hits = await store.recallIndex().search(query: "加班 熬夜 睡眠")
+        #expect(hits.map(\.id) == [onPoint.id])
+    }
+
+    @Test("a one-word query keeps every session that matches it")
+    func searchKeepsTiesForAThinQuery() async throws {
+        let store = Self.freshStore()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let older = Self.session("睡眠一直不太好", createdAt: base)
+        let newer = Self.session("睡眠有改善吗", createdAt: base + Self.day)
+        for one in [older, newer] { try await store.save(one) }
+
+        // 相对门槛在这里必须自动失效:用户就给了这么一个词,再挑就是瞎挑。
+        let hits = await store.recallIndex().search(query: "睡眠")
+        #expect(hits.count == 2)
+        #expect(hits.first?.id == newer.id)
+    }
+
     @Test("an empty query returns the most recent conversations")
     func emptyQueryReturnsRecent() async throws {
         let store = Self.freshStore()
@@ -245,6 +274,51 @@ struct SessionRecallTests {
         #expect(text.contains("中间"))
     }
 
+    // MARK: - 什么时候才挂出去
+
+    @Test("the recall tools stay off the table until the user brings up the past")
+    func recallIsGatedOnTheUsersOwnWords() {
+        // 问的是眼前的数据。留着工具的话,模型每轮都要判一次「这算不算接着一段历史」,
+        // 而健康对话句句连着上一句,那个判断天然偏向"算"。
+        let asking = [ChatMessage(role: .user, text: "今天走了多少步")]
+        #expect(!SessionRecallTrigger.unlocksRecall(in: asking))
+
+        let referring = asking + [
+            ChatMessage(role: .assistant, text: "8000 步。"),
+            ChatMessage(role: .user, text: "上次你说的那个方法还算数吗")
+        ]
+        #expect(SessionRecallTrigger.unlocksRecall(in: referring))
+
+        // 一旦提过就粘住:后面几轮多半还在同一件事上,而工具集一轮挂一轮撤会把 prompt
+        // 缓存的前缀反复打掉。
+        #expect(SessionRecallTrigger.unlocksRecall(in: referring + [
+            ChatMessage(role: .user, text: "那我今晚早点睡")
+        ]))
+    }
+
+    @Test("a time word about data is not a reference to a past conversation")
+    func timeWordsDoNotUnlockRecall() {
+        // 「上周步数」现查就有。把时间词也算进来,一半的健康问题都会把工具挂出去,等于没做。
+        for text in ["上周步数怎么样", "前几天的睡眠", "这个月体重变化"] {
+            #expect(!SessionRecallTrigger.mentionsPast(text))
+        }
+        for text in ["我们之前聊过这个", "你还记得我说的加班吗", "上回分析的结果", "what did we discuss earlier"] {
+            #expect(SessionRecallTrigger.mentionsPast(text))
+        }
+    }
+
+    @Test("a locked conversation carries no recall tools at all")
+    func lockedRegistryHasNoRecallTools() {
+        let locked = CapabilityRegistry.healthChat(allowsRecall: false)
+        #expect(locked.definition(named: SessionRecallTools.searchToolName) == nil)
+        #expect(locked.definition(named: SessionRecallTools.readToolName) == nil)
+
+        let unlocked = CapabilityRegistry.healthChat(allowsRecall: true)
+        // 记忆开关仍然管着它:关掉记忆的人不会指望 Vana 还在引用他上个月说过的话。
+        #expect(unlocked.definition(named: SessionRecallTools.searchToolName) != nil
+            || !EngineSettings.memoryEnabled)
+    }
+
     // MARK: - 工具
 
     @Test("read_session refuses a handle that search never handed out")
@@ -277,6 +351,23 @@ struct SessionRecallTests {
         // 坏了,换个说法再试一次,白花一轮。
         #expect(!result.isError)
         #expect(result.output.text.contains("没有找到"))
+    }
+
+    @Test("the search listing does not order a read")
+    func searchListingLeavesReadingOptional() async throws {
+        let store = Self.freshStore()
+        try await store.save(Self.session("我睡眠差是不是因为加班", createdAt: Date()))
+
+        let registry = SessionRecallTools.registry(store: store)
+        let result = await registry.execute(CapabilityInvocation(
+            toolCallId: "1",
+            name: SessionRecallTools.searchToolName,
+            input: #"{"query":"加班"}"#
+        ))
+        // 写成祈使句的话,检索结果本身就成了下一次调用的指令:哪怕列出来的这几条明显不是
+        // 用户说的那次,模型也会挨个读下去。
+        #expect(!result.output.text.contains("用 read_session 读其中一条"))
+        #expect(result.output.text.contains("都对不上就别读了"))
     }
 
     @Test("search then read walks the same handle end to end")

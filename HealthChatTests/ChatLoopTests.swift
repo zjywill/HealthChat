@@ -54,6 +54,36 @@ struct ChatLoopTests {
 
     // MARK: - 思考
 
+    /// 思考的增量是攒着批量落盘的(见 `ChatViewModel.pendingReasoning`),而撤字报的字数
+    /// 里含着还在缓冲区里的那几个。落和撤的先后一旦反过来,第一次尝试想的那半段会在重试
+    /// 的完整思考后面又冒出来一遍,而且再也撤不掉。
+    @Test("thinking buffered for the next frame is still rolled back correctly on a retry")
+    func bufferedReasoningIsRolledBack() async throws {
+        let client = ScriptedModelClient(
+            profile: Self.profile("deepseek-reasoner", window: 200_000),
+            turns: [
+                .init(
+                    text: "上周你",
+                    reasoning: "先看看步数",
+                    finishReason: .init(unified: .error),
+                    failureMessage: "Error 529: Overloaded"
+                ),
+                .init(text: "上周日均 9,100 步。", reasoning: "确认一下再说")
+            ]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in LoopEngine(client: client, capabilities: stubRegistry([:])) },
+            loadsPersistedSession: false
+        )
+
+        viewModel.send("上周走了多少")
+        try await waitUntil("重试之后这轮结束") { !viewModel.isReplying }
+
+        let assistant = try #require(viewModel.messages.last)
+        #expect(assistant.reasoning == "确认一下再说")
+        #expect(assistant.text == "上周日均 9,100 步。")
+    }
+
     @Test("thinking lands on the message and survives a round trip through the session file")
     func reasoningIsKept() async throws {
         let client = ScriptedModelClient(
