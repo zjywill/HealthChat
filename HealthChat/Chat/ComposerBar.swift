@@ -28,6 +28,34 @@ struct ComposerBar: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 6)
+        .background(alignment: .bottom) { scrim }
+    }
+
+    /// 玻璃底下的一层渐隐。
+    ///
+    /// 玻璃本身几乎不挡光,深色下尤其明显:背景纯黑、正文纯白,滚上来的字会和输入框里的字
+    /// 直接叠在一起,两句话谁也读不出来(模拟器背景浅,这个只在真机上看得见)。
+    ///
+    /// 挡掉的是**重叠**,不是「没滚到底」那个提示:字仍然是一路淡出去的,不是被一条硬边
+    /// 切断——所以这里是渐变而不是给输入区铺一层不透明底。淡出发生在 chip 那排上方,
+    /// 到输入卡片那儿已经全不透明,底下那截安全区也一并盖住。
+    private var scrim: some View {
+        let background = Color(.systemGroupedBackground)
+        return LinearGradient(
+            stops: [
+                .init(color: background.opacity(0), location: 0),
+                .init(color: background.opacity(0.92), location: 0.34),
+                .init(color: background, location: 0.55),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        // 往上多铺一截,让淡出从 chip 上方就开始;不加的话渐变只能在 chip 那排里面完成,
+        // 等于给 chip 铺了一层灰底。
+        .padding(.top, -56)
+        .ignoresSafeArea(edges: .bottom)
+        // 多出来的那 56pt 压在对话上,不挡掉点击的话,那一条的气泡和工具面板都点不开。
+        .allowsHitTesting(false)
     }
 
     // MARK: - 快捷 chip

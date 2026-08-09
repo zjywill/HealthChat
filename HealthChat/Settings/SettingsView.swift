@@ -24,12 +24,6 @@ struct SettingsView: View {
     @FocusState private var focusedField: Field?
     @Environment(\.openURL) private var openURL
 
-    #if DEBUG
-    @State private var debugStatus: DebugStatus?
-    @State private var isSeeding = false
-    @State private var isChecking = false
-    #endif
-
     init(
         canClearConversation: Bool = false,
         onClearConversation: @escaping () -> Void = {}
@@ -261,42 +255,13 @@ struct SettingsView: View {
 
             #if DEBUG
             Section {
-                Button {
-                    seedHealthData()
+                NavigationLink {
+                    DeveloperView()
                 } label: {
-                    Label("写入种子数据", systemImage: "square.and.arrow.down")
+                    Label("开发", systemImage: "hammer")
                 }
-                .disabled(isSeeding || isChecking)
-
-                Button {
-                    runSelfCheck()
-                } label: {
-                    Label("自检查询", systemImage: "checkmark.circle")
-                }
-                .disabled(isSeeding || isChecking)
-
-                Button {
-                    // 走的是和真 check-in 完全相同的那条路,只是触发器换成 5 秒后。
-                    Task {
-                        debugStatus = DebugStatus(
-                            message: await CheckInScheduler.sendTest(),
-                            icon: "bell",
-                            isError: false
-                        )
-                    }
-                } label: {
-                    Label("发一条测试 check-in", systemImage: "bell.badge")
-                }
-
-                if let debugStatus {
-                    Label(debugStatus.message, systemImage: debugStatus.icon)
-                        .font(.footnote)
-                        .foregroundStyle(debugStatus.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                }
-            } header: {
-                Text("开发")
             } footer: {
-                Text("种子数据会写入最近 30 天的模拟健康记录，可重复执行。")
+                Text("只在 Debug 构建里出现。")
             }
             #endif
         }
@@ -449,53 +414,6 @@ struct SettingsView: View {
         }
     }
 
-    #if DEBUG
-    private func seedHealthData() {
-        guard !isSeeding else { return }
-        isSeeding = true
-        debugStatus = DebugStatus(message: "正在写入健康数据…", icon: "hourglass", isError: false)
-
-        Task {
-            defer { isSeeding = false }
-            do {
-                let skipped = try await DebugSeeder.shared.seed()
-                debugStatus = DebugStatus(
-                    message: skipped.isEmpty
-                        ? "已写入最近 30 天的种子数据"
-                        : "已写入种子数据，跳过未授权：\(skipped.joined(separator: "、"))",
-                    icon: skipped.isEmpty ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
-                    isError: false
-                )
-            } catch {
-                debugStatus = DebugStatus(
-                    message: "写入失败：\(error.localizedDescription)",
-                    icon: "exclamationmark.triangle.fill",
-                    isError: true
-                )
-            }
-        }
-    }
-
-    private func runSelfCheck() {
-        guard !isChecking else { return }
-        isChecking = true
-        debugStatus = DebugStatus(message: "正在运行自检…", icon: "hourglass", isError: false)
-
-        Task {
-            defer { isChecking = false }
-            do {
-                try await DebugSeeder.shared.selfCheck()
-                debugStatus = DebugStatus(message: "自检完成，结果已输出到控制台", icon: "checkmark.circle.fill", isError: false)
-            } catch {
-                debugStatus = DebugStatus(
-                    message: "自检失败：\(error.localizedDescription)",
-                    icon: "exclamationmark.triangle.fill",
-                    isError: true
-                )
-            }
-        }
-    }
-    #endif
 }
 
 private enum Field: Hashable {
@@ -547,11 +465,3 @@ private enum KeyStatus: Equatable {
         return false
     }
 }
-
-#if DEBUG
-private struct DebugStatus {
-    let message: String
-    let icon: String
-    let isError: Bool
-}
-#endif

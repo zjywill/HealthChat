@@ -14,6 +14,9 @@ settings:
     DEVELOPMENT_LANGUAGE: zh-Hans
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_STYLE: Automatic
+    # 真机调试签名用的团队。只是开发签名——没有在 App Store Connect 建过 app 记录,
+    # 所以 bundle id 还没被这个团队占住,以后换个人账号不受影响。
+    DEVELOPMENT_TEAM: TBZQNF7555
 packages:
   AIKitSwift:
     path: ../aikitswift
