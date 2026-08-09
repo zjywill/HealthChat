@@ -187,6 +187,31 @@ final class HealthStore: Sendable {
         return true
     }
 
+    /// 后台读数据之前能问清楚的三种状态。
+    enum ReadAccess: Sendable {
+        case ready
+        /// 还没问过授权。后台弹不出面板,只能让用户先打开 app。
+        case notRequested
+        case unavailable
+    }
+
+    /// 现在能不能直接读,**不弹任何 UI**。
+    ///
+    /// Siri 那条路跑在后台,授权面板推不上来。所以在查之前先问一句:没问过授权就照实说
+    /// "先打开 Vana",而不是查出一片空然后报"最近没有数据"——后者是在撒谎。
+    func readAccess() async -> ReadAccess {
+        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
+        let status = try? await store.statusForAuthorizationRequest(toShare: [], read: readTypes)
+        return status == .shouldRequest ? .notRequested : .ready
+    }
+
+    /// 锁屏时整个 HealthKit 库都读不了。这不是"没有数据",得分开说。
+    static func isDatabaseLocked(_ error: any Error) -> Bool {
+        let error = error as NSError
+        return error.domain == HKError.errorDomain
+            && error.code == HKError.errorDatabaseInaccessible.rawValue
+    }
+
     /// 按需授权:第一次真的要读的时候才问,一次运行只问一次。
     @MainActor private static var requestedOnDemand: Set<String> = []
 

@@ -4,9 +4,14 @@ options:
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
+  # Siri 短语是按 app 的开发语言登记的。这一项留在 en 的话,`VanaShortcuts` 里写的中文
+  # 在中文 Siri 上一句都匹配不上——界面本来就全是中文,开发语言也该是中文。
+  developmentLanguage: zh-Hans
 settings:
   base:
     SWIFT_VERSION: "6.0"
+    # 生成 Info.plist 时 CFBundleDevelopmentRegion 取的是这个,不是上面那个 project 属性。
+    DEVELOPMENT_LANGUAGE: zh-Hans
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_STYLE: Automatic
 packages:

@@ -119,6 +119,34 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
   按 `ModelInfo.interleaved.field` / dialect 决定——反过来对着一个没听过这字段的 provider
   发它,同样是 400。
 
+## 架构:Siri(`HealthChat/Intents`)
+
+四条 App Intent,分成两类,中间**没有第三种形态**:
+
+- `TodayStatusIntent` / `LastNightSleepIntent` / `LastWorkoutIntent` 在后台跑,念
+  `SpokenBrief` 本地算出来的一两句话。不联网、不看 API key。让 Siri 等一轮模型调用
+  (联网 + 几轮工具 + 流式)只会超时,而超时之后用户听到的是"出了点问题"。
+- `AskVanaIntent` 收一个问题参数,`.foreground(.immediate)` 把 app 拉起来,经
+  `VanaLaunchRouter` → `CheckInLaunch(autoSend: true)` 进一条新会话,由完整的 agent 回答。
+  Siri 和 check-in 通知共用 `openedCheckIn` 这一个入口;多一条路进 app 不该多一套载入逻辑。
+
+几个容易踩的点:
+
+- **不需要 Apple Intelligence**。App Shortcuts 是短语匹配,前提是句子里出现 app 名字
+  (`\(.applicationName)`,解析成 Vana)。中国大陆没有 Apple Intelligence,这条路照样能用;
+  反过来,"让 Siri 自由多轮代理式对话"那条现在做不了,别往那个方向设计。
+- **短语按 app 的开发语言登记**。`project.yml` 里的 `developmentLanguage` 和
+  `DEVELOPMENT_LANGUAGE` 都必须是 `zh-Hans`,留在 en 的话 `VanaShortcuts` 里写的中文在中文
+  Siri 上一句都匹配不上。验证办法:clean build 的日志里应该有
+  `Training '...' for zh-Hans`,产物里应该有 `HealthChat.app/Metadata.appintents/nlu`。
+- **后台弹不出授权面板**,所以查之前先 `HealthStore.readAccess()` 问清楚,没授权就照实说
+  "先打开 Vana"。锁屏时 HealthKit 整个库读不了(`isDatabaseLocked`),那是另一句话,不是
+  "没有数据"。三种读不到的原因分开说,用户才知道下一步该干什么。
+- `SpokenBrief` 里取数和组句是分开的:组句是纯函数,`now` / `calendar` 从外面传,
+  `SpokenBriefTests` 盯着"昨晚是几天前"和"比平均多还是少"这两处。
+- 触发点识别复用 `HealthSituation.detect()`,和 check-in 通知、首屏建议同一套。同一份数据
+  在三个地方说出三种结论,用户只会觉得这 app 自己都没想清楚。
+
 ## 依赖
 
 云端 LLM 请求走 AIKit(`zjywill/aikitswift`),以本地包 `../aikitswift` 引入——构建这个项目需要旁边有 aikitswift 的 checkout。`AgentRuntime` 是仓库内的本地包,没有外部依赖。

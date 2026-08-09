@@ -115,9 +115,10 @@ final class ChatViewModel {
         session.isEphemeral = isEphemeral
     }
 
-    /// 从 check-in 通知点进来:直接开一条带话题的新会话,并把开场问题填进输入框。
+    /// 从 check-in 通知或者 Siri 进来:开一条带话题的新会话,把开场问题填进输入框。
     ///
-    /// 不自动发送——通知是邀请不是命令,让用户看一眼再决定问不问。
+    /// 默认不自动发送——通知是邀请不是命令,让用户看一眼再决定问不问。Siri 那条置了
+    /// `autoSend`:问题已经说出口了,再要求按一次发送很没道理。
     func open(_ checkIn: CheckInLaunch) {
         guard !isReplying else { return }
         session = ChatSession(topicId: checkIn.topicId)
@@ -126,8 +127,31 @@ final class ChatViewModel {
         }
         if let question = checkIn.question {
             input = question
+            if checkIn.autoSend {
+                sendWhenReady(question)
+            }
         }
         Task { await refreshSummaries() }
+    }
+
+    /// 等会话载入完再发。
+    ///
+    /// Siri 冷启动 app 时,这一句多半赶在会话还没载入完的时候到,而 `send` 会被
+    /// `isLoadingConversation` 挡掉——问题就这么无声无息地没了。宁可多等几十毫秒。
+    /// 等超过一秒就放弃自动发送,把它留在输入框里:那时候多半是别的地方出了问题,
+    /// 让用户自己按一下,总好过一直转圈。
+    private func sendWhenReady(_ question: String) {
+        // 没配 key 就别自动发了:发出去只会立刻收到一条报错,还占掉一条会话。
+        guard engineGuidance == nil else { return }
+
+        Task {
+            let deadline = Date().addingTimeInterval(1)
+            while isLoadingConversation, Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            guard !isLoadingConversation, input == question else { return }
+            send(question)
+        }
     }
 
     func openSession(id: UUID) {
