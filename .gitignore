@@ -3,3 +3,12 @@ xcuserdata/
 build/
 DerivedData/
 .build/
+
+*.p12
+*.p8
+*.mobileprovision
+*.cer
+*.pem
+.env
+.env.*
+*.xcconfig
