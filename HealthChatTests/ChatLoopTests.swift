@@ -19,6 +19,99 @@ struct ChatLoopTests {
         .init(providerId: "anthropic", modelId: modelId, contextWindow: window, maxOutputTokens: 4_000)
     }
 
+    // MARK: - 连接抖一下
+
+    @Test("a transient failure is retried and never leaves half a sentence on screen")
+    func transientFailureIsRetried() async throws {
+        let client = ScriptedModelClient(
+            profile: Self.profile("claude-sonnet-5", window: 200_000),
+            turns: [
+                // 说了半句,然后 provider 报拥塞。手机上这一类最常见。
+                .init(
+                    text: "上周你",
+                    finishReason: .init(unified: .error),
+                    failureMessage: "Error 529: Overloaded"
+                ),
+                .init(text: "上周日均 9,100 步。")
+            ]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in LoopEngine(client: client, capabilities: stubRegistry([:])) },
+            loadsPersistedSession: false
+        )
+
+        viewModel.send("上周走了多少")
+        try await waitUntil("重试之后这轮结束") { !viewModel.isReplying }
+
+        let assistant = try #require(viewModel.messages.last)
+        #expect(client.requests.count == 2)
+        #expect(assistant.turnState == .completed)
+        #expect(assistant.errorDescription == nil)
+        // 半句必须撤掉,否则用户看到的是"上周你上周日均 9,100 步。"
+        #expect(assistant.text == "上周日均 9,100 步。")
+        #expect(viewModel.retryNotice == nil)
+    }
+
+    // MARK: - 思考
+
+    @Test("thinking lands on the message and survives a round trip through the session file")
+    func reasoningIsKept() async throws {
+        let client = ScriptedModelClient(
+            profile: Self.profile("deepseek-reasoner", window: 200_000),
+            turns: [
+                .init(
+                    reasoning: "得先查步数",
+                    toolCalls: [.init(toolCallId: "c1", name: "daily_steps", input: "{}")],
+                    finishReason: .init(unified: .toolCalls)
+                ),
+                .init(text: "日均 9,100 步。", reasoning: "9,100 不算低")
+            ]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in
+                LoopEngine(client: client, capabilities: stubRegistry(["daily_steps": "9,100 步"]))
+            },
+            loadsPersistedSession: false
+        )
+
+        viewModel.send("上周走了多少")
+        try await waitUntil("这轮结束") { !viewModel.isReplying }
+
+        let assistant = try #require(viewModel.messages.last)
+        // 每个工具轮想一次,两段都要在。
+        #expect(assistant.reasoning == "得先查步数9,100 不算低")
+        // 思考不能混进正文——界面上是两块东西,复制按钮也只该复制答案。
+        #expect(assistant.text == "日均 9,100 步。")
+
+        // 存盘再读回来,思考还在:重开一条老会话看到的应该和刚聊完时一样。
+        let encoded = try JSONEncoder().encode(assistant)
+        let decoded = try JSONDecoder().decode(ChatMessage.self, from: encoded)
+        #expect(decoded.reasoning == assistant.reasoning)
+    }
+
+    @Test("a wrong API key is reported at once instead of after three retries")
+    func permanentFailureIsReportedImmediately() async throws {
+        let client = ScriptedModelClient(
+            profile: Self.profile("claude-sonnet-5", window: 200_000),
+            turns: [
+                .init(finishReason: .init(unified: .error), failureMessage: "invalid_api_key"),
+                .init(text: "不该走到这")
+            ]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in LoopEngine(client: client, capabilities: stubRegistry([:])) },
+            loadsPersistedSession: false
+        )
+
+        viewModel.send("上周走了多少")
+        try await waitUntil("这轮结束") { !viewModel.isReplying }
+
+        #expect(client.requests.count == 1)
+        let assistant = try #require(viewModel.messages.last)
+        #expect(assistant.turnState == .failed)
+        #expect(assistant.errorDescription?.contains("invalid_api_key") == true)
+    }
+
     // MARK: - 工具跑完之后用户手动停止
 
     @Test("stopping after a tool has run keeps the result and marks the turn stopped")
@@ -165,12 +258,17 @@ struct ChatLoopTests {
     @Test("switching to a model that cannot fit the history migrates that turn first")
     func modelSwitchUnderPressureMigratesHistory() async throws {
         // 这一段在新模型的窗口里放不下——这时候才该动它。
+        //
+        // 一次调用是撑不出这个体量的:单次工具输出有硬上限,压缩之前就截掉了。真正会撑爆
+        // 窗口的是「一轮里查了很多次」,所以这里也这么造。
         let detailedOutput = String(repeating: "详细的工具轨迹。", count: 3_000)
         let bigModel = ScriptedModelClient(
             profile: Self.profile("claude-opus-4-8", window: 200_000),
             turns: [
                 .init(
-                    toolCalls: [.init(toolCallId: "call_1", name: "daily_steps", input: #"{"days":30}"#)],
+                    toolCalls: (1...4).map {
+                        .init(toolCallId: "call_\($0)", name: "daily_steps", input: #"{"days":30}"#)
+                    },
                     finishReason: .init(unified: .toolCalls)
                 ),
                 .init(text: "上周整体还行。", usage: .init(inputTokens: .init(total: 900)))
@@ -203,7 +301,8 @@ struct ChatLoopTests {
         // 窗口变小了就主动把老的那轮换成压缩形态,而不是等 provider 报 400。
         #expect(secondContext.migrationNotes.contains(ConversationHistoryPlanner.modelSwitchNote))
         #expect(secondContext.compactedAssistantMessages == 1)
-        #expect(!smallModel.lastPromptContains(detailedOutput))
+        // 工具轨迹被折叠了。比对开头一段:原文早在进上下文时就被单次输出上限截过一道。
+        #expect(!smallModel.lastPromptContains(String(repeating: "详细的工具轨迹。", count: 100)))
         #expect(smallModel.lastPromptText.contains("上周整体还行。"))
 
         // 旧模型上的估算/实际比例不能带到新模型上:tokenizer 换了,那把尺子就作废了。

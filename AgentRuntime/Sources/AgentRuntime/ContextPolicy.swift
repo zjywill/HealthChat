@@ -9,23 +9,37 @@ import Foundation
 ///   "那第三天呢"就答不上来了。压的必须是远处的。
 /// - `thresholdAfterModelSwitch`:换模型之后估算本来就不准(校准作废了),阈值再压低一档,
 ///   给自己留出余量。
+/// - `thresholdAfterOverflow`:provider 已经报过一次装不下了,说明我们的估算偏乐观。重跑那
+///   一轮之前把水位线压到一半,宁可多压一点也不要再撞一次墙。
+/// - `maxToolOutputCharacters`:进模型的工具输出的硬上限。压缩是亡羊补牢,这道闸才是源头。
 public struct ContextPolicy: Equatable, Sendable {
     public var compactionThreshold: Double
     public var preservedRecentTurns: Int
     public var thresholdAfterModelSwitch: Double
+    public var thresholdAfterOverflow: Double
     /// 一段少于这么多条消息就不值得单独叫模型总结一次。
     public var minimumSpanMessages: Int
+    /// 一次工具调用最多往上下文里塞多少字符。0 表示不限。
+    public var maxToolOutputCharacters: Int
+    /// 截断提示。两个 `%d`:省略了多少字符、原本多少字符。
+    public var toolOutputTruncationNotice: String
 
     public init(
         compactionThreshold: Double = 0.8,
         preservedRecentTurns: Int = 2,
         thresholdAfterModelSwitch: Double = 0.6,
-        minimumSpanMessages: Int = 3
+        thresholdAfterOverflow: Double = 0.5,
+        minimumSpanMessages: Int = 3,
+        maxToolOutputCharacters: Int = 6_000,
+        toolOutputTruncationNotice: String = "…[truncated: %d of %d characters omitted]"
     ) {
         self.compactionThreshold = compactionThreshold
         self.preservedRecentTurns = preservedRecentTurns
         self.thresholdAfterModelSwitch = thresholdAfterModelSwitch
+        self.thresholdAfterOverflow = thresholdAfterOverflow
         self.minimumSpanMessages = minimumSpanMessages
+        self.maxToolOutputCharacters = maxToolOutputCharacters
+        self.toolOutputTruncationNotice = toolOutputTruncationNotice
     }
 
     public static let `default` = ContextPolicy()
@@ -44,17 +58,25 @@ public struct SummarizationPlan: Equatable, Sendable {
     /// provider 对孤立 tool 块的校验口径不一样。摊平成文本没有这些坑。
     public var spanText: String
     public var messageCount: Int
+    /// 上一版摘要。有值就是**增量更新**:`spanText` 里只有这版摘要之后的新对话。
+    ///
+    /// 不这么做的话,第二次压缩是在压第一份摘要——同一段话被有损两遍、三遍,最早那几轮
+    /// 很快就只剩一句客套。给模型「老摘要 + 新原文」,它才有机会把新进展并进去而不是
+    /// 把老内容再嚼一次。
+    public var previousSummary: String?
 
     public init(
         ownerMessageID: UUID,
         sourceMessageIDs: [UUID],
         spanText: String,
-        messageCount: Int
+        messageCount: Int,
+        previousSummary: String? = nil
     ) {
         self.ownerMessageID = ownerMessageID
         self.sourceMessageIDs = sourceMessageIDs
         self.spanText = spanText
         self.messageCount = messageCount
+        self.previousSummary = previousSummary
     }
 }
 
@@ -74,43 +96,90 @@ public struct ModelSummarizer: AgentSummarizer {
     public var client: any AgentModelClient
     /// 系统提示。要写明「两份摘要各给谁看」,否则模型只会写一份客套话。
     public var instruction: String
+    /// 增量更新时的系统提示。
+    public var updateInstruction: String
     /// 用户消息的格式串,一个 `%@` 放摊平后的原文。
     public var requestFormat: String
+    /// 增量更新时的用户消息格式串:`%1$@` 是上一版摘要,`%2$@` 是这之后的新对话。
+    public var updateRequestFormat: String
     /// 模型没按标签输出时,给用户看的那句兜底文案(格式串,一个 `%d` 放消息条数)。
     public var fallbackVisibleFormat: String
 
     public init(
         client: any AgentModelClient,
         instruction: String = ModelSummarizer.defaultInstruction,
+        updateInstruction: String = ModelSummarizer.defaultUpdateInstruction,
         requestFormat: String = "Summarize the conversation below.\n\n%@",
+        updateRequestFormat: String = """
+            <previous-summary>
+            %1$@
+            </previous-summary>
+
+            New conversation since that summary:
+
+            %2$@
+            """,
         fallbackVisibleFormat: String = "Earlier conversation folded (%d messages)."
     ) {
         self.client = client
         self.instruction = instruction
+        self.updateInstruction = updateInstruction
         self.requestFormat = requestFormat
+        self.updateRequestFormat = updateRequestFormat
         self.fallbackVisibleFormat = fallbackVisibleFormat
     }
+
+    /// 固定分节比自由发挥可靠得多:说得笼统,模型只会写一段概述,把真正要留的数字丢掉。
+    private static let replaySections = """
+        ## Goal
+        ## Constraints & Preferences
+        ## Findings (conclusions already reached, with the concrete numbers behind them)
+        ## Tool trace (which tool, which arguments, what it returned)
+        ## Open threads (what the user was about to ask next)
+        """
 
     public static let defaultInstruction = """
         You compress an agent conversation so it can continue in a smaller context window.
         Produce exactly two sections, each wrapped in tags:
 
         <visible>One sentence for the human, recapping what has been covered so far.</visible>
-        <replay>A dense briefing for the assistant that will continue this conversation. \
-        Keep: conclusions already reached, which tools were called with which arguments, \
-        the concrete numbers those tools returned, and any constraint or preference the user stated. \
-        Drop: pleasantries, restated questions, and raw rows already summarised by a conclusion. \
-        Write it as notes, not prose.</replay>
+        <replay>A dense briefing for the assistant that will continue this conversation, \
+        using exactly these headings:
+        \(replaySections)
+        Keep numbers verbatim. Drop pleasantries, restated questions, and raw rows already \
+        summarised by a conclusion. Write notes, not prose. Write "(none)" under a heading \
+        that has nothing under it.</replay>
 
         Never invent facts that are not in the conversation.
         """
 
+    public static let defaultUpdateInstruction = """
+        You maintain a running summary of an agent conversation so it can continue in a \
+        smaller context window. You are given the previous summary and the conversation that \
+        happened after it. Produce exactly two sections, each wrapped in tags:
+
+        <visible>One sentence for the human, recapping everything covered so far.</visible>
+        <replay>The updated briefing, using exactly these headings:
+        \(replaySections)
+        Carry every still-relevant fact from the previous summary forward — the original \
+        conversation is gone, so anything you drop is lost for good. Fold the new messages in: \
+        move finished work into Findings, update Open threads. Keep numbers verbatim. \
+        Write notes, not prose.</replay>
+
+        Never invent facts that are in neither the previous summary nor the new messages.
+        """
+
     public func summarize(_ plan: SummarizationPlan) async throws -> CompactionArtifact {
+        let isUpdate = plan.previousSummary != nil
+        let userMessage = plan.previousSummary.map {
+            String(format: updateRequestFormat, $0, plan.spanText)
+        } ?? String(format: requestFormat, plan.spanText)
+
         let request = AgentModelRequest(
             profile: client.profile,
             prompt: AgentTranscript(messages: [
-                .system(instruction),
-                .user(String(format: requestFormat, plan.spanText))
+                .system(isUpdate ? updateInstruction : instruction),
+                .user(userMessage)
             ]),
             capabilities: []
         )

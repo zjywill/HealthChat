@@ -49,6 +49,15 @@ struct ChatView: View {
                                     CompactionDivider(artifact: folded)
                                 }
                             }
+
+                            // 退避重试期间界面上什么都不动的话,等十几秒和卡死没有区别。
+                            if let notice = model.retryNotice {
+                                Label(notice, systemImage: "arrow.trianglehead.2.clockwise")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .transition(.opacity)
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -254,6 +263,78 @@ private struct CompactionDivider: View {
     }
 }
 
+/// 模型思考的入口。和工具那颗 chip 一样,点开是一个面板。
+///
+/// 思考不是答案。摊在对话流里,几百字的推演会把真正的回答推到屏幕外面去,而且它每一轮
+/// 都在长——列表跟着抖。想看的人点一下,不看的人只看到一颗 chip。
+private struct ReasoningChip: View {
+    let text: String
+    /// 还在吐思考。
+    let isThinking: Bool
+
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "brain")
+                Text(isThinking ? "正在思考…" : "思考过程")
+                if isThinking {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
+            .background(.fill.quaternary, in: Capsule())
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isThinking ? "正在思考" : "思考过程")
+        .accessibilityHint("打开模型的思考过程")
+        .sheet(isPresented: $isPresented) {
+            ReasoningPanel(text: text, isThinking: isThinking)
+        }
+    }
+}
+
+/// 从底部弹出的思考面板。开着的时候还在想,内容跟着长。
+private struct ReasoningPanel: View {
+    let text: String
+    let isThinking: Bool
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(text)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(20)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle(isThinking ? "正在思考" : "思考过程")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 private struct MessageBubble: View {
     let message: ChatMessage
     /// 这条正在生成:生成期间不给操作按钮,retry 一条还没写完的回复没有意义。
@@ -263,7 +344,9 @@ private struct MessageBubble: View {
     let onRetry: () -> Void
     let onBranch: () -> Void
 
-    private var isWaiting: Bool { isStreaming && message.text.isEmpty }
+    private var isWaiting: Bool {
+        isStreaming && message.text.isEmpty && message.reasoning.isEmpty
+    }
 
     @ViewBuilder
     var body: some View {
@@ -296,18 +379,33 @@ private struct MessageBubble: View {
 
     private var assistantMessage: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if !message.reasoning.isEmpty {
+                ReasoningChip(
+                    text: message.reasoning,
+                    isThinking: isStreaming && message.text.isEmpty
+                )
+            }
+
             ForEach(message.toolCalls) { call in
                 ToolCallChip(call: call)
             }
 
             if isWaiting {
                 TypingIndicator()
-            } else {
+            } else if !message.text.isEmpty || !isStreaming {
                 Text(displayText)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
                     .accessibilityLabel(message.text)
+            }
+
+            // 查询次数用光时这一轮是正常收尾的(该查的多半已经查到),但模型是被打断的,
+            // 得说一声,否则用户只看到它说到一半自己停了。
+            if message.stoppedAtToolRoundLimit {
+                Text("这个问题需要的查询次数超出了单轮上限，缩小范围再问一次会更完整。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if message.errorDescription != nil, canRetry {

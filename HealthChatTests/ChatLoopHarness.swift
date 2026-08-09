@@ -8,9 +8,13 @@ import AgentRuntime
 final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     struct Turn: Sendable {
         var text: String = ""
+        /// 模型这一轮的思考。真模型先思考再说话,脚本也按这个顺序发。
+        var reasoning: String = ""
         var toolCalls: [CapabilityInvocation] = []
         var finishReason: AgentFinishReason = .init(unified: .stop)
         var usage: AgentUsage?
+        /// provider 在流里报的错。
+        var failureMessage: String?
         /// 这一轮开口之前先跑一下。用来把某一轮挂住,好在模型还没说话时按停止。
         var beforeResponding: (@Sendable () async throws -> Void)?
     }
@@ -84,10 +88,19 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
                     try await turn.beforeResponding?()
                     try Task.checkCancellation()
 
+                    if !turn.reasoning.isEmpty {
+                        continuation.yield(.reasoningDelta(turn.reasoning))
+                    }
                     if !turn.text.isEmpty {
                         continuation.yield(.textDelta(turn.text))
                     }
-                    var parts: [AgentTranscript.Part] = turn.text.isEmpty ? [] : [.text(turn.text)]
+                    var parts: [AgentTranscript.Part] = []
+                    if !turn.reasoning.isEmpty {
+                        parts.append(.reasoning(turn.reasoning))
+                    }
+                    if !turn.text.isEmpty {
+                        parts.append(.text(turn.text))
+                    }
                     parts.append(contentsOf: turn.toolCalls.map {
                         .toolCall(.init(toolCallId: $0.toolCallId, toolName: $0.name, input: $0.input))
                     })
@@ -96,7 +109,8 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
                         assistantMessage: parts.isEmpty ? nil : .init(role: .assistant, parts: parts),
                         pendingCalls: turn.toolCalls,
                         finishReason: turn.finishReason,
-                        usage: turn.usage
+                        usage: turn.usage,
+                        failureMessage: turn.failureMessage
                     )))
                     continuation.finish()
                 } catch {
@@ -119,6 +133,8 @@ struct LoopEngine: AgentEngine {
     var capabilities: CapabilityRegistry
     var systemInstruction = "你是测试助手"
     var summarizer: (any AgentSummarizer)?
+    /// 退避时间设成 0:测的是「重试了没有」,不是「等够了没有」。次数和线上一致。
+    var retryPolicy = RetryPolicy(baseDelay: .zero, maxDelay: .zero)
 
     func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -129,7 +145,10 @@ struct LoopEngine: AgentEngine {
                         capabilities: capabilities,
                         systemInstruction: systemInstruction,
                         compactor: .healthChat,
-                        summarizer: summarizer
+                        summarizer: summarizer,
+                        policy: .healthChat,
+                        retryPolicy: retryPolicy,
+                        truncatedToolCallNotice: healthChatTruncatedToolCallNotice
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {
                         continuation.yield(event)

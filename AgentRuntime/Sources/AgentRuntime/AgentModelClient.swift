@@ -70,6 +70,11 @@ public struct AgentModelResponse: Sendable {
 
 public enum AgentModelStreamEvent: Sendable {
     case textDelta(String)
+    /// 模型的思考。和 `.textDelta` 分开发:两者在界面上不是一回事,思考默认要能折起来。
+    ///
+    /// 不是所有模型都有,有的模型只给摘要而不给原文——这两种情况都表现为这个事件不出现,
+    /// 上层不该把「没有思考事件」当成异常。
+    case reasoningDelta(String)
     case completed(AgentModelResponse)
 }
 

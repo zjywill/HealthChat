@@ -364,7 +364,13 @@ enum HealthTools {
         let hasStages = values.contains(where: \.hasStages)
         let hasHeart = values.contains { $0.heartRate != nil }
 
-        var report = HealthReport(title: "最近 \(values.count) 晚睡眠")
+        // 标题要说的是「问了几天」,不是「查到几晚」。改写成"最近 5 晚"会把缺口洗掉:
+        // 问最近 7 天、只有 5 晚有记录,和真的连着睡了 5 晚是两回事。
+        var report = HealthReport(
+            title: values.count == days
+                ? "最近 \(days) 晚睡眠"
+                : "最近 \(days) 天睡眠（\(values.count) 晚有记录）"
+        )
         report.columns = ["日期", "睡着", "入睡–起床"]
             + (hasStages ? ["深睡 分", "核心 分", "REM 分"] : [])
             + ["清醒 分", "醒来 次", "效率 %"]
@@ -418,6 +424,9 @@ enum HealthTools {
         }
         if let line = baselineLine(baseline, current: averageAsleep, format: formatDuration) {
             report.summary.append(line)
+        }
+        if let last = values.last, let note = stalenessNote(latest: last.night, unit: "睡眠记录") {
+            report.notes.append(note)
         }
 
         if let last = values.last,
@@ -498,6 +507,9 @@ enum HealthTools {
         if let current = average(hrvValues),
            let line = baselineLine(hrvBaseline, current: current, format: { "\(formatInteger($0)) ms" }) {
             report.summary.append("HRV \(line)")
+        }
+        if let last = recorded.last, let note = stalenessNote(latest: last.date, unit: "记录") {
+            report.notes.append(note)
         }
 
         let now = Date()
@@ -826,6 +838,21 @@ enum HealthTools {
             line += "，本段比基线\(deviation > 0 ? "高" : "低") \(Int(abs(deviation).rounded()))%"
         }
         return line
+    }
+
+    /// 最新一条比昨天还旧的时候明说。工具只返回有记录的那几行,断掉的那几天在表格里
+    /// 是看不见的——模型会把最后一行当成昨天,于是拿三天前的数据讲「昨晚睡得怎么样」。
+    ///
+    /// 昨天(gap == 1)不算旧:昨晚的睡眠本来就标在昨天,今天的静息心率也常常要到晚上才出。
+    private static func stalenessNote(latest: Date, unit: String) -> String? {
+        let calendar = Calendar.autoupdatingCurrent
+        let gap = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: latest),
+            to: calendar.startOfDay(for: Date())
+        ).day
+        guard let gap, gap >= 2 else { return nil }
+        return "最新的一条是 \(formatDate(latest))，距今 \(gap) 天，这之后没有\(unit)——不要当成昨天的数据。"
     }
 
     private static func weeklyGroups<Item>(

@@ -103,6 +103,54 @@ struct ContextManagementTests {
         #expect(secondClient.lastPrompt?.contains(Self.output(turn: 1)) == false)
     }
 
+    @Test("the second compaction updates the previous summary instead of re-compressing it")
+    func secondCompactionUpdatesTheSummary() async {
+        let firstSummary = "要点：上个月日均 9,100 步。"
+        let summarizer = RecordingSummarizer(visible: "看过了。", replay: firstSummary)
+        let registry = stubRegistry(["daily_steps": "新的"])
+
+        func run(_ history: [AgentChatMessageDTO]) async -> [AgentChatMessageDTO] {
+            let loop = AgentLoop(
+                client: ScriptedModelClient(
+                    profile: Self.profile,
+                    turns: [.init(textDeltas: ["好的"], finishReason: .init(unified: .stop))]
+                ),
+                capabilities: registry,
+                systemInstruction: "system",
+                summarizer: summarizer
+            )
+            return await collect(loop, history: history).messages
+        }
+
+        var history = await run(conversation(turnCount: 3))
+        #expect(summarizer.calls.count == 1)
+        #expect(summarizer.calls[0].previousSummary == nil)
+
+        // 又聊了两轮,再次跨过水位线。
+        history += turn(index: 4) + turn(index: 5)
+        history.append(.init(role: .user, text: "第 6 问"))
+        history = await run(history)
+
+        #expect(summarizer.calls.count == 2)
+        let second = summarizer.calls[1]
+
+        // 上一版摘要作为「已知」单独给,不混进要压的原文里。
+        //
+        // 混进去的话第二次压缩是在压第一份摘要——同一段话被有损两遍、三遍,最早那几轮
+        // 很快就只剩一句客套。
+        #expect(second.previousSummary == firstSummary)
+        #expect(!second.spanText.contains(firstSummary))
+        // 待并入的是这版摘要之后的新对话。摊平时每段工具结果自带上限,所以比对开头一段。
+        #expect(second.spanText.contains(Self.output(turn: 3, size: 100)))
+        #expect(!second.spanText.contains(Self.output(turn: 1, size: 100)))
+
+        // 链子不能断:新 artifact 要把老 artifact 盖住的那几条也记在账上,否则下一次压缩
+        // 会以为它们还原样躺着。
+        let owner = try! #require(history.last { $0.storedTurn.compaction?.kind == .modelGenerated })
+        let sources = try! #require(owner.storedTurn.compaction?.sourceMessageIDs)
+        #expect(sources.count >= 6)
+    }
+
     @Test("a failing summarizer falls back to mechanical compaction instead of failing the turn")
     func summarizerFailureFallsBack() async {
         let client = ScriptedModelClient(
@@ -156,14 +204,20 @@ struct ContextManagementTests {
 
     /// 造一段 `turnCount` 轮的历史,每轮都带一次工具调用,最后跟一句新问题。
     private func conversation(turnCount: Int, size: Int = 500) -> [AgentChatMessageDTO] {
-        var history: [AgentChatMessageDTO] = []
-        for turn in 1...turnCount {
-            let output = Self.output(turn: turn, size: size)
-            history.append(.init(role: .user, text: "第 \(turn) 问"))
-            let callId = "call_\(turn)"
-            history.append(.init(
+        var history = (1...turnCount).flatMap { turn(index: $0, size: size) }
+        history.append(.init(role: .user, text: "第 \(turnCount + 1) 问"))
+        return history
+    }
+
+    /// 一问一答,答里带一次工具调用。
+    private func turn(index: Int, size: Int = 500) -> [AgentChatMessageDTO] {
+        let output = Self.output(turn: index, size: size)
+        let callId = "call_\(index)"
+        return [
+            .init(role: .user, text: "第 \(index) 问"),
+            .init(
                 role: .assistant,
-                text: "第 \(turn) 答",
+                text: "第 \(index) 答",
                 toolCalls: [.init(
                     id: callId,
                     name: "daily_steps",
@@ -173,7 +227,7 @@ struct ContextManagementTests {
                 storedTurn: .init(
                     exactTranscript: .init(messages: [
                         .init(role: .assistant, parts: [
-                            .text("第 \(turn) 答"),
+                            .text("第 \(index) 答"),
                             .toolCall(.init(
                                 toolCallId: callId,
                                 toolName: "daily_steps",
@@ -188,10 +242,8 @@ struct ContextManagementTests {
                     ]),
                     state: .completed
                 )
-            ))
-        }
-        history.append(.init(role: .user, text: "第 \(turnCount + 1) 问"))
-        return history
+            )
+        ]
     }
 }
 

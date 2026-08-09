@@ -5,6 +5,7 @@ enum EngineSettings {
     static let providerKey = "providerId"
     static let modelKey = "model"
     static let personaKey = "assistantPersona"
+    static let thinkingEnabledKey = "thinkingEnabled"
     static let checkInsEnabledKey = "checkInsEnabled"
     static let morningCheckInHourKey = "morningCheckInHour"
     static let eveningCheckInHourKey = "eveningCheckInHour"
@@ -18,5 +19,12 @@ enum EngineSettings {
     static var persona: AssistantPersona {
         AssistantPersona(rawValue: UserDefaults.standard.string(forKey: personaKey) ?? "")
             ?? .balanced
+    }
+
+    /// 让模型先思考再回答。默认开。
+    ///
+    /// `UserDefaults.bool` 没存过的时候返回 false,直接用会把默认值悄悄翻成「关」。
+    static var thinkingEnabled: Bool {
+        UserDefaults.standard.object(forKey: thinkingEnabledKey) as? Bool ?? true
     }
 }

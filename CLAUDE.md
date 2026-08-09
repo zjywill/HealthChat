@@ -38,20 +38,67 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
 - `AgentModelClient`——「一个能估 token、能流式跑一轮的模型」。`AIKitModelClient` 是唯一实现。
 - `CapabilityRegistry`——「一组 JSON Schema 加一个执行闭包」。`HealthTools.registry` 是唯一实现。
 
-`AgentLoop` 在这两者之上跑工具循环。上下文管理是它最要紧的部分,从轻到重四档:
+`AgentLoop` 在这两者之上跑工具循环。上下文管理是它最要紧的部分,从轻到重:
 
+0. **单次工具输出的硬上限**(`ContextPolicy.maxToolOutputCharacters`,默认 6000 字符)——
+   进上下文之前就截,按行边界截。后面几档都是亡羊补牢:一次调用返回几万字符的话,那一轮
+   的原始输出在被压之前必须先原样发出去一次。`metadata` 不截,图表和原始行只给界面看。
 1. **整段摘要**(`ModelSummarizer`)——估算跨过 `compactionThreshold`(默认预算的 80%)就叫
    模型把远处那段写成 artifact。**发请求之前**做,不是撞墙之后:撞墙时已经没有从容处理的
    余地了。artifact 通过 `.historyCompacted` 事件交回 app 存盘,下轮直接复用,不重算。
+   第二次压缩走**增量更新**:`SummarizationPlan.previousSummary` 带上一版摘要,`spanText`
+   只放这之后的新对话。压摘要的摘要会让最早那几轮很快只剩一句客套。
 2. **逐轮压缩**(`TranscriptCompactor`)——把某一轮的原始工具输出换成它的摘要形态。总结失败
    时也退回这一档,绝不让用户这一句问不出去。
 3. **丢最老的一轮**——前两档都不够时的最后手段。
 4. 还塞不下就报 `contextWindowExceeded`,不偷偷发一个超长 prompt 出去。
 
+第 1 档排在第 2 档前面是有意的:机械压缩免费但会铲平工具轨迹,模型摘要花钱但留得住结论。
+省那一次调用不值得拿追问要用的数据去换。
+
+**规划的开销是手机上的一等问题**,这段每个工具轮都要跑一遍,而且跑在用户已经在等的时候:
+
+- 不需要压缩时(绝大多数会话)只估一次,和没有这套东西时一样贵。
+- 需要压缩时才建 `CostModel` 按条记账,只在被改动的那条上重估。别改回「每压一条就全量重估
+  一遍」——那是 O(n²),110 轮的会话实测 717ms,改完 86ms。
+- 逐条计价走 `estimateMessageTokens`(不带工具面)。工具 schema 是每次请求算一遍的常量,
+  跟着每条消息重新序列化一遍占掉三成耗时。
+- 成本模型假设估算可加,这个假设**只用来挑压谁**。报给上层的 `estimatedPromptTokens` 和
+  预算判断永远是估算器对整份 prompt 的结果;偏了就退回逐条重估兜底。
+
+`HealthChatTests/ContextBudgetPerformanceTests` 盯着耗时和 `phys_footprint` 峰值,改这块先看它。
+
+## 架构:失败处理
+
+同样分档,越靠外越少见。原则是**能自愈的不要惊动用户,惊动了就要说人话**:
+
+- **工具失败** → 变成一条 `isError` 的结果继续跑。模型自己会换个问法。
+- **模型失败** → `ModelFailure` 分类,分两条通道:传输层看 `NSURLErrorDomain` 的错误码
+  (`localizedDescription` 是跟着系统语言走的,中文手机上永远匹配不上 "timed out");
+  provider 侧看返回的原文(那段不本地化,而且经过 SDK、网关转手之后只剩它)。
+  - 拥塞、限流、网络抖动 → 指数退避重试(`RetryPolicy`,默认 3 次)。重跑之前先发一个
+    `.textRolledBack` 把已经吐出去的半句撤掉,否则半句会和重试的整句连在一起。撤字和
+    `.retryScheduled`(告诉用户在重试)是两个事件:重跑不一定是重试,压缩后重跑也要撤字。
+  - 额度、鉴权、模型不存在 → 立刻上报。对着「key 不对」重试三次只是把同一句话说三遍,
+    还把真正的原因往后拖了十几秒。
+  - 上下文超限 → 不重试(原样再发还是塞不下):强制总结一次 + 把校准比例放大 25%
+    (provider 说估小了就是估小了)+ 水位线降到 `thresholdAfterOverflow`,然后重跑这一轮。
+    只做一次;再超就报 `contextWindowExceeded`,让用户去开新对话。
+- **模型在吐 tool_use 的中途被输出上限截断**(`finishReason == .length` 且有 pendingCalls)
+  → 这一批**一个都不执行**,每个都回一条 error 结果让模型重发。JSON 能抢救出来不代表参数
+  完整,拿半截日期去查会查出一组看着很正常但是错的数字。
+- **工具轮数用光** → 不是错误。照常 `turnCompleted`,finish reason 记 `toolRoundLimitReason`,
+  已经查到的东西全部留着。把三次查询结果丢掉去报一个「查询次数过多」对用户是净损失。
+
+压缩本身也发事件(`.compactionStarted` / `.compactionFailed`)。静默降级等于线上出问题时
+无从查起。
+
 最近 `preservedRecentTurns`(默认 2)轮在第 1、2 档里受保护:刚查完的数据被压成一句摘要,
 用户下一句「那第三天呢」就答不上来了。只有真超预算才动它们。
 
-`ContextCalibration` 按 provider+model 归档本地估算和实际计费的比值,换模型即作废。
+`ContextCalibration` 按 provider+model 归档本地估算和实际计费的比值,换模型即作废。取最近
+几次的**中位数**,离谱的样本直接丢:命中缓存的那一轮 provider 可能只报没走缓存的部分,只信
+最近一次的话下一轮就拿这把废尺子去量。
 
 几条不要破坏的边界:
 
@@ -65,6 +112,12 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
   工具轨迹)。不要退化成「只回放可见文本」。
 - app 写给用户的占位文案("已停止回复")打 `textIsPlaceholder`,runtime 靠这个标记判断要不要
   回放——不要让 runtime 去比对某句中文。
+
+- **assistant 的 `.reasoning` 是数据,不是日志**。DeepSeek 的思考模型规定:带 `tools` 的请求
+  必须把每一条中间 assistant 的 `reasoning_content` 原样发回去,少一条就是 400。所以
+  transcript 里的 `.reasoning` 不能在存盘、回放、迁移的任何一环被顺手删掉。发不发由 AIKit
+  按 `ModelInfo.interleaved.field` / dialect 决定——反过来对着一个没听过这字段的 provider
+  发它,同样是 400。
 
 ## 依赖
 

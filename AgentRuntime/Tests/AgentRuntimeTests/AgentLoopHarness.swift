@@ -9,6 +9,8 @@ import Foundation
 final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     struct Turn: Sendable {
         var textDeltas: [String] = []
+        /// 思考。真模型先思考再说话,脚本也按这个顺序发。
+        var reasoningDeltas: [String] = []
         var toolCalls: [CapabilityInvocation] = []
         var finishReason: AgentFinishReason = .init(unified: .stop)
         var usage: AgentUsage?
@@ -19,6 +21,8 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         /// 必须挂在开口**之前**:挂在之后的话,delta 已经进了 stream 的缓冲区,消费者会先把
         /// 缓冲区抽干再发现自己被取消了——测试就变成看谁跑得快。
         var beforeResponding: (@Sendable () async throws -> Void)?
+        /// 说了半句之后流断掉。传输层的失败长这样:没有 finish reason,只有一个抛出来的错。
+        var throwsAfterText: (any Error)?
     }
 
     let profile: AgentModelProfile
@@ -67,9 +71,19 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
                     try Task.checkCancellation()
 
                     var parts: [AgentTranscript.Part] = []
+                    for delta in turn.reasoningDeltas {
+                        try Task.checkCancellation()
+                        continuation.yield(.reasoningDelta(delta))
+                    }
                     for delta in turn.textDeltas {
                         try Task.checkCancellation()
                         continuation.yield(.textDelta(delta))
+                    }
+                    if let failure = turn.throwsAfterText { throw failure }
+
+                    let reasoning = turn.reasoningDeltas.joined()
+                    if !reasoning.isEmpty {
+                        parts.append(.reasoning(reasoning))
                     }
                     let text = turn.textDeltas.joined()
                     if !text.isEmpty {
@@ -154,18 +168,60 @@ func stubRegistry(
     }
 }
 
+/// 照 app 的方式消费一轮:事件按顺序归约进历史,同时原样留一份事件流。
+///
+/// 事件流是要验的东西之一——重试、压缩这些都只在事件里看得见,归约完的消息上是看不出来的。
+func record(
+    _ loop: AgentLoop,
+    history: [AgentChatMessageDTO]
+) async -> (messages: [AgentChatMessageDTO], events: [AgentTurnEvent], error: (any Error)?) {
+    var result = history
+    var events: [AgentTurnEvent] = []
+    AgentTurnReducer.startReply(in: &result)
+    do {
+        for try await event in loop.run(history: history) {
+            events.append(event)
+            AgentTurnReducer.apply(event, in: &result)
+        }
+    } catch {
+        return (result, events, error)
+    }
+    return (result, events, nil)
+}
+
 func collect(
     _ loop: AgentLoop,
     history: [AgentChatMessageDTO]
 ) async -> (messages: [AgentChatMessageDTO], error: (any Error)?) {
-    var result = history
-    AgentTurnReducer.startReply(in: &result)
-    do {
-        for try await event in loop.run(history: history) {
-            AgentTurnReducer.apply(event, in: &result)
-        }
-    } catch {
-        return (result, error)
+    let outcome = await record(loop, history: history)
+    return (outcome.messages, outcome.error)
+}
+
+extension [AgentTurnEvent] {
+    var retries: [AgentRetryNotice] {
+        compactMap { if case .retryScheduled(let notice) = $0 { notice } else { nil } }
     }
-    return (result, nil)
+
+    var rolledBackCharacters: [Int] {
+        compactMap { if case .textRolledBack(let count) = $0 { count } else { nil } }
+    }
+
+    var rolledBackReasoningCharacters: [Int] {
+        compactMap { if case .reasoningRolledBack(let count) = $0 { count } else { nil } }
+    }
+
+    var compactionReasons: [AgentCompactionReason] {
+        compactMap { if case .compactionStarted(let reason) = $0 { reason } else { nil } }
+    }
+
+    var compactionFailures: [String] {
+        compactMap { if case .compactionFailed(_, let message) = $0 { message } else { nil } }
+    }
+
+    var finishReason: AgentFinishReason? {
+        for event in self {
+            if case .turnCompleted(_, let reason, _, _) = event { return reason }
+        }
+        return nil
+    }
 }

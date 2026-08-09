@@ -1,10 +1,17 @@
 import SwiftUI
 
-/// 会话列表:切换、新建、删除。
+/// 会话列表:切换、新建、删除。按时间分段(今天 / 昨天 / 最近 7 天 / 更早)。
 struct SessionListView: View {
     let model: ChatViewModel
 
     @Environment(\.dismiss) private var dismiss
+
+    /// 列表打开时定一次「现在」。段的边界不该在用户滚动到一半时跳过去。
+    @State private var now = Date()
+
+    private var groups: [SessionTimeGroup] {
+        SessionTimeGroup.groups(from: model.summaries, now: now)
+    }
 
     var body: some View {
         List {
@@ -15,19 +22,23 @@ struct SessionListView: View {
                     description: Text("问一个健康问题，这里就会出现记录。")
                 )
             } else {
-                ForEach(model.summaries) { summary in
-                    Button {
-                        model.openSession(id: summary.id)
-                        dismiss()
-                    } label: {
-                        row(for: summary)
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            model.deleteSession(id: summary.id)
-                        } label: {
-                            Label("删除", systemImage: "trash")
+                ForEach(groups) { group in
+                    Section(group.section.title) {
+                        ForEach(group.summaries) { summary in
+                            Button {
+                                model.openSession(id: summary.id)
+                                dismiss()
+                            } label: {
+                                row(for: summary, in: group.section)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    model.deleteSession(id: summary.id)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -45,18 +56,17 @@ struct SessionListView: View {
             .disabled(model.isReplying)
             .accessibilityLabel("新对话")
         }
+        .onAppear { now = Date() }
     }
 
-    private func row(for summary: SessionSummary) -> some View {
+    private func row(for summary: SessionSummary, in section: SessionTimeSection) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary.title)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                // 界面文案全是中文写死的,相对时间也得跟上——app 没做本地化,
-                // 不指定 locale 就会跟着系统语言变成 "33 seconds ago"。
-                Text("\(summary.updatedAt.formatted(.relative(presentation: .named).locale(Locale(identifier: "zh_Hans")))) · \(summary.messageCount) 条消息")
+                Text("\(section.timeLabel(for: summary.updatedAt, now: now, calendar: .current)) · \(summary.messageCount) 条消息")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

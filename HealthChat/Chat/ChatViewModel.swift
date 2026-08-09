@@ -10,6 +10,11 @@ final class ChatViewModel {
     var isReplying = false
     var isLoadingConversation = true
     var engineGuidance: String?
+    /// 正在退避重试时给用户看的一句话。
+    ///
+    /// 退避期间界面上什么都不动的话,等十几秒和卡死是一模一样的观感——而这时候 app 其实
+    /// 知道发生了什么。
+    private(set) var retryNotice: String?
     /// 先给按时段挑的默认问题,AI 生成的回来了再替换。
     var suggestions = SuggestedQuestions.defaults()
 
@@ -211,6 +216,7 @@ final class ChatViewModel {
     private func startReply() {
         session.messages.append(ChatMessage(role: .assistant, text: ""))
         isReplying = true
+        retryNotice = nil
 
         currentReplyTask = Task {
             do {
@@ -234,6 +240,7 @@ final class ChatViewModel {
                 }
             }
             isReplying = false
+            retryNotice = nil
             currentReplyTask = nil
             await saveSession()
         }
@@ -242,11 +249,19 @@ final class ChatViewModel {
     /// 事件落到最后一条(正在写的那条回复)上。语义在 `AgentTurnSink.apply` 里,
     /// 这里只负责找到收件人——每个 delta 都把整条会话翻一遍 DTO 太贵了。
     private func apply(_ event: AgentEvent) {
+        switch event {
         // 例外:整段摘要挂在早先某条上。存下来,下轮就不用再叫一次模型重算。
-        if case .historyCompacted(let messageID, let artifact) = event {
+        case .historyCompacted(let messageID, let artifact):
             guard let index = session.messages.firstIndex(where: { $0.id == messageID }) else { return }
             session.messages[index].storedTurn.compaction = artifact
             return
+        case .retryScheduled(let notice):
+            retryNotice = "连接不稳定，正在重试（\(notice.attempt)/\(notice.maxAttempts)）"
+        case .textDelta:
+            // 重试成功了,模型开口了。
+            retryNotice = nil
+        default:
+            break
         }
         guard let last = session.messages.indices.last else { return }
         session.messages[last].apply(event)
@@ -311,9 +326,15 @@ final class ChatViewModel {
 
     // MARK: - 存取
 
+    /// 冷启动落在新对话上,不接着上次那条。
+    ///
+    /// 打开 app 的时候人多半是想问一件新的事。续上几天前那句「那第三天呢」,既要先读完
+    /// 才知道自己在哪儿,想问新的还得再点一次「新对话」。上一条一条没丢,在会话列表里
+    /// 一点就回得去。
+    ///
+    /// 代价是被系统回收之后再进来,不会自动回到刚才那条——换来的是每次进来都可预测。
     private func loadInitialSession() async {
         defer { isLoadingConversation = false }
-        session = (try? await SessionStore.shared.mostRecent()) ?? ChatSession()
         await refreshSummaries()
     }
 

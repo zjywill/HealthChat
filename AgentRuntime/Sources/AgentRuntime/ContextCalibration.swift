@@ -2,21 +2,38 @@ import Foundation
 
 /// 本地估算和 provider 实际计费的比值。
 ///
-/// 本地 tokenizer 和服务端从来对不齐,差个 10%~30% 很正常。拿上一轮的 usage 回来校准,
+/// 本地 tokenizer 和服务端从来对不齐,差个 10%~30% 很正常。拿过去几轮的 usage 回来校准,
 /// 后面几轮的预算就准得多。
 ///
-/// 关键是这个比值**按模型归档**:换了 provider 或模型,tokenizer 就换了,旧比值直接作废,
-/// 宁可回到裸估算也不要拿别人的尺子量。
+/// 两条纪律:
+/// - 比值**按模型归档**。换了 provider 或模型,tokenizer 就换了,旧比值直接作废,宁可回到
+///   裸估算也不要拿别人的尺子量。
+/// - 取**中位数**而不是最近一次。命中缓存的那一轮 `inputTokens.total` 可能只报没走缓存的
+///   部分,单看它会把比值压到 0.1;只信最近一次的话,下一轮就拿这把废尺子去量。
 public struct ContextCalibration: Equatable, Sendable {
-    public private(set) var scale: Double?
+    /// 单个样本的容许区间。落在外面的多半是口径问题(缓存、计费单位),不是估算误差。
+    private static let sampleRange = 0.25...4.0
+    private static let maximumSamples = 5
 
-    public init(scale: Double? = nil) {
-        self.scale = scale
+    private var samples: [Double]
+
+    /// 中位数。没有样本就是 nil——回到裸估算。
+    public var scale: Double? {
+        guard !samples.isEmpty else { return nil }
+        let sorted = samples.sorted()
+        let middle = sorted.count / 2
+        return sorted.count.isMultiple(of: 2)
+            ? (sorted[middle - 1] + sorted[middle]) / 2
+            : sorted[middle]
     }
 
-    /// 从历史里找最近一轮「同一个模型」留下的估算/实际对照。
+    public init(scale: Double? = nil) {
+        samples = scale.map { [$0] } ?? []
+    }
+
+    /// 从历史里找最近几轮「同一个模型」留下的估算/实际对照。
     public init(history: [AgentChatMessageDTO], profile: AgentModelProfile) {
-        scale = history.reversed().compactMap { message -> Double? in
+        let recent = history.reversed().compactMap { message -> Double? in
             guard message.role == .assistant,
                   let context = message.storedTurn.context,
                   context.matches(providerId: profile.providerId, requestedModelId: profile.modelId),
@@ -26,17 +43,35 @@ public struct ContextCalibration: Equatable, Sendable {
                   actual > 0 else {
                 return nil
             }
-            return Double(actual) / Double(estimated)
-        }.first
+            return Self.accepted(Double(actual) / Double(estimated))
+        }
+        samples = Array(recent.prefix(Self.maximumSamples).reversed())
     }
 
     public mutating func note(actual: Int?, estimated: Int) {
         guard let actual, actual > 0, estimated > 0 else { return }
-        scale = Double(actual) / Double(estimated)
+        guard let sample = Self.accepted(Double(actual) / Double(estimated)) else { return }
+        samples.append(sample)
+        if samples.count > Self.maximumSamples {
+            samples.removeFirst(samples.count - Self.maximumSamples)
+        }
+    }
+
+    /// provider 已经说了「装不下」,那就是我们估小了。把尺子按比例放大,让后面的压缩更狠一点。
+    ///
+    /// 比重新估一遍更实在:估算器本来就是那个报错的源头,再问它一次还是同一个答案。
+    public mutating func inflate(by factor: Double) {
+        guard factor > 1 else { return }
+        let current = scale ?? 1
+        samples = [min(Self.sampleRange.upperBound, current * factor)]
     }
 
     public func apply(to estimate: Int) -> Int {
         guard let scale, scale > 0 else { return estimate }
         return max(1, Int((Double(estimate) * scale).rounded()))
+    }
+
+    private static func accepted(_ ratio: Double) -> Double? {
+        sampleRange.contains(ratio) ? ratio : nil
     }
 }

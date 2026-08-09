@@ -67,6 +67,13 @@ public struct ConversationHistoryPlanner: Sendable {
     public var compactor: TranscriptCompactor
     public var migrationPolicy: HistoryMigrationPolicy
     public var policy: ContextPolicy
+    /// provider 已经报过一次上下文超限。水位线降到 `thresholdAfterOverflow`,压得更早更狠。
+    public var isRecoveringFromOverflow: Bool
+    /// 只估消息、不带工具面的估算器。
+    ///
+    /// 逐条计价时用它:工具 schema 是每次请求算一遍的常量,让它跟着每一条重新序列化一遍
+    /// 是纯浪费——实测占掉规划耗时的三成。给 nil 就退回 `estimateTokens` 再自己扣常量。
+    public var estimateMessageTokens: (@Sendable (AgentTranscript) -> Int)?
     public var estimateTokens: @Sendable (AgentTranscript) -> Int
 
     public init(
@@ -76,6 +83,8 @@ public struct ConversationHistoryPlanner: Sendable {
         compactor: TranscriptCompactor = .default,
         migrationPolicy: HistoryMigrationPolicy = .whenWindowShrinks,
         policy: ContextPolicy = .default,
+        isRecoveringFromOverflow: Bool = false,
+        estimateMessageTokens: (@Sendable (AgentTranscript) -> Int)? = nil,
         estimateTokens: @escaping @Sendable (AgentTranscript) -> Int
     ) {
         self.systemInstruction = systemInstruction
@@ -84,6 +93,8 @@ public struct ConversationHistoryPlanner: Sendable {
         self.compactor = compactor
         self.migrationPolicy = migrationPolicy
         self.policy = policy
+        self.isRecoveringFromOverflow = isRecoveringFromOverflow
+        self.estimateMessageTokens = estimateMessageTokens
         self.estimateTokens = estimateTokens
     }
 
@@ -95,31 +106,38 @@ public struct ConversationHistoryPlanner: Sendable {
     /// 开始压缩的水位。没超之前就动手,别等撞墙。
     public func softBudget(modelSwitched: Bool) -> Int? {
         budget.map { budget in
-            let ratio = modelSwitched ? policy.thresholdAfterModelSwitch : policy.compactionThreshold
+            var ratio = modelSwitched ? policy.thresholdAfterModelSwitch : policy.compactionThreshold
+            if isRecoveringFromOverflow {
+                ratio = min(ratio, policy.thresholdAfterOverflow)
+            }
             return Int((Double(budget) * min(max(ratio, 0.1), 1)).rounded())
         }
     }
 
     /// 这一轮要不要叫模型写一份整段摘要;要的话总结哪一段。
     ///
-    /// 只有跨过水位线才返回非 nil——总结是一次真实的模型调用,不该每轮都花。
+    /// 只有跨过水位线才返回非 nil——总结是一次真实的模型调用,不该每轮都花。`force` 是
+    /// 溢出恢复用的:provider 已经拒收了,水位线怎么算都不重要了。
     public func summarizationPlan(
         history: [AgentChatMessageDTO],
-        runtimeTranscript: AgentTranscript = .init()
+        runtimeTranscript: AgentTranscript = .init(),
+        force: Bool = false
     ) -> SummarizationPlan? {
         let items = historyItems(from: history)
         guard let soft = softBudget(modelSwitched: items.contains(where: \.isMigrationCandidate)) else {
             return nil
         }
-        guard estimateTokens(render(items: items, runtimeTranscript: runtimeTranscript)) > soft else {
-            return nil
+        if !force {
+            guard estimateTokens(render(items: items, runtimeTranscript: runtimeTranscript)) > soft else {
+                return nil
+            }
         }
 
         let absorbed = absorbedMessageIDs(in: history)
         let visible = history.filter { !absorbed.contains($0.id) }
         let cut = firstUnprotectedBoundary(in: visible)
         let span = Array(visible[..<cut]).filter { $0.hasReplayableContent || $0.role == .user }
-        guard span.count >= policy.minimumSpanMessages, let owner = span.last else { return nil }
+        guard let owner = span.last else { return nil }
 
         // 已经被吸收进来的那些也要记在账上,否则下次压缩会以为它们还原样躺着。
         var sourceIDs = span.map(\.id)
@@ -129,13 +147,16 @@ public struct ConversationHistoryPlanner: Sendable {
             }
         }
 
+        // 上一版摘要单独拎出来,不混进要压的原文里——它是"已知",新对话才是"待并入"。
+        var previousSummary: String?
         let spanTranscript = AgentTranscript(messages: span.flatMap { message -> [AgentTranscript.Message] in
             switch message.role {
             case .user:
                 return message.textIsPlaceholder ? [] : [.user(message.text)]
             case .assistant:
                 if let artifact = message.storedTurn.compaction, artifact.sourceMessageIDs.count > 1 {
-                    return [artifact.replaySummary]
+                    previousSummary = artifact.replaySummary.text
+                    return []
                 }
                 return message.exactReplayMessages.isEmpty
                     ? message.reconstructedReplayMessages
@@ -143,12 +164,18 @@ public struct ConversationHistoryPlanner: Sendable {
             }
         })
         guard !spanTranscript.messages.isEmpty else { return nil }
+        // 「太短不值得单独花一次调用」的前提是这次调用可省。溢出恢复时 provider 已经拒收了,
+        // 省不掉;接着上一版摘要往下并也一样,两三条新消息就值得。
+        guard force || previousSummary != nil || span.count >= policy.minimumSpanMessages else {
+            return nil
+        }
 
         return SummarizationPlan(
             ownerMessageID: owner.id,
             sourceMessageIDs: Array(Set(sourceIDs)).sorted { $0.uuidString < $1.uuidString },
             spanText: spanTranscript.plainTextRendering(),
-            messageCount: span.count
+            messageCount: span.count,
+            previousSummary: previousSummary
         )
     }
 
@@ -167,33 +194,73 @@ public struct ConversationHistoryPlanner: Sendable {
 
         var prompt = render(items: items, runtimeTranscript: runtimeTranscript)
         var estimate = estimateTokens(prompt)
+        let soft = softBudget(modelSwitched: modelSwitched)
 
-        func reRender() {
+        // 绝大多数会话到这儿就结束了:估一次,发出去。下面那套按条记账是压缩才付的钱,
+        // 不该让根本不用压的会话替它买单。
+        if soft.map({ estimate > $0 }) == true || budget.map({ estimate > $0 }) == true {
+            // 挑压谁靠成本模型,不靠反复全量重估。
+            //
+            // 每压一条就把整份 transcript 重新估一遍是 O(n²):长会话实测能到七百毫秒,而且
+            // 每个工具轮都要重来一遍。模型只在被改动的那一条上重估,搜索退回 O(n)。
+            var cost = CostModel(items: items, runtimeTranscript: runtimeTranscript, planner: self)
+
+            // 第一档:没超预算但过了水位线,先压远处的,最近几轮不动。
+            if let soft {
+                let protectedFrom = firstProtectedItemIndex(in: items)
+                while cost.total > soft,
+                      compactOldestAssistant(
+                          in: &items,
+                          before: protectedFrom,
+                          migratedOut: &migrated,
+                          cost: &cost
+                      ) {
+                    compacted += 1
+                }
+            }
+
+            // 第二档:真超了,最近几轮也保不住;还不够就丢最老的一轮。
+            if let budget {
+                while cost.total > budget {
+                    if compactOldestAssistant(
+                        in: &items,
+                        before: items.count,
+                        migratedOut: &migrated,
+                        cost: &cost
+                    ) {
+                        compacted += 1
+                    } else if dropOldestConversationTurn(in: &items, cost: &cost) {
+                        dropped += 1
+                    } else {
+                        break
+                    }
+                }
+            }
+
+            // 发出去的那个数必须是估算器自己算的整份 prompt。成本模型是用来**搜索**的,
+            // 它假设估算是可加的;真到了要报给上层的数字上,不拿假设当结论。
             prompt = render(items: items, runtimeTranscript: runtimeTranscript)
             estimate = estimateTokens(prompt)
-        }
 
-        // 第一档:没超预算但过了水位线,先压远处的,最近几轮不动。
-        if let soft = softBudget(modelSwitched: modelSwitched) {
-            let protectedFrom = firstProtectedItemIndex(in: items)
-            while estimate > soft,
-                  compactOldestAssistant(in: &items, before: protectedFrom, migratedOut: &migrated) {
-                compacted += 1
-                reRender()
-            }
-        }
-
-        // 第二档:真超了,最近几轮也保不住;还不够就丢最老的一轮。
-        if let budget {
-            while estimate > budget {
-                if compactOldestAssistant(in: &items, before: items.count, migratedOut: &migrated) {
-                    compacted += 1
-                } else if dropOldestConversationTurn(in: &items) {
-                    dropped += 1
-                } else {
-                    break
+            // 假设不成立时(某个 provider 的估算不可加)模型会偏。偏了就退回逐条重估——
+            // 该压的这时候基本已经压完了,循环不会跑几次。
+            if let budget, estimate > budget {
+                while estimate > budget {
+                    if compactOldestAssistant(
+                        in: &items,
+                        before: items.count,
+                        migratedOut: &migrated,
+                        cost: &cost
+                    ) {
+                        compacted += 1
+                    } else if dropOldestConversationTurn(in: &items, cost: &cost) {
+                        dropped += 1
+                    } else {
+                        break
+                    }
+                    prompt = render(items: items, runtimeTranscript: runtimeTranscript)
+                    estimate = estimateTokens(prompt)
                 }
-                reRender()
             }
         }
 
@@ -235,6 +302,67 @@ private extension ConversationHistoryPlanner {
         var isMigrationCandidate: Bool {
             if case .assistant(let item) = self { return item.isMigrationCandidate }
             return false
+        }
+
+        /// 这一条当前形态下真正会发出去的消息。
+        var messages: [AgentTranscript.Message] {
+            switch self {
+            case .user(let text): return [.user(text)]
+            case .assistant(let assistant): return assistant.active
+            case .summary(let summary): return [summary]
+            }
+        }
+    }
+
+    /// 按条记账的预算模型。
+    ///
+    /// 搜索「压哪几条才够」时不需要每步都把整份 transcript 交给估算器重算一遍:除了被改动的
+    /// 那一条,别的都没变。这里假设估算是可加的——同一个估算器对 [A, B] 的结果等于对 [A]
+    /// 加对 [B]。工具 schema 那部分是每次请求算一遍的常量,所以先单独量出来再从每条里扣掉,
+    /// 否则每条都会把整个工具面重复计一次。
+    ///
+    /// 这个假设只用来**挑**,不用来**报**:最终的数字仍然是估算器对整份 prompt 的结果。
+    struct CostModel {
+        /// 系统提示、工具面、这一轮已经跑出来的 transcript——都不受压缩影响。
+        private let baseline: Int
+        private let overhead: Int
+        private var itemCosts: [Int]
+        private let measure: @Sendable ([AgentTranscript.Message]) -> Int
+
+        var total: Int { baseline + itemCosts.reduce(0, +) }
+
+        init(
+            items: [HistoryItem],
+            runtimeTranscript: AgentTranscript,
+            planner: ConversationHistoryPlanner
+        ) {
+            let estimate = planner.estimateTokens
+            // 空 transcript 的开销 = 工具面,压缩动不了它。
+            let toolSurface = estimate(AgentTranscript(messages: []))
+            let measure: @Sendable ([AgentTranscript.Message]) -> Int
+            if let lean = planner.estimateMessageTokens {
+                measure = { $0.isEmpty ? 0 : lean(AgentTranscript(messages: $0)) }
+            } else {
+                // 没有专门的消息估算器,就用整份的那个再把常量扣掉。
+                measure = { $0.isEmpty ? 0 : estimate(AgentTranscript(messages: $0)) - toolSurface }
+            }
+
+            overhead = toolSurface
+            self.measure = measure
+            baseline = toolSurface
+                + measure([.system(planner.systemInstruction)] + runtimeTranscript.messages)
+            itemCosts = items.map { measure($0.messages) }
+        }
+
+        mutating func refresh(_ index: Int, with item: HistoryItem) {
+            guard itemCosts.indices.contains(index) else { return }
+            itemCosts[index] = measure(item.messages)
+        }
+
+        mutating func removeSubrange(_ range: Range<Int>) {
+            let clamped = range.clamped(to: itemCosts.indices.lowerBound..<itemCosts.count)
+            guard !clamped.isEmpty else { return }
+            itemCosts.removeSubrange(clamped)
         }
     }
 
@@ -288,14 +416,7 @@ private extension ConversationHistoryPlanner {
     func render(items: [HistoryItem], runtimeTranscript: AgentTranscript) -> AgentTranscript {
         var messages: [AgentTranscript.Message] = [.system(systemInstruction)]
         for item in items {
-            switch item {
-            case .user(let text):
-                messages.append(.user(text))
-            case .assistant(let assistant):
-                messages.append(contentsOf: assistant.active)
-            case .summary(let summary):
-                messages.append(summary)
-            }
+            messages.append(contentsOf: item.messages)
         }
         messages.append(contentsOf: runtimeTranscript.messages)
         return AgentTranscript(messages: messages)
@@ -325,7 +446,8 @@ private extension ConversationHistoryPlanner {
     func compactOldestAssistant(
         in items: inout [HistoryItem],
         before limit: Int,
-        migratedOut: inout Bool
+        migratedOut: inout Bool,
+        cost: inout CostModel
     ) -> Bool {
         let range = 0..<min(limit, items.count)
 
@@ -338,6 +460,7 @@ private extension ConversationHistoryPlanner {
                 }
                 item.isCompacted = true
                 items[index] = .assistant(item)
+                cost.refresh(index, with: items[index])
                 if preferMigrated { migratedOut = true }
                 return true
             }
@@ -347,7 +470,7 @@ private extension ConversationHistoryPlanner {
         return compact(preferMigrated: true) || compact(preferMigrated: false)
     }
 
-    func dropOldestConversationTurn(in items: inout [HistoryItem]) -> Bool {
+    func dropOldestConversationTurn(in items: inout [HistoryItem], cost: inout CostModel) -> Bool {
         let userCount = items.reduce(into: 0) { count, item in
             if case .user = item { count += 1 }
         }
@@ -360,6 +483,7 @@ private extension ConversationHistoryPlanner {
             end += 1
         }
         items.removeSubrange(0..<end)
+        cost.removeSubrange(0..<end)
         return true
     }
 

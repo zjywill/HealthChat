@@ -11,9 +11,18 @@ struct AIKitModelClient: AgentModelClient {
 
     private let client: AIClient
     private let reporter = ContextReporter()
+    /// 思考开关。nil 表示这个模型压根没有思考这回事,那就什么都别说。
+    ///
+    /// 「什么都不说」不等于「不思考」——DeepSeek、Qwen、GLM 默认就是开的,想关必须显式说。
+    /// 反过来也一样要小心:对着一个不会思考的模型发 `thinking: {type: enabled}`,
+    /// 有些 provider 直接 400。所以只在目录说这个模型支持思考时才发。
+    private let thinking: Thinking?
 
-    init(providerId: String, modelId: String, apiKey: String) throws {
+    init(providerId: String, modelId: String, apiKey: String, thinking: Thinking = .on) throws {
         let info = ProviderCatalog.model(modelId, provider: providerId)?.1
+        // 目录里没有的模型(自建 endpoint、比目录新)也按"不会思考"处理:发一个它没听过的
+        // 字段,比少发一个字段的后果严重得多。
+        self.thinking = (info?.supportsReasoning ?? false) ? thinking : nil
         profile = AgentModelProfile(
             providerId: providerId,
             modelId: modelId,
@@ -39,8 +48,13 @@ struct AIKitModelClient: AgentModelClient {
                     for try await part in parts {
                         try Task.checkCancellation()
                         collected.append(part)
-                        if case .textDelta(_, let delta, _) = part, !delta.isEmpty {
+                        switch part {
+                        case .textDelta(_, let delta, _) where !delta.isEmpty:
                             continuation.yield(.textDelta(delta))
+                        case .reasoningDelta(_, let delta, _) where !delta.isEmpty:
+                            continuation.yield(.reasoningDelta(delta))
+                        default:
+                            break
                         }
                     }
                     continuation.yield(.completed(AIResponse(parts: collected).agentModelResponse))
@@ -57,7 +71,8 @@ struct AIKitModelClient: AgentModelClient {
         CallOptions(
             model: request.profile.modelId,
             prompt: request.prompt.aiKitPrompt,
-            tools: request.capabilities.map(\.aiKitToolDefinition)
+            tools: request.capabilities.map(\.aiKitToolDefinition),
+            thinking: thinking
         )
     }
 }
@@ -95,7 +110,8 @@ struct AIKitEngine: AgentEngine {
                     let client = try AIKitModelClient(
                         providerId: providerId,
                         modelId: model,
-                        apiKey: try resolvedAPIKey()
+                        apiKey: try resolvedAPIKey(),
+                        thinking: EngineSettings.thinkingEnabled ? .on : .off
                     )
                     let loop = AgentLoop(
                         client: client,
@@ -105,7 +121,9 @@ struct AIKitEngine: AgentEngine {
                         // 总结走同一个模型。理论上换个便宜的更划算,但那要用户再配一份 key
                         // 和模型;等真有人抱怨这笔钱再说。
                         summarizer: ModelSummarizer.healthChat(client: client),
-                        maxToolRounds: Self.maxToolRounds
+                        policy: .healthChat,
+                        maxToolRounds: Self.maxToolRounds,
+                        truncatedToolCallNotice: healthChatTruncatedToolCallNotice
                     )
                     for try await event in loop.run(history: history.map(\.agentDTO)) {
                         continuation.yield(event)
@@ -129,7 +147,7 @@ struct AIKitEngine: AgentEngine {
     }
 
     private func systemInstruction() -> String {
-        var instructions = HealthAssistantInstructions.text
+        var instructions = HealthAssistantInstructions.text()
         if let topic {
             instructions += "\n\n本次对话的话题：\(topic.name)。\(topic.focus)"
         }

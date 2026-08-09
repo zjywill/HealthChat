@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(EngineSettings.providerKey) private var providerId = EngineSettings.defaultProvider
     @AppStorage(EngineSettings.modelKey) private var model = EngineSettings.defaultModel
     @AppStorage(EngineSettings.personaKey) private var persona = EngineSettings.defaultPersona
+    @AppStorage(EngineSettings.thinkingEnabledKey) private var thinkingEnabled = true
     @AppStorage(EngineSettings.checkInsEnabledKey) private var checkInsEnabled = false
     @AppStorage(EngineSettings.morningCheckInHourKey) private var morningHour = EngineSettings.defaultMorningHour
     @AppStorage(EngineSettings.eveningCheckInHourKey) private var eveningHour = EngineSettings.defaultEveningHour
@@ -158,10 +159,13 @@ struct SettingsView: View {
                 Text(AssistantPersona(rawValue: persona)?.summary ?? "")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                Toggle("回答前先思考", isOn: $thinkingEnabled)
             } header: {
                 Text("助手")
             } footer: {
-                Text("只改语气和详略，不改数据口径——同样只引用工具返回的数字，同样不做诊断。")
+                Text("只改语气和详略，不改数据口径——同样只引用工具返回的数字，同样不做诊断。"
+                    + "\n思考让多步分析更准，但更慢也更贵；有些模型不支持关闭，那就还是会思考。")
             }
 
             Section {

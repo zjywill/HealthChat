@@ -78,6 +78,32 @@ public struct AgentToolOutput: Equatable, Codable, Sendable {
         self.text = text
         self.metadata = metadata
     }
+
+    /// 截到 `maxCharacters` 以内。
+    ///
+    /// 这是上下文预算的**源头闸门**:一次工具调用返回几万字符,后面所有的压缩都只是在
+    /// 亡羊补牢——那一轮的原始输出在被压之前必须先原样发出去一次。截断放在 loop 里而不是
+    /// 每个能力里,是因为能力是可以随便加的,防线不能指望每个作者都记得。
+    ///
+    /// 只截 `text`(进模型的那份),`metadata` 原样留着——图表和原始行只给界面看,不占预算。
+    func limited(to maxCharacters: Int, notice: String) -> AgentToolOutput {
+        guard maxCharacters > 0, text.count > maxCharacters else { return self }
+
+        // 按行切。半行数字比没有数字更危险:模型会把 "08-0" 当成一个日期读下去。
+        var kept = ""
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard kept.count + line.count + 1 <= maxCharacters else { break }
+            if !kept.isEmpty { kept += "\n" }
+            kept += line
+        }
+        if kept.isEmpty {
+            kept = String(text.prefix(maxCharacters))
+        }
+
+        var limited = self
+        limited.text = kept + "\n" + String(format: notice, text.count - kept.count, text.count)
+        return limited
+    }
 }
 
 public struct ToolCallRecordDTO: Identifiable, Equatable, Codable, Sendable {
@@ -275,6 +301,11 @@ public struct AgentChatMessageDTO: Identifiable, Equatable, Codable, Sendable {
     /// 有这个标记,runtime 就不用靠比对某句中文来判断该不该回放——那句话属于 app,
     /// 不属于通用 core。
     public var textIsPlaceholder: Bool
+    /// 模型这一轮的思考,几段拼在一起。
+    ///
+    /// 只给界面看。回放给模型的那一份在 `storedTurn.exactTranscript` 的 `.reasoning` 里,
+    /// 两份不能互相顶替:transcript 那份要带 provider metadata 原样发回去,这份是纯文本。
+    public var reasoning: String
     public var toolCalls: [ToolCallRecordDTO]
     public var storedTurn: StoredAgentTurn
     public var errorDescription: String?
@@ -285,6 +316,7 @@ public struct AgentChatMessageDTO: Identifiable, Equatable, Codable, Sendable {
         role: Role,
         text: String,
         textIsPlaceholder: Bool = false,
+        reasoning: String = "",
         toolCalls: [ToolCallRecordDTO] = [],
         storedTurn: StoredAgentTurn = .init(),
         errorDescription: String? = nil,
@@ -294,6 +326,7 @@ public struct AgentChatMessageDTO: Identifiable, Equatable, Codable, Sendable {
         self.role = role
         self.text = text
         self.textIsPlaceholder = textIsPlaceholder
+        self.reasoning = reasoning
         self.toolCalls = toolCalls
         self.storedTurn = storedTurn
         self.errorDescription = errorDescription

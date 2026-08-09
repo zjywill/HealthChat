@@ -47,6 +47,12 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
     ///
     /// 有这个标记,runtime 判断该不该回放时就不用去比对某句中文——那句话属于 app。
     var textIsPlaceholder: Bool
+    /// 模型这一轮的思考,几段拼在一起。没有思考(或者模型不吐思考)时是空串。
+    ///
+    /// 存盘:重开一条老会话时思考还在,和刚聊完时看到的是同一屏。它和
+    /// `storedTurn.exactTranscript` 里的 `.reasoning` 是同一段话的两种形态——那份带
+    /// provider metadata,要原样发回给模型;这份是纯文本,只给人看。
+    var reasoning: String
     var toolCalls: [ToolCallRecord]
     var storedTurn: StoredAgentTurn
     var errorDescription: String?
@@ -61,6 +67,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         case role
         case text
         case textIsPlaceholder
+        case reasoning
         case toolCalls
         case storedTurn
         case errorDescription
@@ -79,6 +86,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         role: Role,
         text: String,
         textIsPlaceholder: Bool = false,
+        reasoning: String = "",
         toolCalls: [ToolCallRecord] = [],
         storedTurn: StoredAgentTurn = .init(),
         errorDescription: String? = nil,
@@ -88,6 +96,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         self.role = role
         self.text = text
         self.textIsPlaceholder = textIsPlaceholder
+        self.reasoning = reasoning
         self.toolCalls = toolCalls
         self.storedTurn = storedTurn
         self.errorDescription = errorDescription
@@ -99,6 +108,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         role = Role(dto.role)
         text = dto.text
         textIsPlaceholder = dto.textIsPlaceholder
+        reasoning = dto.reasoning
         toolCalls = dto.toolCalls.map(ToolCallRecord.init)
         storedTurn = dto.storedTurn
         errorDescription = dto.errorDescription
@@ -112,6 +122,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         role = try container.decode(Role.self, forKey: .role)
         text = try container.decode(String.self, forKey: .text)
         textIsPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .textIsPlaceholder) ?? false
+        reasoning = try container.decodeIfPresent(String.self, forKey: .reasoning) ?? ""
         toolCalls = try container.decodeIfPresent([ToolCallRecord].self, forKey: .toolCalls) ?? []
         errorDescription = try container.decodeIfPresent(String.self, forKey: .errorDescription)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
@@ -146,6 +157,9 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         try container.encode(role, forKey: .role)
         try container.encode(text, forKey: .text)
         try container.encode(textIsPlaceholder, forKey: .textIsPlaceholder)
+        if !reasoning.isEmpty {
+            try container.encode(reasoning, forKey: .reasoning)
+        }
         try container.encode(toolCalls, forKey: .toolCalls)
         try container.encode(normalizedStoredTurn, forKey: .storedTurn)
         try container.encodeIfPresent(errorDescription, forKey: .errorDescription)
@@ -175,6 +189,14 @@ extension ChatMessage {
         return compaction
     }
 
+    /// 这一轮是被单轮查询次数上限截住的。
+    ///
+    /// 不是失败:已经查到的东西都在,只是模型还想接着查。用户需要知道这件事——不然它
+    /// 看起来就是说到一半自己停了。
+    var stoppedAtToolRoundLimit: Bool {
+        storedTurn.finishReason?.raw == AgentLoop.toolRoundLimitReason
+    }
+
     /// 交给 runtime 的形态。落盘和回放走的是同一份,不会出现"存的和发的不一样"。
     var agentDTO: AgentChatMessageDTO {
         var dto = rawDTO
@@ -189,6 +211,7 @@ extension ChatMessage {
             role: AgentChatMessageDTO.Role(role),
             text: text,
             textIsPlaceholder: textIsPlaceholder,
+            reasoning: reasoning,
             toolCalls: toolCalls.map(\.dto),
             storedTurn: storedTurn,
             errorDescription: errorDescription,
@@ -219,6 +242,10 @@ extension ChatMessage: AgentTurnSink {
         text += delta
     }
 
+    mutating func appendReasoning(_ delta: String) {
+        reasoning += delta
+    }
+
     mutating func startToolCall(_ record: ToolCallRecordDTO) {
         toolCalls.append(ToolCallRecord(record))
     }
@@ -241,6 +268,16 @@ extension ChatMessage: AgentTurnSink {
         storedTurn.usage = usage
         storedTurn.context = context
         storedTurn.state = .completed
+    }
+
+    mutating func rollBackText(_ characterCount: Int) {
+        guard characterCount > 0, !textIsPlaceholder else { return }
+        text.removeLast(min(characterCount, text.count))
+    }
+
+    mutating func rollBackReasoning(_ characterCount: Int) {
+        guard characterCount > 0 else { return }
+        reasoning.removeLast(min(characterCount, reasoning.count))
     }
 
     mutating func markStopped() {
