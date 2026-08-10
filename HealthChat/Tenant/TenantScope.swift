@@ -53,6 +53,9 @@ enum TenantScope {
     /// 拿一个用得好好的 app 去换一个还没人用过的功能,不值得。
     @discardableResult
     static func bootstrap(parent: URL = URL.documentsDirectory, store: TenantStore = .shared) -> Bool {
+        // 排在名单之前:迁移那一步会把老布局搬进 `tenants/`,标记要在搬完之后仍然成立,
+        // 而目录级的标记正好覆盖搬进去的一切。两条路(迁移成功与否)都走到。
+        TenantPaths.excludeFromBackup(parent: parent)
         do {
             let owner = try store.owner()
             state.withLock {

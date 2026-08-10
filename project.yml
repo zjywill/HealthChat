@@ -60,6 +60,9 @@ targets:
       path: HealthChat/Info.plist
       properties:
         NSLocationDefaultAccuracyReduced: true
+        # 出口合规。只用 HTTPS 和系统自带的加密(Keychain、文件保护),属于豁免范围。
+        # 不写这个键的话每次往 App Store Connect 传 build 都会被拦下来问一遍同一个问题。
+        ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: HealthChat/HealthChat.entitlements
       properties:
@@ -71,6 +74,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.junyizhang.HealthChat
         PRODUCT_NAME: HealthChat
+        # `GENERATE_INFOPLIST_FILE` 开着时,版本号这两项由**构建设置**说了算——写在
+        # `HealthChat/Info.plist` 里的那两行会被生成器直接盖掉(试过:产物里这两个键
+        # 一个都不剩)。而没有 CFBundleShortVersionString 的 build 是传不上 App Store
+        # Connect 的,界面上「关于」那行版本也只显示一个破折号。
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
         # Icon Composer 的 HealthChat/AppIcon.icon,名字要和这里对上。
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
@@ -78,9 +87,12 @@ targets:
         # 换掉它们会让已存的 API key 和已授权的健康数据都对不上。
         INFOPLIST_KEY_CFBundleDisplayName: Vana
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_NSHealthShareUsageDescription: 用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。
-        INFOPLIST_KEY_NSHealthUpdateUsageDescription: 仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。
-        INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription: 用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。
+        # 这两句是用户在系统授权面板上读到的字,**必须和 app 实际做的事逐字对上**。
+        # 端上模型 2026-08-08 撤掉之后,这里一度还留着「端上模型模式下数据不离开设备」——
+        # 那是在健康授权面板上许一个这个 app 已经做不到的诺,也正是审核会第一眼读到的地方。
+        # 分析由用户自己配的云端模型完成,聚合数值会发出去,这一点两句里都要写明。
+        INFOPLIST_KEY_NSHealthShareUsageDescription: 用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。
+        INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription: 用于在对话中读取你已连接到「健康」的化验和体检记录。只在你提问时读取，相关内容会发送给你在设置里配置的云端模型来分析；Vana 不会修改这些记录，也不会把它们用于广告或数据挖掘。
         # 只要粗定位:城市决定气候、季节、时差、饮食和就医方式,而那几件正是要位置的全部理由。
         # 街道地址一件都回答不了,只是多给模型一样能说漏嘴的东西。
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: 用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。
@@ -89,3 +101,9 @@ targets:
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: 用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_STRICT_CONCURRENCY: targeted
+      configs:
+        # 写权限只有 `DebugSeeder` 用得着,而它整个文件是 `#if DEBUG`。正式构建里
+        # `requestAuthorization(toShare: [], ...)` 一次都不请求写——声明一个从不申请的
+        # 权限用途,审核那边是白送的一个问号。
+        Debug:
+          INFOPLIST_KEY_NSHealthUpdateUsageDescription: 仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。

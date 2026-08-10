@@ -36,4 +36,36 @@ enum TenantPaths {
             .appending(path: rootName, directoryHint: .isDirectory)
             .appending(path: id.uuidString, directoryHint: .isDirectory)
     }
+
+    /// 把成员数据整个排除出备份。启动时跑一次(`TenantScope.bootstrap`)。
+    ///
+    /// **HealthKit 的规矩是健康数据不许进 iCloud**,而 `Documents/` 默认是要进设备备份的,
+    /// 那份备份多数人存在 iCloud 上。会话文件里逐轮记着从 HealthKit 查到的数值,附件目录里
+    /// 是带姓名和就诊号的化验单——这两样正是那条规矩说的东西。
+    ///
+    /// **代价要说清楚:换新手机时这些数据不会跟着走。** 这是拿"换机重来一次"换"健康数据不
+    /// 出这台设备",在一个连原始照片都不往外发的 app 里,这个取舍是一致的。
+    /// 隐私说明里照实写了这一条——盘上的行为和那份文件必须逐字对上。
+    ///
+    /// 标在**目录**上,底下的东西一并排除,所以新建的会话和照片不用各自再标一次。
+    /// 名单文件单独标:它自己不是健康数据,但它是通往几个成员那几个目录的索引。
+    static func excludeFromBackup(parent: URL = URL.documentsDirectory) {
+        let manager = FileManager.default
+        let root = parent.appending(path: rootName, directoryHint: .isDirectory)
+        // 先建出来再标。等它被第一次写入时才标的话,中间那一段时间里的备份已经带上了。
+        try? manager.createDirectory(at: root, withIntermediateDirectories: true)
+
+        var targets = [root, parent.appending(path: "tenants.json", directoryHint: .notDirectory)]
+        // 迁移失败退回单人模式时,数据还直接躺在 `Documents/` 下。那一份同样要排除——
+        // 隔离没启用不是把健康数据交出去的理由。
+        targets += perTenantItems.map { parent.appending(path: $0.name, directoryHint: $0.hint) }
+
+        for target in targets {
+            guard manager.fileExists(atPath: target.path(percentEncoded: false)) else { continue }
+            var url = target
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? url.setResourceValues(values)
+        }
+    }
 }

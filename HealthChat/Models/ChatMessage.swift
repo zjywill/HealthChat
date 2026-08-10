@@ -86,6 +86,15 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
     /// 不显示。
     var createdAt: Date?
 
+    /// 这条气泡里的字是不是**模型真的写的**。
+    ///
+    /// 「以上由 AI 生成」那句标注挂在第一条这样的消息下面。报错和占位那两种气泡也是
+    /// assistant,但它们是 app 自己写的——在它们下面标一句「AI 生成」,是拿一句诚实的话去说
+    /// 一件不实的事,而这句标注的全部作用就是它可信。
+    var isModelWritten: Bool {
+        role == .assistant && !textIsPlaceholder && errorDescription == nil && !text.isEmpty
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case role

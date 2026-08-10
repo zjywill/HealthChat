@@ -30,6 +30,13 @@ final class ChatViewModel {
     /// 处境还没判定完的那几十毫秒里——之后它永远有内容,连"没读到值得留意的波动"都是一种
     /// 回答("要不要在意"的答案是"不用")。
     private(set) var quickSummary: String?
+    /// 本地判定出来的处境。首屏那张卡点开之后,详情页要按项列出「现在是多少」——那句话是
+    /// 从这里写出来的,而用户想知道的下一件事永远是"这话是根据什么说的"。
+    ///
+    /// 家人成员那条路上永远是 nil:`HealthSituation` 读的是机主的 HealthKit,整个不跑。
+    private(set) var situation: HealthSituation?
+    /// 那段话正在写。详情页那颗刷新按钮靠它转圈,也靠它挡住连按。
+    private(set) var isWritingSummary = false
     /// 接着刚才那段回答问的几条追问。
     ///
     /// 空着不是错误状态,是常态的一半:还没答完、生成失败、没配 key 都是空的,那时候
@@ -51,6 +58,9 @@ final class ChatViewModel {
     private var recognitionTasks: [UUID: Task<Void, Never>] = [:]
 
     private var currentReplyTask: Task<Void, Never>?
+    /// 首屏那段话的生成。按刷新时先取消在飞的那次:两条流往同一个字段上写,后到的那片
+    /// 会把先到的整段顶掉,屏幕上表现为文字来回跳。
+    private var summaryTask: Task<Void, Never>?
     /// 思考的增量攒一小会儿再落盘。
     ///
     /// 思考模型一秒能吐几十个 delta,而每一次落进 `session.messages` 都是一次
@@ -630,7 +640,7 @@ final class ChatViewModel {
         guard !hasRequestedSuggestions, !isLoadingConversation, messages.isEmpty else { return }
         hasRequestedSuggestions = true
 
-        Task {
+        summaryTask = Task {
             // 家人成员这条路上 `HealthSituation` 整个不跑。它读的是 HealthKit,而那份数据
             // 属于机主——跑一遍拿回来的「昨晚只睡了 6.2 小时」说的是机主,却会印在妈妈的
             // 首屏上。这是 `HealthStore` 五个调用方里最容易漏掉的一个:它藏在"首屏建议"
@@ -647,6 +657,7 @@ final class ChatViewModel {
                 interests: await sessionStore.interests()
             )
             guard messages.isEmpty else { return }
+            self.situation = situation
             situationSuggestions = situation.questions
             quickSummary = situation.quickSummary
             if session.topicId == nil {
@@ -654,11 +665,6 @@ final class ChatViewModel {
             }
 
             guard let settings = try? cloudSettings() else { return }
-            let writer = QuickSummaryWriter(
-                providerId: settings.provider,
-                model: settings.model,
-                situation: situation
-            )
             let suggester = QuestionSuggester(
                 providerId: settings.provider,
                 model: settings.model,
@@ -666,19 +672,98 @@ final class ChatViewModel {
             )
             // 并发发出去。串起来的话用户要等两次往返,而这两件事互不相干——一边失败了
             // 另一边照常换掉,各自的兜底也各自还在。
-            async let written = writer.summary()
             async let generated = suggester.suggestions()
+            async let written: Void = writeQuickSummary(for: situation, settings: settings)
 
+            await written
             // 回来得太晚就别抢了——用户已经开聊或者已经自己选了话题。
-            if let text = try? await written, messages.isEmpty {
-                quickSummary = text
-            }
             if let questions = try? await generated, messages.isEmpty {
                 situationSuggestions = questions
                 if session.topicId == nil {
                     suggestions = questions
                 }
             }
+        }
+    }
+
+    /// 重新读一遍数据、重新写一遍那段话。详情页上那颗刷新按钮。
+    ///
+    /// 生成这件事本来一次启动只跑一次(那是省钱的默认),但**用户对写出来的那段不满意**是
+    /// 一种没有出口的处境:数据是对的,话没说到点上,而他能做的只有关掉 app 再打开。给一颗
+    /// 按钮就够了——这是他自己按的,不是每回到首屏就自动花一次钱。
+    ///
+    /// 顺带重查一遍处境:按这颗按钮的另一半理由是"我刚同步完手表",那时候要换的是数据本身。
+    func regenerateQuickSummary() {
+        guard hasHealthData, !isWritingSummary else { return }
+
+        summaryTask?.cancel()
+        isWritingSummary = true
+        summaryTask = Task {
+            let situation = await HealthSituation.detect(
+                interests: await sessionStore.interests()
+            )
+            guard !Task.isCancelled else {
+                isWritingSummary = false
+                return
+            }
+            self.situation = situation
+            // 本地那句先换上。模型那段还没开始写,而数据可能已经变了——这几秒里让详情页
+            // 里的读数和句子对不上,比多等一会儿更糟。
+            quickSummary = situation.quickSummary
+            // 没配 key 时这颗按钮也不是白按的:重读一遍数据本身就是它的另一半用处
+            // (「我刚同步完手表」),那一半不需要模型。
+            guard let settings = try? cloudSettings() else {
+                isWritingSummary = false
+                return
+            }
+            await writeQuickSummary(for: situation, settings: settings, alreadyWriting: true)
+        }
+    }
+
+    /// 流式写那段话。每一片回来就往 `quickSummary` 上换一次,详情页里看到的就是它在写。
+    ///
+    /// 收尾才做校验:写超了、写跑题了整段作废,退回本地那句。作废这条路是静默的,所以
+    /// `QuickSummaryWriter` 那边留了一处 DEBUG 日志打模型原文。
+    private func writeQuickSummary(
+        for situation: HealthSituation,
+        settings: (provider: String, model: String),
+        alreadyWriting: Bool = false
+    ) async {
+        guard situation.hasSummaryFacts else {
+            if alreadyWriting { isWritingSummary = false }
+            return
+        }
+        if !alreadyWriting { isWritingSummary = true }
+        defer { isWritingSummary = false }
+
+        let writer = QuickSummaryWriter(
+            providerId: settings.provider,
+            model: settings.model,
+            situation: situation
+        )
+        var latest = ""
+        do {
+            for try await text in writer.stream() {
+                // 用户已经开聊了就撒手:首屏那张卡这会儿根本不在屏幕上,而他正在等的是
+                // 另一条流。
+                guard !Task.isCancelled, messages.isEmpty else { return }
+                latest = text
+                quickSummary = QuickSummaryWriter.partial(text)
+            }
+        } catch {
+            quickSummary = situation.quickSummary
+            return
+        }
+        guard !Task.isCancelled, messages.isEmpty else { return }
+        if let written = QuickSummaryWriter.parse(latest) {
+            quickSummary = written
+        } else {
+            #if DEBUG
+            // 作废这条路是静默的:界面上只表现为"本地那句一直没换掉"。写长了、带了壳、
+            // 分成三行写,原因只有原文说得清。
+            print("[首屏那段话] 这次没能用，模型原样输出：\n\(latest)")
+            #endif
+            quickSummary = situation.quickSummary
         }
     }
 

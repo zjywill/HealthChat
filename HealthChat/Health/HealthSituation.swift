@@ -130,6 +130,8 @@ struct HealthSituation: Sendable {
     let period: DayPeriod
     /// 已按"最可能是打开原因"排序。
     let triggers: [HealthTrigger]
+    /// 此刻的几个关键读数。触发点说「有什么变了」,它说「现在是多少」。
+    var vitals: HealthVitals = .empty
     /// 他平时爱问什么。只用来在**同等重要**的触发点之间挑,不用来推翻排序。
     var interests: InterestProfile = .empty
 
@@ -151,12 +153,25 @@ struct HealthSituation: Sendable {
     /// (`questions` 取的是同一个序列)。一句话说结论,几颗 chip 给去处,两边不重复。
     ///
     /// `.weeklyReview` 不进这里:它说的是"今天是周一",不是数据里发生的事。它排最后一名,
-    /// 只有别的什么都没有时才轮得到第一——而那时候该说的正是"没什么特别的"。
+    /// 只有别的什么都没有时才轮得到第一——而那时候该说的是现状。
+    ///
+    /// 没有触发点时**退到现状,不退到一句空话**。「最近几天没有读到值得特别留意的波动」
+    /// 一个数字都没有,而多数人多数天里数据本来就是平稳的——那句话于是成了大多数人打开
+    /// app 读到的第一行字,读完仍然不知道自己现在怎么样。没有波动不等于没有现状。
     var quickSummary: String {
         let facts = notableTriggers.prefix(2).map(\.brief)
-        guard !facts.isEmpty else { return Self.calmSummary }
-        return facts.joined(separator: "；") + "。"
+        if !facts.isEmpty { return facts.joined(separator: "；") + "。" }
+
+        // 三项打住。首屏这句话是"几秒钟看完"的东西,再往下就是一份日报——剩下那几项
+        // 点开详情页全都在。
+        let readings = vitals.measured.prefix(3).compactMap(\.phrase)
+        if !readings.isEmpty { return readings.joined(separator: "，") + "。" }
+
+        return Self.calmSummary
     }
+
+    /// 有没有东西可写。两样都空的时候连模型都不叫。
+    var hasSummaryFacts: Bool { !notableTriggers.isEmpty || !vitals.isEmpty }
 
     /// 值得写进那句话的触发点。空的话连模型都不用叫——让它为"没什么可说"写一句,
     /// 它会为了有话说而把常态写成异常。
@@ -164,12 +179,12 @@ struct HealthSituation: Sendable {
         triggers.filter { $0 != .weeklyReview }
     }
 
-    /// 什么都没读到值得说的时候那一句。
+    /// 连一个读数都拿不到时那一句。
     ///
-    /// 收在「没读到值得留意的波动」,不写成「一切正常」:睡眠和锻炼缺数据本身会变成触发点
-    /// (`.missingLastNight` / `.noWorkouts`),但步数、心率、体重那几项样本不够时是**静默
-    /// 跳过**的。也就是说走到这里只说明查过的那些没冒出异常,不足以替用户宣布他一切都好。
-    static let calmSummary = "最近几天没有读到值得特别留意的波动。"
+    /// 走到这里说明的不是「他很平稳」,而是**这台设备上什么都没读到**——没授权、刚装上、
+    /// 或者没戴表。所以话要说在这上面,而不是「没读到值得留意的波动」:那句话听起来像
+    /// 一份体检结论,实际上一个数字都没看过。更不能写成「一切正常」。
+    static let calmSummary = "还没有读到最近的健康数据。"
 
     /// 给模型的场景说明。没有触发点时只有时段,让它写通用的三条。
     var brief: String {
@@ -204,12 +219,20 @@ extension HealthSituation {
         async let sessions = try? store.workouts(days: 14)
         async let body = try? store.bodyMetrics(days: 14)
 
+        // 各查一次,喂两个消费者:判触发点,顺带留下现状。多解一遍是零成本的——重查一遍
+        // 才是。
+        let steps14 = await steps ?? []
+        let nights14 = await nights ?? []
+        let hearts14 = await hearts ?? []
+        let sessions14 = await sessions ?? []
+        let body14 = await body ?? []
+
         var triggers: [HealthTrigger] = []
-        triggers.append(contentsOf: workoutTriggers(await sessions ?? [], now: now, calendar: calendar))
-        triggers.append(contentsOf: sleepTriggers(await nights ?? [], now: now, calendar: calendar))
-        triggers.append(contentsOf: heartTriggers(await hearts ?? []))
-        triggers.append(contentsOf: stepTriggers(await steps ?? [], now: now, calendar: calendar))
-        triggers.append(contentsOf: bodyTriggers(await body ?? []))
+        triggers.append(contentsOf: workoutTriggers(sessions14, now: now, calendar: calendar))
+        triggers.append(contentsOf: sleepTriggers(nights14, now: now, calendar: calendar))
+        triggers.append(contentsOf: heartTriggers(hearts14))
+        triggers.append(contentsOf: stepTriggers(steps14, now: now, calendar: calendar))
+        triggers.append(contentsOf: bodyTriggers(body14))
 
         if period == .morning, calendar.component(.weekday, from: now) == 2 {
             triggers.append(.weeklyReview)
@@ -218,6 +241,15 @@ extension HealthSituation {
         return HealthSituation(
             period: period,
             triggers: ordered(triggers, period: period, interests: interests),
+            vitals: HealthVitals.read(
+                steps: steps14,
+                nights: nights14,
+                hearts: hearts14,
+                sessions: sessions14,
+                body: body14,
+                now: now,
+                calendar: calendar
+            ),
             interests: interests
         )
     }

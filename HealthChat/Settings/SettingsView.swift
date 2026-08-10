@@ -353,6 +353,16 @@ struct SettingsView: View {
                 Text("清空会删除本机保存的所有消息，无法撤销。")
             }
 
+            Section {
+                NavigationLink {
+                    AboutView()
+                } label: {
+                    Label("关于 Vana", systemImage: "info.circle")
+                }
+            } footer: {
+                Text("免责声明、数据去向和隐私说明。")
+            }
+
             #if DEBUG
             Section {
                 NavigationLink {

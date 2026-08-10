@@ -13,11 +13,14 @@
 		055303B542D7C5B593624D0C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBCEF74D9E62D8A490F0CFB /* SettingsView.swift */; };
 		058CCB1CB6ECDE0BEB771E97 /* FollowUpChipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE5CE6CC62914BCF9B6FA475 /* FollowUpChipTests.swift */; };
 		05C166D293377409DD040576 /* DocxText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770138DD64152FE98D4490FF /* DocxText.swift */; };
+		07DCF6904D10EC18B1CB2442 /* DataUseNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52A5195FED14006106C135D /* DataUseNotice.swift */; };
 		0B54E492502843A67BB4AEB6 /* SessionStorePerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E08AA2D3AA1ECB3ED52B1F8 /* SessionStorePerformanceTests.swift */; };
 		0C5A80234BBD46447D34BC8F /* CloudCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99342B97067E454CEA41A74C /* CloudCatalog.swift */; };
 		11394994FFE4A02E95C07486 /* CheckInScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52899627630A75079D60920 /* CheckInScheduler.swift */; };
 		12AB0A561D6390B9102B2573 /* VisionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03F7AC05908A15A92A0495D /* VisionTests.swift */; };
 		12BE5549A2F18A2E200D49B1 /* MedicationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD4090E9C4821B6650D46B5 /* MedicationDetailView.swift */; };
+		1D36A064E62EEE8434DFA735 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 032C3FAE4B63DB9E446F4DA1 /* AboutView.swift */; };
+		1E26A944B2F3F0143996F027 /* ComplianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C878F29BF7FCC84C489DC64 /* ComplianceTests.swift */; };
 		1E2B7292548CBF9B027A6979 /* ZIPArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117EF60B1EA8D0FB9F745BC1 /* ZIPArchive.swift */; };
 		1EB178C4F9F2F4301A00F6AE /* ChatLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3605F6F823756E8E2D3977A4 /* ChatLoopTests.swift */; };
 		22B9314E94B9D7EB65BB08EB /* SessionRecall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8235E3262E6138D6D1ED0544 /* SessionRecall.swift */; };
@@ -32,6 +35,7 @@
 		2EC1821C50AB2EE063C5456E /* EngineSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */; };
 		30989DE6DDC97556AE67D0C1 /* FollowUpRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A387ACB7AEE3013339A09C54 /* FollowUpRunnerTests.swift */; };
 		33DDA01D626BF6ED06CF7333 /* ToolResultPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FA7092CC07CC4F43676FDB /* ToolResultPanel.swift */; };
+		34C674D0EE9D43B21EF10C83 /* HealthStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279C3404FCD87BA49F2C6B8D /* HealthStatusView.swift */; };
 		36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DD0DA8E7A626878D4D2553 /* AssistantPersona.swift */; };
 		367B11714D566E251B4BB863 /* QueuedMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A0FD867EB71F5150F4C579 /* QueuedMessageTests.swift */; };
 		3706656D35EA51CF1E99EF58 /* BackgroundDigest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB3683AE0019A420ED052C6 /* BackgroundDigest.swift */; };
@@ -64,6 +68,7 @@
 		65EBBF347CB1B92A0E0DA5AE /* SpokenBriefTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D704B9357A509D46D42E9709 /* SpokenBriefTests.swift */; };
 		66475B1B44CC8C8205B4D6AE /* SessionThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC14AB734D7CF26266564DBC /* SessionThreadTests.swift */; };
 		70C3960DC728AF9F3D7E1658 /* DocumentImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490D6022365696613E0E160B /* DocumentImportTests.swift */; };
+		714E1B60AA93E8D539110E8B /* PrivacyPolicyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1134D344AFA55B871BBFBD62 /* PrivacyPolicyView.swift */; };
 		73670274E89078992A19CE26 /* DraftAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E56B4D93BE62BE7F1DF482D /* DraftAttachment.swift */; };
 		75123A816BF0E6040112EE34 /* BackgroundModelWorkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C79189BBB7066C213D300AF /* BackgroundModelWorkTests.swift */; };
 		7646C44E581A30F28CA2C98A /* TenantScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11E2077F44B349F72A9A583B /* TenantScope.swift */; };
@@ -74,6 +79,7 @@
 		7B1DB8099BE5FB310FAC811B /* FollowUpSuggester.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D695F50AEE0356B04ADDAE6 /* FollowUpSuggester.swift */; };
 		83D5C10AD650E148183493BA /* SessionThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC1089E95803546C1E9E043 /* SessionThread.swift */; };
 		8726B8F27396FACF0F71ED44 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
+		8978A6AB2759B24CE035DFE8 /* PrivacyPolicy.html in Resources */ = {isa = PBXBuildFile; fileRef = 585014FEF7E152F2B6296439 /* PrivacyPolicy.html */; };
 		89FC0556B9B998D9A32DFC83 /* SessionRecallTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55294A1A06EA89CF4FB93B1E /* SessionRecallTools.swift */; };
 		8DFB52ABF07AD9E07C9395D6 /* MedicationEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D50C2E16ED93D22BEC27C4 /* MedicationEditView.swift */; };
 		935519603C0E13B5A17B333F /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */; };
@@ -90,6 +96,7 @@
 		AAA270923300BB2494FAE116 /* VanaLaunchRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81027F1C343864BD068598A3 /* VanaLaunchRouter.swift */; };
 		B0E4D16660ABB8045B558A04 /* AttachmentImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04960C14CFC19B595E93391C /* AttachmentImporter.swift */; };
 		B2245B0B777D65F73789F6DE /* MemoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA71281E40CE8E14E10ADD9 /* MemoryItem.swift */; };
+		B29A843DF2EDBEA9E04A3AD3 /* HealthVitals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6F0D20F7DB19CD9F1E975A /* HealthVitals.swift */; };
 		B57EBDA001649FCF3568C025 /* SessionIndexEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E67FD6D4286027EF2802153E /* SessionIndexEntry.swift */; };
 		B595BEB93CBBFFEB0B6F6F49 /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C057D58E7689C9D354C3DA4 /* MemoryView.swift */; };
 		BEBBBD6A6779CA0402ABCAE9 /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFDC911B83D864FA864110D3 /* AttachmentViews.swift */; };
@@ -132,9 +139,12 @@
 
 /* Begin PBXFileReference section */
 		0220BC12F370803EFB063960 /* HealthSituation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSituation.swift; sourceTree = "<group>"; };
+		032C3FAE4B63DB9E446F4DA1 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		04960C14CFC19B595E93391C /* AttachmentImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImporter.swift; sourceTree = "<group>"; };
 		09B9AE29C0CB2B6771CCB916 /* ContextBudgetPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetPerformanceTests.swift; sourceTree = "<group>"; };
 		0B9D40E54C5918AC9FB47F38 /* WebSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchTests.swift; sourceTree = "<group>"; };
+		0E6F0D20F7DB19CD9F1E975A /* HealthVitals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthVitals.swift; sourceTree = "<group>"; };
+		1134D344AFA55B871BBFBD62 /* PrivacyPolicyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyPolicyView.swift; sourceTree = "<group>"; };
 		117EF60B1EA8D0FB9F745BC1 /* ZIPArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZIPArchive.swift; sourceTree = "<group>"; };
 		11E2077F44B349F72A9A583B /* TenantScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantScope.swift; sourceTree = "<group>"; };
 		13D50C2E16ED93D22BEC27C4 /* MedicationEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationEditView.swift; sourceTree = "<group>"; };
@@ -147,6 +157,7 @@
 		240748FF19F50787C5D02C81 /* aikitswift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = aikitswift; path = ../aikitswift; sourceTree = SOURCE_ROOT; };
 		26CDAE4F1497DFF33B197F69 /* SuggestedQuestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestedQuestions.swift; sourceTree = "<group>"; };
 		2764D5648660091F407CFE7A /* HealthChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HealthChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		279C3404FCD87BA49F2C6B8D /* HealthStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthStatusView.swift; sourceTree = "<group>"; };
 		2B0074F7C3BB04FAD54B8769 /* AgentEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEngine.swift; sourceTree = "<group>"; };
 		2BC118BF1E41BBC6CC14971C /* MemoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryStore.swift; sourceTree = "<group>"; };
 		2C057D58E7689C9D354C3DA4 /* MemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryView.swift; sourceTree = "<group>"; };
@@ -166,10 +177,12 @@
 		488A7E75212DFCF7E9B4D57A /* EngineSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSettings.swift; sourceTree = "<group>"; };
 		490D6022365696613E0E160B /* DocumentImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentImportTests.swift; sourceTree = "<group>"; };
 		4A349106B1279DFA21FE15B3 /* CloudPickerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudPickerViews.swift; sourceTree = "<group>"; };
+		4C878F29BF7FCC84C489DC64 /* ComplianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplianceTests.swift; sourceTree = "<group>"; };
 		4D0242EB57C5A3666EA14CE4 /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
 		4FC1089E95803546C1E9E043 /* SessionThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionThread.swift; sourceTree = "<group>"; };
 		50BDC598CA7DE688394401E6 /* ChatChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatChip.swift; sourceTree = "<group>"; };
 		55294A1A06EA89CF4FB93B1E /* SessionRecallTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTools.swift; sourceTree = "<group>"; };
+		585014FEF7E152F2B6296439 /* PrivacyPolicy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = PrivacyPolicy.html; sourceTree = "<group>"; };
 		5918BAA59B931A47C8543D26 /* AttachmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentStore.swift; sourceTree = "<group>"; };
 		5DB3683AE0019A420ED052C6 /* BackgroundDigest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDigest.swift; sourceTree = "<group>"; };
 		5DF5720A8DD2FEF3DF8EACCE /* AgentRuntime */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AgentRuntime; path = AgentRuntime; sourceTree = SOURCE_ROOT; };
@@ -225,6 +238,7 @@
 		CB3C81EFA4F5819BA6BEA62B /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		D3EA5435E4040695ACB0A74B /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		D52899627630A75079D60920 /* CheckInScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInScheduler.swift; sourceTree = "<group>"; };
+		D52A5195FED14006106C135D /* DataUseNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataUseNotice.swift; sourceTree = "<group>"; };
 		D56F6839C5BEA2AEB3C0A420 /* QuickSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSummaryTests.swift; sourceTree = "<group>"; };
 		D6065033CB905D32BAE1868E /* WebSearchClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchClient.swift; sourceTree = "<group>"; };
 		D704B9357A509D46D42E9709 /* SpokenBriefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenBriefTests.swift; sourceTree = "<group>"; };
@@ -334,6 +348,7 @@
 				7F3FD4BDBFA4B5FA58FAB75D /* Engine */,
 				7229EB7A7508313A4C9E5CBE /* Health */,
 				00EEE956D22223E13F080AE7 /* Intents */,
+				F9419812A0BEB9977468F8F8 /* Legal */,
 				E983BFC6BCDB8AC7D652EE47 /* Location */,
 				846D3630B3FA68C3F41DBCD8 /* Medications */,
 				DC149655E957EFFB21DF3227 /* Memory */,
@@ -363,7 +378,9 @@
 				6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */,
 				7E3D7B3F4958B0148BEDA3BA /* HealthAnalysis.swift */,
 				0220BC12F370803EFB063960 /* HealthSituation.swift */,
+				279C3404FCD87BA49F2C6B8D /* HealthStatusView.swift */,
 				99FB47FBAC6D5DD791DBE341 /* HealthStore.swift */,
+				0E6F0D20F7DB19CD9F1E975A /* HealthVitals.swift */,
 			);
 			path = Health;
 			sourceTree = "<group>";
@@ -452,6 +469,7 @@
 		BEB0F1583ED31D14EC7B660B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				032C3FAE4B63DB9E446F4DA1 /* AboutView.swift */,
 				71DD0DA8E7A626878D4D2553 /* AssistantPersona.swift */,
 				99342B97067E454CEA41A74C /* CloudCatalog.swift */,
 				4A349106B1279DFA21FE15B3 /* CloudPickerViews.swift */,
@@ -483,6 +501,7 @@
 				C0EAE3425B7C10A8DAAC0F3D /* ChatLoopHarness.swift */,
 				3605F6F823756E8E2D3977A4 /* ChatLoopTests.swift */,
 				BFE15B96B7A5C9905343074E /* ChatMessagePersistenceTests.swift */,
+				4C878F29BF7FCC84C489DC64 /* ComplianceTests.swift */,
 				09B9AE29C0CB2B6771CCB916 /* ContextBudgetPerformanceTests.swift */,
 				490D6022365696613E0E160B /* DocumentImportTests.swift */,
 				FE5CE6CC62914BCF9B6FA475 /* FollowUpChipTests.swift */,
@@ -513,6 +532,16 @@
 				91C7E54E90C186802F4FE209 /* LocationSnapshot.swift */,
 			);
 			path = Location;
+			sourceTree = "<group>";
+		};
+		F9419812A0BEB9977468F8F8 /* Legal */ = {
+			isa = PBXGroup;
+			children = (
+				D52A5195FED14006106C135D /* DataUseNotice.swift */,
+				585014FEF7E152F2B6296439 /* PrivacyPolicy.html */,
+				1134D344AFA55B871BBFBD62 /* PrivacyPolicyView.swift */,
+			);
+			path = Legal;
 			sourceTree = "<group>";
 		};
 		FD5634472C0DC070F1FEEA47 /* Packages */ = {
@@ -617,6 +646,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				49E6A8005E71885F29B8AFBC /* AppIcon.icon in Resources */,
+				8978A6AB2759B24CE035DFE8 /* PrivacyPolicy.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -628,6 +658,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C361FA106076E33DD4DE3584 /* AIKitEngine.swift in Sources */,
+				1D36A064E62EEE8434DFA735 /* AboutView.swift in Sources */,
 				FDFC3710084BB49D6D5A0EEE /* AgentEngine.swift in Sources */,
 				95D28A74F6326A87C8B49A21 /* AgentRuntimeBridge.swift in Sources */,
 				36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */,
@@ -647,6 +678,7 @@
 				0C5A80234BBD46447D34BC8F /* CloudCatalog.swift in Sources */,
 				E94ABD126DE32EFF05FAF16A /* CloudPickerViews.swift in Sources */,
 				5D2086F9435DA592C4573A19 /* ComposerBar.swift in Sources */,
+				07DCF6904D10EC18B1CB2442 /* DataUseNotice.swift in Sources */,
 				9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */,
 				658C5670EA911375CD55DE06 /* DerivedTurn.swift in Sources */,
 				F4D22C5AFBDCD322C85A4F3C /* DeveloperView.swift in Sources */,
@@ -663,8 +695,10 @@
 				2B7746B836B862AD11E5198A /* HealthChatApp.swift in Sources */,
 				57E0A0A9A177F6B8BF7366C3 /* HealthReport.swift in Sources */,
 				DF4068E17E3C7E38339A7D38 /* HealthSituation.swift in Sources */,
+				34C674D0EE9D43B21EF10C83 /* HealthStatusView.swift in Sources */,
 				935519603C0E13B5A17B333F /* HealthStore.swift in Sources */,
 				A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */,
+				B29A843DF2EDBEA9E04A3AD3 /* HealthVitals.swift in Sources */,
 				2E37FECA35FA8F5714DDEBD2 /* InterestProfile.swift in Sources */,
 				035D8709303854537D038A4C /* KeychainStore.swift in Sources */,
 				EB00D410583D35396260B796 /* LocationProvider.swift in Sources */,
@@ -681,6 +715,7 @@
 				5BE661DAD8951E551F4ABCE5 /* MemoryStore.swift in Sources */,
 				D27E946A7010E8603981265B /* MemoryTools.swift in Sources */,
 				B595BEB93CBBFFEB0B6F6F49 /* MemoryView.swift in Sources */,
+				714E1B60AA93E8D539110E8B /* PrivacyPolicyView.swift in Sources */,
 				950C87E0AA3A6DB3B75F82B0 /* QuestionSuggester.swift in Sources */,
 				268386EE94BBB2212D6EDBCC /* QuickSummaryWriter.swift in Sources */,
 				942E13E0D0422BB4A7359275 /* RecognizedTextLayout.swift in Sources */,
@@ -722,6 +757,7 @@
 				9C28DC58955726B8CAA27C0F /* ChatLoopHarness.swift in Sources */,
 				1EB178C4F9F2F4301A00F6AE /* ChatLoopTests.swift in Sources */,
 				41AFEC0661ADF52C6ED8DC89 /* ChatMessagePersistenceTests.swift in Sources */,
+				1E26A944B2F3F0143996F027 /* ComplianceTests.swift in Sources */,
 				2E5C952D5956350B0B7A95F1 /* ContextBudgetPerformanceTests.swift in Sources */,
 				70C3960DC728AF9F3D7E1658 /* DocumentImportTests.swift in Sources */,
 				058CCB1CB6ECDE0BEB771E97 /* FollowUpChipTests.swift in Sources */,
@@ -903,12 +939,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HealthChat/HealthChat.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = HealthChat/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vana;
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄化验单、药瓶或说明书；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
-				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
+				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录。只在你提问时读取，相关内容会发送给你在设置里配置的云端模型来分析；Vana 不会修改这些记录，也不会把它们用于广告或数据挖掘。";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
@@ -917,6 +954,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.HealthChat;
 				PRODUCT_NAME = HealthChat;
 				SDKROOT = iphoneos;
@@ -931,13 +969,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = HealthChat/HealthChat.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = HealthChat/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vana;
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄化验单、药瓶或说明书；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
-				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
+				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录。只在你提问时读取，相关内容会发送给你在设置里配置的云端模型来分析；Vana 不会修改这些记录，也不会把它们用于广告或数据挖掘。";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -945,6 +983,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.HealthChat;
 				PRODUCT_NAME = HealthChat;
 				SDKROOT = iphoneos;

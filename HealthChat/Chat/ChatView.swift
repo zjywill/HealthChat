@@ -10,8 +10,16 @@ struct ChatView: View {
     @State private var isShowingMedications = false
     /// 会话列表是从左边推进来的抽屉(`SessionDrawer`),不是 push 出去的一页。
     @State private var isShowingSessions = false
+    /// 首屏那张卡点开之后的那一页。和用药表一样走 sheet:它是一次离开对话的 detour,
+    /// 看完就该回到刚才那一屏。
+    @State private var isShowingStatus = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    /// 首次那一屏(`DataUseNoticeSheet`)按过没有。设备级,不跟着成员走(同 provider 和
+    /// API key):它说的是这台手机怎么工作。健康授权面板要排在它后面。
+    @AppStorage(DataUseNotice.acceptedKey) private var hasAcceptedDataUseNotice = false
+    /// 「此刻在不在屏幕上」是另一件事,置位在 `.task` 里(第一帧之后)。
+    @State private var isShowingDataUseNotice = false
 
     init(openedCheckIn: Binding<CheckInLaunch?> = .constant(nil)) {
         _openedCheckIn = openedCheckIn
@@ -45,7 +53,14 @@ struct ChatView: View {
                                 // 而回头客要的是"我怎么样"。第一次打开的人少读一句没损失,
                                 // 之后每一次打开都是这句先被读到。
                                 if let summary = model.quickSummary {
-                                    QuickSummaryCard(text: summary)
+                                    QuickSummaryCard(
+                                        text: summary,
+                                        // 家人那边没有处境可展开:那份数据属于机主,
+                                        // `HealthSituation` 整个不跑。
+                                        onOpen: model.situation == nil
+                                            ? nil
+                                            : { isShowingStatus = true }
+                                    )
                                 }
 
                                 WelcomeCard(
@@ -80,6 +95,13 @@ struct ChatView: View {
                                     // 重跑一遍 body——包括每条都重新解析一次 markdown。
                                     .equatable()
                                     .id(message.id)
+
+                                // 一条会话里只出现一次,挂在**第一段回答**下面。每条都挂的话
+                                // 它三句话之后就变成背景噪音,而这句话要在他第一次读到分析
+                                // 结论的那一刻被读到。之后想再看,「关于」页里一直在。
+                                if message.id == firstAssistantMessageID {
+                                    Self.generatedNotice
+                                }
 
                                 if let folded = message.foldedSpan {
                                     CompactionDivider(artifact: folded)
@@ -136,6 +158,17 @@ struct ChatView: View {
             .sheet(isPresented: $isShowingMedications) {
                 MedicationListView(model: model)
             }
+            .sheet(isPresented: $isShowingStatus) {
+                HealthStatusView(
+                    summary: model.quickSummary ?? HealthSituation.calmSummary,
+                    situation: model.situation,
+                    isWriting: model.isWritingSummary,
+                    // 没配 key 时刷新只重读数据,不重写那段话——那一页得把这件事说清楚,
+                    // 否则那颗按钮按下去像是坏的。
+                    canGenerate: model.engineGuidance == nil,
+                    onRefresh: model.regenerateQuickSummary
+                )
+            }
             .onAppear {
                 model.refreshEngineAvailability()
             }
@@ -150,21 +183,43 @@ struct ChatView: View {
                 openedCheckIn = nil
             }
             .task {
-                // 家人成员这儿不请求授权。这台设备的健康数据不属于他,请他去授权一份读不到
-                // 的数据是一句说不通的话——而那张面板一旦被按了「不允许」,机主那边也再弹
-                // 不出来了。
-                guard model.hasHealthData else { return }
-                do {
-                    try await HealthStore.shared.requestAuthorizationIfNeeded()
-                } catch {
-                    print("HealthKit 授权请求失败：\(error.localizedDescription)")
-                }
+                isShowingDataUseNotice = !hasAcceptedDataUseNotice
+                await requestHealthAuthorization()
+            }
+            // 第一次打开时,那一屏告知盖在最上面。它按完之后这条才轮得到——两张面板叠在一起
+            // 的话,底下那张说的正是用户此刻要拿来做决定的话。
+            .onChange(of: hasAcceptedDataUseNotice) { _, accepted in
+                guard accepted else { return }
+                Task { await requestHealthAuthorization() }
             }
         }
         // 盖在整个 `NavigationStack` 上,导航栏也要被它压住:抽屉推出来的时候,底下那颗
         // 「会话列表」按钮不该还能再按一次。
         .overlay {
             SessionDrawer(isPresented: $isShowingSessions, model: model)
+        }
+        // 第一次打开时先说清楚数据会去哪儿。它排在 HealthKit 授权面板**前面**——反过来的话,
+        // 用户先被问「允许 Vana 读取健康数据吗」,再被告知这些数据会发到哪儿去,而告知的意义
+        // 全在于它发生在决定之前。
+        //
+        // 挂在最外层(和抽屉那个 overlay 同一级),不和里面那两张 sheet 挤在 `NavigationStack`
+        // 上:它盖住的是整屏,包括导航栏。
+        .fullScreenCover(isPresented: $isShowingDataUseNotice) {
+            DataUseNoticeSheet {
+                hasAcceptedDataUseNotice = true
+                isShowingDataUseNotice = false
+            }
+        }
+    }
+
+    /// 家人成员这儿不请求授权。这台设备的健康数据不属于他,请他去授权一份读不到的数据是一句
+    /// 说不通的话——而那张面板一旦被按了「不允许」,机主那边也再弹不出来了。
+    private func requestHealthAuthorization() async {
+        guard hasAcceptedDataUseNotice, model.hasHealthData else { return }
+        do {
+            try await HealthStore.shared.requestAuthorizationIfNeeded()
+        } catch {
+            print("HealthKit 授权请求失败：\(error.localizedDescription)")
         }
     }
 
@@ -252,6 +307,27 @@ struct ChatView: View {
             settledToolCallCount: replying?.toolCalls.count { $0.output != nil } ?? 0,
             queuedCount: model.messages.count { $0.isQueued }
         )
+    }
+
+    /// 这一段回答是模型写的、可能有错。
+    ///
+    /// 首屏那张欢迎卡底下也有一句免责,但它在发出第一条消息之后就再也不出现了——而用户真正
+    /// 需要这句话的时刻,恰恰是他正在读一段关于自己身体的结论的时候。
+    private static var generatedNotice: some View {
+        Label(
+            "以上由 AI 生成，可能有误。不构成诊断或用药建议，关键数值请对照原始记录核对。",
+            systemImage: "sparkles"
+        )
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 第一条模型真的写了字的助手消息(见 `ChatMessage.isModelWritten`)。
+    /// `first(where:)` 只读几个标量,不碰 `storedTurn` 那一坨。
+    private var firstAssistantMessageID: UUID? {
+        model.messages.first(where: \.isModelWritten)?.id
     }
 
     /// 开着隐私对话、还没开口时说清楚它到底挡住了什么。
@@ -728,17 +804,37 @@ private struct TopicPicker: View {
     }
 }
 
-/// 打开 app 的第一句话:**发生了什么、要不要在意**。
+/// 打开 app 的第一段话:**现在是什么状况、要不要在意**。
 ///
 /// 首屏原来只有三个问句——而问题的答案 app 本地早就算出来了(`HealthSituation`),用户却要
 /// 点一下、再等模型联网查一遍 HealthKit,才听到和本地那句同一个意思的第一段话。
 ///
-/// **它不是按钮。** 下面「试着问」那几条问题取的是同一个触发点序列,这句话说结论、那几颗
-/// 给去处;做成可点的就是同一屏里两个控件干同一件事,而这个 app 已经在别处踩过一次了。
+/// **卡片上只露前几行。** 这张卡排在欢迎卡前面,占满一屏就把下面的话题和建议全推走了;
+/// 而那段话现在要先把现状说清楚,本来就写得比一句长。所以这里截断,读全的地方在详情页
+/// (`HealthStatusView`)——顺带,那一页才有位置放「这话是根据哪几个读数说的」和那颗重新
+/// 生成的按钮。
+///
+/// 于是它**成了按钮**——原来不是。理由是这一下通向的是同一件事的下一层(整段话 + 读数),
+/// 不是下面那几颗 chip 的第二个入口:那几颗是去提问,这一颗是往下看。
 private struct QuickSummaryCard: View {
     let text: String
+    /// 家人成员那条路上没有处境可展开(读不到他的健康数据),这时候它退回一张不可点的卡。
+    let onOpen: (() -> Void)?
+
+    /// 卡片上最多几行。三行放得下"现状一句 + 判断一句",再多就开始挤下面那张欢迎卡。
+    private static let lineLimit = 3
 
     var body: some View {
+        if let onOpen {
+            Button(action: onOpen) { card }
+                .buttonStyle(.plain)
+                .accessibilityHint("查看现在的状况")
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "waveform.path.ecg")
                 .font(.body.weight(.semibold))
@@ -748,11 +844,19 @@ private struct QuickSummaryCard: View {
             Text(text)
                 .font(.callout)
                 .foregroundStyle(.primary)
+                .lineLimit(Self.lineLimit)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // 本地那句先出,模型润色好了原地换掉。淡入淡出而不是硬跳:两句说的是同一
+                // 本地那句先出,模型写的那段一片一片换上去。淡入淡出而不是硬跳:说的是同一
                 // 件事,跳一下会让人以为数据在这一秒变了。
                 .contentTransition(.opacity)
+
+            if onOpen != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(16)
         .background(
@@ -762,6 +866,7 @@ private struct QuickSummaryCard: View {
         // 挂在这个视图上,不用 `withAnimation`:全局 transaction 会把这一帧的整个更新扫一遍,
         // 而这一屏底下还挂着话题格子和几颗按钮。
         .animation(.smooth(duration: 0.2), value: text)
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }
