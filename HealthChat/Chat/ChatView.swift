@@ -662,7 +662,7 @@ private struct MessageBubble: View, Equatable {
 
             // 动作卡排在正文**下面**:模型先说清为什么挑这几个,图跟在后面。反过来的话,
             // 一屏图会把他自己问的那句话推出去,而他还不知道这几张图是干嘛的。
-            if !exerciseMoves.isEmpty {
+            if showsToolCards, !exerciseMoves.isEmpty {
                 ExerciseCardList(moves: exerciseMoves)
                     .padding(.top, 2)
             }
@@ -673,7 +673,7 @@ private struct MessageBubble: View, Equatable {
             // 一轮里问了两次就摆两张(理论上不该发生,系统提示里写着一轮只问一个)。**不去重、
             // 不只留最后一张**:两张卡各自对应上下文里一次真实的提问,吞掉一张会让他答了一个
             // 问题、模型却在等另一个。
-            ForEach(askQuestions, id: \.id) { asked in
+            ForEach(showsToolCards ? askQuestions : [], id: \.id) { asked in
                 AskUserCard(
                     question: asked.question,
                     answer: asked.answer,
@@ -720,6 +720,20 @@ private struct MessageBubble: View, Equatable {
             .filter { seen.insert($0).inserted }
         return ExerciseLibrary.shared.moves(ids: ids)
     }
+
+    /// 卡片(动作卡、问题卡)**等这一轮写完再出**。
+    ///
+    /// 位置本来就是对的——正文在上、卡在下。反的是**时间顺序**:工具一跑完,`toolCalls` 上就
+    /// 带着卡要的东西了,而正文要等下一次请求才吐出来。于是屏幕上先出现几张卡,底下那段本该
+    /// 在它们**上面**的回答再慢慢长出来——看起来像卡从一条还没写完的回复中间钻出来的。
+    ///
+    /// 「等正文开口」不够:模型常常在同一轮里先说一句「我先查一下」再发工具调用,那时候
+    /// `text` 已经不是空的了,卡照样抢在正式回答前面。所以判据是**这一轮结束了没有**
+    /// (`isStreaming` 覆盖整轮,含中间几个工具轮),没有第二个时机能同时满足这两种情况。
+    ///
+    /// 代价是卡片在收尾那一刻才出现。可以接受:它本来就是"读完再动手"的东西,而在读的过程中
+    /// 让它先占住屏幕底下那块,反而把还在写的正文一直往上顶。
+    private var showsToolCards: Bool { !isStreaming }
 
     /// 这一轮摆出去的问题卡。**只认工具返回的那份**,不去正文里认 A/B/C(同动作卡)。
     private var askQuestions: [(id: String, question: AskUserQuestion, answer: AskUserAnswer?)] {
