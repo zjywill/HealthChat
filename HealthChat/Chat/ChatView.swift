@@ -605,10 +605,11 @@ private struct MessageBubble: View, Equatable {
             // 一个字都没说完就被插话劈开的前半段,留着思考和工具 chip 就够了——那儿再挂一个
             // "…" 会让人以为模型说了句什么没看清。真的整条空白才用它顶位。
             } else if !message.text.isEmpty || (!isStreaming && !message.hasVisibleTurnContent) {
-                Text(displayText)
+                // 助手这一侧走块级渲染:模型很爱用表格列每日数据,而气泡原来只认行内语法,
+                // 那张表在屏幕上就是一堆竖线和横杠(见 `MarkdownBlocks`)。
+                MarkdownTextView(text: message.text.isEmpty ? "…" : message.text)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
                     .accessibilityLabel(message.text)
             }
 
@@ -677,20 +678,10 @@ private struct MessageBubble: View, Equatable {
         .disabled(!canBranch)
     }
 
+    /// 用户那一侧的气泡。**原样显示,不解析**:他打的字不是 markdown,把「1*2*3」当成斜体
+    /// 是在替他改写他自己说过的话。助手那一侧走 `MarkdownTextView`。
     private var displayText: AttributedString {
-        let text = message.text.isEmpty ? "…" : message.text
-        guard message.role == .assistant else {
-            return AttributedString(text)
-        }
-        // 只解析行内语法并保留空白:.full 会按 CommonMark 把单换行折叠掉,
-        // 模型列的每日数据于是糊成一坨("22:26–05:19" 直接粘上下一行的日期)。
-        return (try? AttributedString(
-            markdown: text,
-            options: .init(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace,
-                failurePolicy: .returnPartiallyParsedIfPossible
-            )
-        )) ?? AttributedString(text)
+        AttributedString(message.text.isEmpty ? "…" : message.text)
     }
 }
 
