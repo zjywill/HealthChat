@@ -335,12 +335,24 @@ final class VoiceDictation {
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
         // 识别器要的采样率和麦克风给的多半对不上(48k vs 16k),中间必须有个转换器。
+        //
+        // `nonisolated(unsafe)` 是这里唯一诚实的说法:`AVAudioConverter` 不是 Sendable,而它
+        // 从建出来到扔掉只被音频线程碰过一次——下面那个闭包是它唯一的使用者。
         let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
-        let converter = analyzerFormat.flatMap { AVAudioConverter(from: inputFormat, to: $0) }
+        nonisolated(unsafe) let converter = analyzerFormat.flatMap {
+            AVAudioConverter(from: inputFormat, to: $0)
+        }
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
-            // 这个回调跑在音频线程上,主线程的东西一样都不能碰——所以音量和音频各走一条流,
-            // 由上面那两个 Task 在主线程那头收。
+        // **`@Sendable` 不是装饰,少了它当场崩。**
+        //
+        // 这个闭包是在一个 `@MainActor` 方法里写出来的,而一个非 `@Sendable` 的闭包会**继承
+        // 那份隔离**——源码上一个字都看不出来,编译也一声不吭。但 `installTap` 是在实时音频
+        // 线程上调它的,于是 Swift 运行时那句 `dispatch_assert_queue` 当场把进程打掉
+        // (真机上按住说话必崩,`_swift_task_checkIsolatedSwift`;模拟器上因为这条路根本走不到
+        // 所以测不出来)。`@Sendable` 的闭包永远不带隔离,这才是它该有的样子——上面那句
+        // 「主线程的东西一样都不能碰」原来只是一句注释,现在类型系统真的这么认了。
+        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { @Sendable buffer, _ in
+            // 音量和音频各走一条流,由上面那两个 Task 在主线程那头收。
             levelContinuation.yield(Self.level(of: buffer))
             guard let converted = Self.convert(buffer, using: converter) else { return }
             inputContinuation.yield(AnalyzerInput(buffer: converted))
