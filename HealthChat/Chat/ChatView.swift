@@ -147,7 +147,15 @@ struct ChatView: View {
                 // 内容变高时系统不要动偏移。贴底这件事由下面那个 `onChange` 一家说了算:
                 // 两套机制盯着同一段内容,谁都不知道对方已经推过一次了。
                 .defaultScrollAnchor(nil, for: .sizeChanges)
-                .scrollDismissesKeyboard(.interactively)
+                // **不能用 `.interactively`。** 那个模式只认一种手势:手指落在键盘上、往下拖,
+                // 键盘跟着手走。而这一屏里输入区是浮在键盘上方的 `safeAreaInset`,那条路基本
+                // 够不着——于是滚动消息列表怎么滚键盘都不收,而屏幕上又没有别的地方能收它,
+                // 用户是真的被困在那儿(踩过)。
+                //
+                // `.immediately` 自带阈值,不需要另做一个:UIScrollView 要等 pan 越过它自己的
+                // slop 才算"开始滚动",所以点一下、手指抖一下都不会收键盘,真的开始滑才收。
+                // 流式期间那些 `scrollTo` 是程序滚动,不算手势,不受影响。
+                .scrollDismissesKeyboard(.immediately)
                 // 输入区是浮在内容上的玻璃,内容从它下面过。软边让文字在那儿淡出,
                 // 不然一行字会被硬生生切成两半。
                 .scrollEdgeEffectStyle(.soft, for: .bottom)
