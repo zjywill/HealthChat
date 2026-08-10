@@ -1049,6 +1049,12 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
 模拟器上撞不到:那儿 `SpeechTranscriber.isAvailable` 是 false,`beginListening` 整段是死代码。
 **这个功能里 `availability == .ready` 之后的所有东西,本地一行都验不了。**
 
+**2026-08-10 在 iPhone Air 上跑通了**:权限、资产下载、录音、中文识别、松手填进输入框,
+整条路没有问题,上面那条崩溃也没再出现。所以这一段不再是"没人验过的代码"——但它仍然只能靠
+真机验,改动这一块之后**必须再上一次真机**,模拟器绿了不代表任何事。
+(那次没有单独量 `contextualStrings` 对中文的实际增益,而那是当初决定这个功能该不该存在的
+唯一理由——真要砍它之前得先量一次。)
+
 `AVAudioConverter` 跟着走 `nonisolated(unsafe)`:它不是 Sendable,而从建出来到扔掉只有那个
 闭包碰过它。写成 `@unchecked Sendable` 的盒子只是把同一句话说得更长。
 - **`start` 里要防重入。** 那几个 await 之间手指可以松开;不认号的话,松手时状态还是
