@@ -155,11 +155,16 @@ extension CapabilityRegistry {
     ///   所以不是"挂了但让它返回空",是**根本不挂出去**——同没配 key 时不挂 `web_search`、
     ///   关掉记忆时不挂 `remember`。给一个只会给错答案的工具,比不给糟得多。
     ///   对应的 system 段那一块在 `Tenant.instructionBlock`。
+    /// - Parameter asksUser: 反问用户(`ask_user`)。**后台派生的那几轮传 false**——那张卡是
+    ///   摆给一个正看着屏幕的人的,而那几轮跑在他切前后台的时候,没有人在场。挂出去的话
+    ///   模型会问一个永远等不到答案的问题,然后自己替他假设一个继续往下写,而那份结论会
+    ///   原样进早上那条通知。同 hook「后台派生的那几轮默认不挂」。
     static func healthChat(
         includesHealthTools: Bool = true,
         allowsMemoryWrites: Bool = true,
         allowsRecall: Bool = false,
         allowsMedicationWrites: Bool = true,
+        asksUser: Bool = true,
         memoryStore: MemoryStore = .shared,
         sessionStore: SessionStore = .shared,
         medicationStore: MedicationStore = .shared,
@@ -174,6 +179,12 @@ extension CapabilityRegistry {
         // 不联网,一份打进包里的闭集而已——所以家人成员那条路上照样挂得出去,而那正是这个
         // app 里少有的、在家人身上完整成立的健康建议。隐私会话同理:它一个字都不往盘上写。
         registries.append(ExerciseTools.registry())
+        // 反问用户。**没有自己的开关**:它不读任何数据、不落盘、不联网,只是把一句本来就要问
+        // 的话换成点得动的形状。家人成员那条路上照挂(问一句话跟谁的健康数据都没关系),
+        // 隐私会话也照挂(那张卡一个字都不往盘上写)。唯一挡住它的是「有没有人在看」。
+        if asksUser {
+            registries.append(AskUserTools.registry())
+        }
         if let webSearch {
             registries.append(WebSearchTools.registry(client: webSearch))
         }

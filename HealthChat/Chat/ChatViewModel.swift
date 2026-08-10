@@ -229,6 +229,26 @@ final class ChatViewModel {
         }
     }
 
+    /// 他在某张 `ask_user` 卡上点完了。
+    ///
+    /// **走的就是 `send`**,和他自己打这几个字发出去没有任何区别——排队、劈开、存盘、会话
+    /// 标题、召回索引、记忆抽取因此一条都不用改。这张卡省掉的是"想怎么描述"那一步,
+    /// 不是另开一条消息通道。
+    ///
+    /// 先落 `askAnswer` 再发:那一下就是卡片从"能点"翻成"答过了"的时刻,而发出去的消息
+    /// 在同一帧里出现在它下面。反过来的话,中间那一瞬卡还是能点的,连点两下就是两条一样的
+    /// 消息。
+    func answerAsk(messageID: UUID, callID: String, answer: AskUserAnswer) {
+        guard !answer.isEmpty,
+              let index = index(of: messageID),
+              let callIndex = session.messages[index].toolCalls.firstIndex(where: { $0.id == callID }),
+              session.messages[index].toolCalls[callIndex].askAnswer == nil
+        else { return }
+
+        session.messages[index].toolCalls[callIndex].askAnswer = answer
+        send(answer.messageText)
+    }
+
     // MARK: - 照片
 
     /// 拍完/选完,先占位再识别。

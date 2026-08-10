@@ -20,6 +20,13 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
     /// 存 id 不存整条:库跟着 app 走,旧会话里的 id 万一被删了,那张卡不出现就是了——
     /// 而存下整份步骤会让每条会话都带上一份动作库的副本。
     var exerciseIDs: [String]?
+    /// `ask_user` 这一轮摆出去的那个问题。卡片照着它渲染。
+    var askQuestion: AskUserQuestion?
+    /// 他在那张卡上按了什么。**工具跑完时是 nil,他点了才写进来**——所以它和上面那几个
+    /// 不一样,不来自 `metadata`,而是 app 这一侧后来补上去的(见 `ChatViewModel.answerAsk`)。
+    ///
+    /// 跟着会话落盘:不存的话,三天前答过的问题重开会话时会变回一张还能点的卡。
+    var askAnswer: AskUserAnswer?
     var isError: Bool
 
     init(
@@ -29,6 +36,8 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         output: String? = nil,
         report: HealthReport? = nil,
         exerciseIDs: [String]? = nil,
+        askQuestion: AskUserQuestion? = nil,
+        askAnswer: AskUserAnswer? = nil,
         isError: Bool = false
     ) {
         self.id = id
@@ -37,15 +46,20 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         self.output = output
         self.report = report
         self.exerciseIDs = exerciseIDs
+        self.askQuestion = askQuestion
+        self.askAnswer = askAnswer
         self.isError = isError
     }
 
-    /// 两种 metadata 并存在同一个字段上是安全的:必填键不一样,互相解不出来。
+    /// 三种 metadata 并存在同一个字段上是安全的:必填键不一样,互相解不出来
+    /// (`HealthReport` 要 `title`,`ExerciseSelection` 要 `moveIDs`,`AskUserQuestion`
+    /// 要 `question` + `options`)。加第四种时先确认这一条还成立。
     var metadataValue: RuntimeJSONValue? {
         if let report { return HealthReport.encodeForToolMetadata(report) }
         if let exerciseIDs {
             return ExerciseSelection.encodeForToolMetadata(.init(moveIDs: exerciseIDs))
         }
+        if let askQuestion { return AskUserQuestion.encodeForToolMetadata(askQuestion) }
         return nil
     }
 
@@ -59,6 +73,9 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
             && output == other.output
             && report?.rows.count == other.report?.rows.count
             && exerciseIDs == other.exerciseIDs
+            && askQuestion == other.askQuestion
+            // 他点完那张卡,卡上的勾和底下那行字都要跟着变。漏掉这一项,表现就是点了没反应。
+            && askAnswer == other.askAnswer
     }
 }
 
@@ -373,6 +390,7 @@ extension ChatMessage: AgentTurnSink {
         toolCalls[index].report = HealthReport.decode(fromToolMetadata: output.metadata)
         toolCalls[index].exerciseIDs = ExerciseSelection
             .decode(fromToolMetadata: output.metadata)?.moveIDs
+        toolCalls[index].askQuestion = AskUserQuestion.decode(fromToolMetadata: output.metadata)
         toolCalls[index].isError = isError
     }
 
@@ -430,6 +448,9 @@ private extension ToolCallRecord {
         report = dto.output.flatMap { HealthReport.decode(fromToolMetadata: $0.metadata) }
         exerciseIDs = dto.output
             .flatMap { ExerciseSelection.decode(fromToolMetadata: $0.metadata)?.moveIDs }
+        askQuestion = dto.output.flatMap { AskUserQuestion.decode(fromToolMetadata: $0.metadata) }
+        // 他点了什么只有 app 这一侧知道:runtime 那边从头到尾没见过这个字段。
+        askAnswer = nil
         isError = dto.isError
     }
 

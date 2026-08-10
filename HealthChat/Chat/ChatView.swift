@@ -89,9 +89,21 @@ struct ChatView: View {
                                     isStreaming: message.id == model.replyingMessageID,
                                     canRetry: model.canRetry(message.id),
                                     canBranch: !model.isReplying,
+                                    // `ask_user` 那张卡只有排在最后、而且没有回复在跑的时候
+                                    // 才点得动。往回翻到三轮之前那张再点一下,发出去的是一句
+                                    // 接不上任何东西的话——而模型此刻正在说的是别的事。
+                                    canAnswerAsk: message.id == model.messages.last?.id
+                                        && !model.isReplying,
                                     onRetry: { model.retry(message.id) },
                                     onBranch: { model.branch(from: message.id) },
-                                    onWithdraw: { model.withdrawQueued(message.id) }
+                                    onWithdraw: { model.withdrawQueued(message.id) },
+                                    onAnswerAsk: { callID, answer in
+                                        model.answerAsk(
+                                            messageID: message.id,
+                                            callID: callID,
+                                            answer: answer
+                                        )
+                                    }
                                 )
                                     // 手写判等,见 `MessageBubble.==`。气泡带着闭包,
                                     // SwiftUI 自己判不了,于是流式期间整列气泡每帧全部
@@ -520,9 +532,12 @@ private struct MessageBubble: View, Equatable {
     let isStreaming: Bool
     let canRetry: Bool
     let canBranch: Bool
+    /// 这条里的 `ask_user` 卡现在还答得了吗(见 `AskUserCard.isLive`)。
+    let canAnswerAsk: Bool
     let onRetry: () -> Void
     let onBranch: () -> Void
     let onWithdraw: () -> Void
+    let onAnswerAsk: (String, AskUserAnswer) -> Void
 
     /// 只比画出来会不一样的东西。
     ///
@@ -536,6 +551,7 @@ private struct MessageBubble: View, Equatable {
         lhs.isStreaming == rhs.isStreaming
             && lhs.canRetry == rhs.canRetry
             && lhs.canBranch == rhs.canBranch
+            && lhs.canAnswerAsk == rhs.canAnswerAsk
             && lhs.message.rendersIdentically(to: rhs.message)
     }
 
@@ -615,7 +631,12 @@ private struct MessageBubble: View, Equatable {
             }
 
             ForEach(message.toolCalls) { call in
-                ToolCallChip(call: call)
+                // `ask_user` 那一条不出胶囊:它的结果就是下面那张卡,而一颗写着「问了你一个
+                // 问题」的 chip 顶在一个问题上面是纯噪声。参数不合法的那次照出——那时候卡
+                // 画不出来,不留一点痕迹的话屏幕上就是模型莫名其妙地卡了一下。
+                if call.askQuestion == nil {
+                    ToolCallChip(call: call)
+                }
             }
 
             if isWaiting {
@@ -636,6 +657,22 @@ private struct MessageBubble: View, Equatable {
             if !exerciseMoves.isEmpty {
                 ExerciseCardList(moves: exerciseMoves)
                     .padding(.top, 2)
+            }
+
+            // 问题卡排在整条回复的最后:它是要他动手的那一件,离输入框越近越好。正文和动作卡
+            // 都是给他读的,读完才轮到选。
+            //
+            // 一轮里问了两次就摆两张(理论上不该发生,系统提示里写着一轮只问一个)。**不去重、
+            // 不只留最后一张**:两张卡各自对应上下文里一次真实的提问,吞掉一张会让他答了一个
+            // 问题、模型却在等另一个。
+            ForEach(askQuestions, id: \.id) { asked in
+                AskUserCard(
+                    question: asked.question,
+                    answer: asked.answer,
+                    isLive: canAnswerAsk && !isStreaming,
+                    onAnswer: { onAnswerAsk(asked.id, $0) }
+                )
+                .padding(.top, 2)
             }
 
             // 查询次数用光时这一轮是正常收尾的(该查的多半已经查到),但模型是被打断的,
@@ -674,6 +711,13 @@ private struct MessageBubble: View, Equatable {
             .flatMap { $0.exerciseIDs ?? [] }
             .filter { seen.insert($0).inserted }
         return ExerciseLibrary.shared.moves(ids: ids)
+    }
+
+    /// 这一轮摆出去的问题卡。**只认工具返回的那份**,不去正文里认 A/B/C(同动作卡)。
+    private var askQuestions: [(id: String, question: AskUserQuestion, answer: AskUserAnswer?)] {
+        message.toolCalls.compactMap { call in
+            call.askQuestion.map { (call.id, $0, call.askAnswer) }
+        }
     }
 
     /// 复制放在外面——它是最常用的那个,不值得多点一下。

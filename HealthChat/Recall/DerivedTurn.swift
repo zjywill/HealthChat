@@ -52,6 +52,9 @@ enum DerivedTurn {
                 // 才挂召回,问「昨晚睡得怎么样」不挂。这一轮没人在等,但多翻一次同样是多花的钱,
                 // 而且翻回来的旧数字一样会污染那条通知里的结论。
                 allowsRecall: SessionRecallTrigger.mentionsPast(question),
+                // 没有人在看这一轮。挂着 `ask_user` 的话它会摆出一张永远等不到人点的卡,
+                // 然后自己替他挑一个答案接着往下写——而那份结论会原样进早上那条通知。
+                asksUser: false,
                 memoryStore: memoryStore,
                 sessionStore: sessionStore,
                 currentSessionId: session.id

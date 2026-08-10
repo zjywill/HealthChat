@@ -65,10 +65,15 @@ struct ToolCallChip: View {
     /// 第二个入口(同记忆那条)。
     private var isExercise: Bool { call.name == ExerciseTools.suggestToolName }
 
-    private var canOpenPanel: Bool { call.output != nil && !isMemory && !isExercise }
+    /// 反问用户。**成功的那次根本不出这颗胶囊**(见 `MessageBubble`,卡片就在下面);
+    /// 走到这儿的只有两种:还在执行的那一瞬,和参数不合法、卡画不出来的那次。
+    private var isAsk: Bool { call.name == AskUserTools.askToolName }
+
+    private var canOpenPanel: Bool { call.output != nil && !isMemory && !isExercise && !isAsk }
 
     private var icon: String {
         if call.isError { return "exclamationmark.triangle" }
+        if isAsk { return "questionmark.bubble" }
         if isExercise { return "figure.flexibility" }
         if isMemory { return "brain" }
         if isWebSearch { return "globe" }
@@ -76,6 +81,9 @@ struct ToolCallChip: View {
     }
 
     private var note: String {
+        if isAsk {
+            return call.isError ? "没能把问题显示出来" : "想问你一句"
+        }
         if isExercise {
             let count = call.exerciseIDs?.count ?? 0
             return count > 0 ? "挑了 \(count) 个动作" : "没找到合适的动作"
