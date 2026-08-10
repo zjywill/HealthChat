@@ -41,6 +41,24 @@ struct ComplianceTests {
         }
     }
 
+    /// 麦克风那句同样要和实际做的事逐字对上:识别在本机、录音不保存、松开不自动发送。
+    /// 这三件里任何一件写错,都是在用户按「允许」的那一刻许一个做不到的诺。
+    ///
+    /// 顺带盯住**没有**声明语音识别权限:新的 `SpeechAnalyzer` 是本机识别,不走
+    /// `SFSpeechRecognizer` 那条 TCC。声明一个从不申请的权限是白送审核一个问号。
+    @Test("麦克风用途写清了本机识别、不保存录音")
+    func microphonePurposeStringIsAccurate() throws {
+        let text = try #require(
+            Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String
+        )
+        #expect(text.contains("本机"))
+        #expect(text.contains("不会保存") || text.contains("不保存"))
+        #expect(text.contains("发送"), "没说清文字要等他按发送才发出去")
+
+        let speech = Bundle.main.object(forInfoDictionaryKey: "NSSpeechRecognitionUsageDescription")
+        #expect(speech == nil, "本机识别不申请这条权限，声明了就是白送审核一个问号")
+    }
+
     /// `GENERATE_INFOPLIST_FILE` 开着时这两项由构建设置(`MARKETING_VERSION` /
     /// `CURRENT_PROJECT_VERSION`)生成,写在基础 plist 里的那两行会被盖掉。少了它们,build
     /// 传不上 App Store Connect,而本地跑起来一切正常——「关于」那行版本显示成一个破折号
@@ -106,6 +124,9 @@ struct ComplianceTests {
         #expect(staying.contains("照片和文件原件"))
         #expect(staying.contains("坐标"))
         #expect(staying.contains("API key"))
+        // 麦克风是这份告知里最新的一条,也是最容易在改写中掉队的:它和照片同类
+        // (原件留在本机,只发识别出来的文字),但走的是另一条写入路径。
+        #expect(staying.contains("录音"))
     }
 
     /// 「保护你的隐私」这类话不可验证,写了等于没写。这条盯的是那一屏没有退化成一句套话。

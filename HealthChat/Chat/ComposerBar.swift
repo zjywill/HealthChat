@@ -18,6 +18,13 @@ struct ComposerBar: View {
     /// 每一张都点得开、改得动。
     @State private var reviewing: DraftAttachment.ID?
 
+    /// 按住说话。**跟着 app 走一份**(`shared`):它管的是麦克风和本机识别模型,那是这台
+    /// 设备的东西,不是这条会话的东西。跟着会话走的是词表,由 `model` 每次按下时现给。
+    @State private var dictation = VoiceDictation.shared
+    @State private var isCancellingVoice = false
+    /// 按下去那一刻输入框里已经有的字。说出来的接在它后面,不覆盖。
+    @State private var dictationBase = ""
+
     /// 单行时正好是半高(`ComposerLayout.rowMinHeight` 的一半),画出来就是一颗胶囊;
     /// 长成多行之后才真的当成 27 的圆角用。
     private static let cardRadius: CGFloat = 27
@@ -57,12 +64,30 @@ struct ComposerBar: View {
             if !model.draftAttachments.isEmpty {
                 attachmentStrip
             }
+            // 正在听的时候波形顶掉那句提示:两条一起摞在输入框上方,把对话又往上推一截,
+            // 而它们说的是同一件事的两半。
+            if dictation.isListening {
+                VoiceLevelStrip(level: dictation.level, isCancelling: isCancellingVoice)
+            } else if let notice = dictation.notice {
+                voiceNotice(notice)
+            }
             card.padding(.horizontal, 12)
         }
         .padding(.top, 8)
         .padding(.bottom, 6)
         .background(alignment: .bottom) { scrim }
         .animation(.smooth(duration: 0.2), value: model.draftAttachments.count)
+        .animation(.smooth(duration: 0.2), value: dictation.isListening)
+        .animation(.smooth(duration: 0.2), value: dictation.notice)
+        // 查一遍这台设备上能不能用。查不到中文时那颗按钮整个不出现——一颗按下去只会说
+        // 「不支持」的按钮,比没有这颗按钮更糟。
+        .task { await dictation.refresh() }
+        // 实时上屏:说的字直接落进输入框,他一边说一边看得见认成了什么。松手不发送,所以
+        // 这一路和打字是同一条路,`send()` 那边一个字都不用改。
+        .onChange(of: dictation.transcript) { _, spoken in
+            guard dictation.isListening else { return }
+            model.input = VoiceTranscript.merge(base: dictationBase, spoken: spoken)
+        }
         .fullScreenCover(isPresented: $isScanning) {
             DocumentScannerView { pages in
                 isScanning = false
@@ -341,6 +366,10 @@ struct ComposerBar: View {
         ComposerLayout(isStacked: isStacked) {
             moreMenu
             field
+            // 这台设备上认不了中文时整颗不出现,`ComposerLayout` 认三个也认四个。
+            if dictation.isEnabled {
+                voiceButton
+            }
             sendButton
         }
         .animation(.smooth(duration: 0.2), value: isStacked)
@@ -439,6 +468,58 @@ struct ComposerBar: View {
         .accessibilityLabel("添加照片或文件")
     }
 
+    // MARK: - 按住说话
+
+    /// 键盘上那颗麦克风一直都在,这一颗多出来的是**上下文**:药名和指标名靠
+    /// `VoiceVocabulary` 提示给识别器,而那份东西键盘永远拿不到。
+    ///
+    /// **回复期间照样能按**:模型正在查数据、用户想起来还要补一句,恰恰是最不方便打字的
+    /// 时刻。说出来的字落进输入框,按发送就走现有那条插话队列(`AgentPendingInput`),
+    /// loop 那边一行都不用改。
+    private var voiceButton: some View {
+        VoiceInputButton(
+            isListening: dictation.isListening,
+            isCancelling: $isCancellingVoice,
+            onPress: {
+                dictationBase = model.input
+                Task {
+                    let started = await dictation.start(vocabulary: model.voiceVocabulary)
+                    // 资产还没下载好、没给麦克风权限:照实说一句,并把键盘调出来。
+                    // 按了没反应是这条路上唯一不能接受的表现。
+                    if !started { isFocused = true }
+                }
+            },
+            onRelease: { cancelled in
+                guard cancelled else {
+                    Task {
+                        let spoken = await dictation.stop()
+                        model.input = VoiceTranscript.merge(base: dictationBase, spoken: spoken)
+                        // 认出字来才调键盘:他多半要改一两个词再发。什么都没认出来的时候
+                        // 弹一次键盘只是把屏幕又占掉一半。
+                        if !spoken.isEmpty { isFocused = true }
+                    }
+                    return
+                }
+                dictation.cancel()
+                model.input = dictationBase
+            }
+        )
+    }
+
+    /// 没能录起来时那句话。**必须有**:没有它,按下去只是什么都没发生。
+    private func voiceNotice(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .glassEffect(.regular, in: .capsule)
+            .padding(.horizontal, 16)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .accessibilityAddTraits(.isStaticText)
+    }
+
     /// 这颗按钮做什么,只看输入框里有没有字。
     ///
     /// 以前是「正在回复就是停止」,因为那时候根本发不出去。现在打了字就一定是要发的——
@@ -504,10 +585,13 @@ struct ComposerBar: View {
     }
 }
 
-/// 加号、输入框、发送三样东西的两种排法。
+/// 加号、输入框、右边那一到两颗按钮的两种排法。
 ///
-/// 写成 `Layout` 而不是两个 `HStack`/`VStack` 分支,是为了让这三个视图从头到尾是同一份:
+/// 写成 `Layout` 而不是两个 `HStack`/`VStack` 分支,是为了让这几个视图从头到尾是同一份:
 /// 换排的时候输入框不重建,焦点、选区、正在输入的拼音都还在。
+///
+/// 右边按几颗算几颗(`subviews[2...]`),不写死是因为按住说话那颗在认不了中文的设备上整个
+/// 不出现——按下标点名的话,那时候发送键会被当成麦克风来摆。
 private struct ComposerLayout: Layout {
     /// 铺开排:输入框独占一整幅宽度在上,两颗按钮沉到底边。
     var isStacked: Bool
@@ -534,22 +618,30 @@ private struct ComposerLayout: Layout {
     ) {
         let m = metrics(width: bounds.width, subviews: subviews)
         let fieldProposal = ProposedViewSize(width: m.fieldWidth, height: m.fieldHeight)
+        // 右边那几颗从最右往左摆,最后一个 subview 永远贴着右边——发送键的位置不该因为
+        // 多出一颗麦克风而挪走。
+        let trailingY = isStacked ? bounds.maxY : bounds.midY
+        let trailingAnchor: UnitPoint = isStacked ? .bottomTrailing : .trailing
+        var x = bounds.maxX
+        for (index, size) in Array(zip(subviews.indices.dropFirst(2), m.trailing)).reversed() {
+            subviews[index].place(
+                at: CGPoint(x: x, y: trailingY),
+                anchor: trailingAnchor,
+                proposal: ProposedViewSize(size)
+            )
+            x -= size.width + spacing
+        }
 
         guard isStacked else {
-            // 一行排:三样东西一律**居中**,不是沉到底边。
+            // 一行排:所有东西一律**居中**,不是沉到底边。
             //
-            // 沉底那版的高度由输入框说了算(它比 44 的按钮高出一点),于是两颗圆钮上面
+            // 沉底那版的高度由输入框说了算(它比 44 的按钮高出一点),于是那几颗圆钮上面
             // 空出那一截、下面顶死——胶囊看着上宽下窄。差的只有两三点,但这是一条水平
             // 对称的胶囊,眼睛对这种偏移比对绝对尺寸敏感得多。
             subviews[0].place(
                 at: CGPoint(x: bounds.minX, y: bounds.midY),
                 anchor: .leading,
                 proposal: ProposedViewSize(m.plus)
-            )
-            subviews[2].place(
-                at: CGPoint(x: bounds.maxX, y: bounds.midY),
-                anchor: .trailing,
-                proposal: ProposedViewSize(m.send)
             )
             subviews[1].place(
                 at: CGPoint(x: bounds.minX + m.plus.width + spacing, y: bounds.midY),
@@ -559,7 +651,7 @@ private struct ComposerLayout: Layout {
             return
         }
 
-        // 铺开排:输入框独占一整幅宽度在上,两颗按钮沉到底边。这儿的沉底是对的——它们
+        // 铺开排:输入框独占一整幅宽度在上,按钮沉到底边。这儿的沉底是对的——它们
         // 本来就是排在文字下面的第二行。
         subviews[1].place(
             at: CGPoint(x: bounds.minX + stackedInset, y: bounds.minY),
@@ -571,16 +663,12 @@ private struct ComposerLayout: Layout {
             anchor: .bottomLeading,
             proposal: ProposedViewSize(m.plus)
         )
-        subviews[2].place(
-            at: CGPoint(x: bounds.maxX, y: bounds.maxY),
-            anchor: .bottomTrailing,
-            proposal: ProposedViewSize(m.send)
-        )
     }
 
     private struct Metrics {
         var plus: CGSize
-        var send: CGSize
+        /// 右边那一到两颗,按 `subviews` 里的先后。
+        var trailing: [CGSize]
         var fieldWidth: CGFloat
         var fieldHeight: CGFloat
         var height: CGFloat
@@ -588,14 +676,18 @@ private struct ComposerLayout: Layout {
 
     private func metrics(width: CGFloat, subviews: Subviews) -> Metrics {
         let plus = subviews[0].sizeThatFits(.unspecified)
-        let send = subviews[2].sizeThatFits(.unspecified)
-        let buttons = max(plus.height, send.height)
+        // 走整数下标,不用 `subviews[2...]`:`LayoutSubviews` 的区间下标会切出另一份
+        // `LayoutSubviews`,在这儿量一次尺寸就当场 trap(踩过,崩在启动的第一次排版上)。
+        let trailing = subviews.indices.dropFirst(2).map { subviews[$0].sizeThatFits(.unspecified) }
+        let trailingWidth = trailing.reduce(0) { $0 + $1.width }
+            + spacing * CGFloat(max(0, trailing.count - 1))
+        let buttons = max(plus.height, trailing.map(\.height).max() ?? 0)
 
         let fieldWidth = max(
             0,
             isStacked
                 ? width - stackedInset * 2
-                : width - plus.width - send.width - spacing * 2
+                : width - plus.width - trailingWidth - spacing * 2
         )
         // 高度让输入框自己说了算:它内部有 lineLimit 的上限,到第六行就不再长。
         let fieldHeight = subviews[1]
@@ -604,7 +696,7 @@ private struct ComposerLayout: Layout {
 
         return Metrics(
             plus: plus,
-            send: send,
+            trailing: trailing,
             fieldWidth: fieldWidth,
             fieldHeight: fieldHeight,
             height: isStacked

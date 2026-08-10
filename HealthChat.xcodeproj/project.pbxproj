@@ -77,6 +77,7 @@
 		792E9EE32CC6707B5320921A /* FollowUpSuggestionHook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9DB2613BC060C6B4EB2914C /* FollowUpSuggestionHook.swift */; };
 		7AC8AD3AB55E0947CEF031F0 /* MedicationBriefer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FC4F7FBF0D65039BC8A9D37 /* MedicationBriefer.swift */; };
 		7B1DB8099BE5FB310FAC811B /* FollowUpSuggester.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D695F50AEE0356B04ADDAE6 /* FollowUpSuggester.swift */; };
+		8148C91C635C24FF44135F64 /* VoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0593FC73EC6B02933D2B8B8 /* VoiceTests.swift */; };
 		83D5C10AD650E148183493BA /* SessionThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC1089E95803546C1E9E043 /* SessionThread.swift */; };
 		8726B8F27396FACF0F71ED44 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
 		8978A6AB2759B24CE035DFE8 /* PrivacyPolicy.html in Resources */ = {isa = PBXBuildFile; fileRef = 585014FEF7E152F2B6296439 /* PrivacyPolicy.html */; };
@@ -86,6 +87,7 @@
 		942E13E0D0422BB4A7359275 /* RecognizedTextLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2048EA67B2399788A587F113 /* RecognizedTextLayout.swift */; };
 		950C87E0AA3A6DB3B75F82B0 /* QuestionSuggester.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8428C9546ADF171E7350A3B1 /* QuestionSuggester.swift */; };
 		95D28A74F6326A87C8B49A21 /* AgentRuntimeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A652BD4E051861856B61EA59 /* AgentRuntimeBridge.swift */; };
+		9C1A611AE662B1BD55C46B65 /* VoiceInputViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E65734B2976793968B39E2B3 /* VoiceInputViews.swift */; };
 		9C28DC58955726B8CAA27C0F /* ChatLoopHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0EAE3425B7C10A8DAAC0F3D /* ChatLoopHarness.swift */; };
 		9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */; };
 		9E99DB6119B3D9F194C8F9C8 /* ChatTopic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FCC10525E1BE91F5812F60 /* ChatTopic.swift */; };
@@ -97,6 +99,7 @@
 		B0E4D16660ABB8045B558A04 /* AttachmentImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04960C14CFC19B595E93391C /* AttachmentImporter.swift */; };
 		B2245B0B777D65F73789F6DE /* MemoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA71281E40CE8E14E10ADD9 /* MemoryItem.swift */; };
 		B29A843DF2EDBEA9E04A3AD3 /* HealthVitals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6F0D20F7DB19CD9F1E975A /* HealthVitals.swift */; };
+		B3AD353A5ACFB2DE07255DFF /* VoiceVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4F973E8663C8314E185A27 /* VoiceVocabulary.swift */; };
 		B57EBDA001649FCF3568C025 /* SessionIndexEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = E67FD6D4286027EF2802153E /* SessionIndexEntry.swift */; };
 		B595BEB93CBBFFEB0B6F6F49 /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C057D58E7689C9D354C3DA4 /* MemoryView.swift */; };
 		BEBBBD6A6779CA0402ABCAE9 /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFDC911B83D864FA864110D3 /* AttachmentViews.swift */; };
@@ -109,6 +112,7 @@
 		CB944C607BBA739BF99BF29E /* SuggestedQuestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CDAE4F1497DFF33B197F69 /* SuggestedQuestions.swift */; };
 		D27E946A7010E8603981265B /* MemoryTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3AADB29A33FF2CFB84BB53 /* MemoryTools.swift */; };
 		D810CBE12CF8E24795EE135B /* MedicationTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7065E96752EA876118CEF6 /* MedicationTools.swift */; };
+		D8520B47746FF1F7149DB262 /* VoiceDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50C2C6CDBB53D24AA7EED7CF /* VoiceDictation.swift */; };
 		D9A39151438E8786EE6DEF08 /* SessionTimeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CAA0A242570929B7DE30FDB /* SessionTimeSection.swift */; };
 		DE4D9A4DDA668061CADA5FA1 /* WebSearchClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6065033CB905D32BAE1868E /* WebSearchClient.swift */; };
 		DF4068E17E3C7E38339A7D38 /* HealthSituation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0220BC12F370803EFB063960 /* HealthSituation.swift */; };
@@ -181,6 +185,7 @@
 		4D0242EB57C5A3666EA14CE4 /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
 		4FC1089E95803546C1E9E043 /* SessionThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionThread.swift; sourceTree = "<group>"; };
 		50BDC598CA7DE688394401E6 /* ChatChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatChip.swift; sourceTree = "<group>"; };
+		50C2C6CDBB53D24AA7EED7CF /* VoiceDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictation.swift; sourceTree = "<group>"; };
 		55294A1A06EA89CF4FB93B1E /* SessionRecallTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTools.swift; sourceTree = "<group>"; };
 		585014FEF7E152F2B6296439 /* PrivacyPolicy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = PrivacyPolicy.html; sourceTree = "<group>"; };
 		5918BAA59B931A47C8543D26 /* AttachmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentStore.swift; sourceTree = "<group>"; };
@@ -244,7 +249,9 @@
 		D704B9357A509D46D42E9709 /* SpokenBriefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenBriefTests.swift; sourceTree = "<group>"; };
 		D7129BDB67EE77B0B2DCFA8F /* DocumentScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentScannerView.swift; sourceTree = "<group>"; };
 		DAD82454FC96F2C7AC15E248 /* SessionRecallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTests.swift; sourceTree = "<group>"; };
+		DB4F973E8663C8314E185A27 /* VoiceVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceVocabulary.swift; sourceTree = "<group>"; };
 		E610C08E26C52570D5D59A47 /* SessionRecallTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTrigger.swift; sourceTree = "<group>"; };
+		E65734B2976793968B39E2B3 /* VoiceInputViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputViews.swift; sourceTree = "<group>"; };
 		E67FD6D4286027EF2802153E /* SessionIndexEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionIndexEntry.swift; sourceTree = "<group>"; };
 		E69E7DE6F21A0E9160A0F628 /* HealthAssistantInstructions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthAssistantInstructions.swift; sourceTree = "<group>"; };
 		E9DB2613BC060C6B4EB2914C /* FollowUpSuggestionHook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowUpSuggestionHook.swift; sourceTree = "<group>"; };
@@ -254,6 +261,7 @@
 		EFA71281E40CE8E14E10ADD9 /* MemoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryItem.swift; sourceTree = "<group>"; };
 		EFDC911B83D864FA864110D3 /* AttachmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentViews.swift; sourceTree = "<group>"; };
 		F03F7AC05908A15A92A0495D /* VisionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionTests.swift; sourceTree = "<group>"; };
+		F0593FC73EC6B02933D2B8B8 /* VoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTests.swift; sourceTree = "<group>"; };
 		F4EF553374E5A74CD384D903 /* GoalThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalThreadTests.swift; sourceTree = "<group>"; };
 		F81BCF8228474F3DEE9E463F /* SessionRecallTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTranscript.swift; sourceTree = "<group>"; };
 		F9FCC10525E1BE91F5812F60 /* ChatTopic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTopic.swift; sourceTree = "<group>"; };
@@ -358,6 +366,7 @@
 				BEB0F1583ED31D14EC7B660B /* Settings */,
 				AFB058C0983E7E9CB715E928 /* Tenant */,
 				8C4F9283C7EBF2A51B0E80EB /* Vision */,
+				F2BB66AD07E38096E3612DE7 /* Voice */,
 			);
 			path = HealthChat;
 			sourceTree = "<group>";
@@ -520,6 +529,7 @@
 				D704B9357A509D46D42E9709 /* SpokenBriefTests.swift */,
 				C2046AC08A253ECF0CB6CBCD /* TenantTests.swift */,
 				F03F7AC05908A15A92A0495D /* VisionTests.swift */,
+				F0593FC73EC6B02933D2B8B8 /* VoiceTests.swift */,
 				0B9D40E54C5918AC9FB47F38 /* WebSearchTests.swift */,
 			);
 			path = HealthChatTests;
@@ -532,6 +542,16 @@
 				91C7E54E90C186802F4FE209 /* LocationSnapshot.swift */,
 			);
 			path = Location;
+			sourceTree = "<group>";
+		};
+		F2BB66AD07E38096E3612DE7 /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				50C2C6CDBB53D24AA7EED7CF /* VoiceDictation.swift */,
+				E65734B2976793968B39E2B3 /* VoiceInputViews.swift */,
+				DB4F973E8663C8314E185A27 /* VoiceVocabulary.swift */,
+			);
+			path = Voice;
 			sourceTree = "<group>";
 		};
 		F9419812A0BEB9977468F8F8 /* Legal */ = {
@@ -743,6 +763,9 @@
 				FD09DB1B1B53EFCFCF017B01 /* VanaIntents.swift in Sources */,
 				AAA270923300BB2494FAE116 /* VanaLaunchRouter.swift in Sources */,
 				4F54899E59695505C50AAF4D /* VanaShortcuts.swift in Sources */,
+				D8520B47746FF1F7149DB262 /* VoiceDictation.swift in Sources */,
+				9C1A611AE662B1BD55C46B65 /* VoiceInputViews.swift in Sources */,
+				B3AD353A5ACFB2DE07255DFF /* VoiceVocabulary.swift in Sources */,
 				DE4D9A4DDA668061CADA5FA1 /* WebSearchClient.swift in Sources */,
 				580D940C6FD7428688DA2F0B /* WebSearchTools.swift in Sources */,
 				1E2B7292548CBF9B027A6979 /* ZIPArchive.swift in Sources */,
@@ -776,6 +799,7 @@
 				65EBBF347CB1B92A0E0DA5AE /* SpokenBriefTests.swift in Sources */,
 				A437AEE55596CD80E1CE043A /* TenantTests.swift in Sources */,
 				12AB0A561D6390B9102B2573 /* VisionTests.swift in Sources */,
+				8148C91C635C24FF44135F64 /* VoiceTests.swift in Sources */,
 				63A90A11E5E8FEC5B0A8AABB /* WebSearchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -948,6 +972,7 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于「按住说话」把你说的话识别成文字填进输入框。识别在本机完成，录音不会保存，也不会离开这台设备；只有识别出的文字在你按发送后才会发给你配置的模型。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -977,6 +1002,7 @@
 				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录。只在你提问时读取，相关内容会发送给你在设置里配置的云端模型来分析；Vana 不会修改这些记录，也不会把它们用于广告或数据挖掘。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于「按住说话」把你说的话识别成文字填进输入框。识别在本机完成，录音不会保存，也不会离开这台设备；只有识别出的文字在你按发送后才会发给你配置的模型。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

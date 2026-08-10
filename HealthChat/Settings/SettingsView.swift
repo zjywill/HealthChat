@@ -26,6 +26,7 @@ struct SettingsView: View {
     @State private var isRequestingHealth = false
     @State private var healthStatus: HealthAuthStatus?
     @State private var location = LocationProvider.shared
+    @State private var dictation = VoiceDictation.shared
     @FocusState private var focusedField: Field?
     @Environment(\.openURL) private var openURL
 
@@ -337,6 +338,30 @@ struct SettingsView: View {
             }
 
             Section {
+                Label(voiceStatus.message, systemImage: voiceStatus.icon)
+                    .font(.footnote)
+                    .foregroundStyle(voiceStatus.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .accessibilityElement(children: .combine)
+
+                if dictation.availability == .needsDownload {
+                    Button {
+                        dictation.installAssets()
+                    } label: {
+                        Label("下载本机语音模型", systemImage: "arrow.down.circle")
+                    }
+                }
+            } header: {
+                Text("语音输入")
+            } footer: {
+                // 这一段要说清「自己做的这颗和键盘上那颗差在哪」——差别全在词表上,而那是
+                // 用户唯一能验证的东西(说一次「甘氨酸镁」)。也要说清中文不可用时还有路走:
+                // 键盘听写一直都在,不需要这个 app 做任何事。
+                Text("输入框里按住麦克风说话，识别在本机完成，录音不保存也不联网。"
+                    + "你记在用药表里的药名和常问的指标名会作为提示交给识别器，"
+                    + "这是键盘听写做不到的一件事。松开只把文字填进输入框，不会直接发送。")
+            }
+
+            Section {
                 Button(role: .destructive) {
                     isShowingClearConfirmation = true
                 } label: {
@@ -380,6 +405,9 @@ struct SettingsView: View {
         // 刚在 iOS 设置里把位置打开又切回来的那种情况:授权状态由 delegate 更新,但那时候
         // 还没有人去定过位,页面上会一直停在「还没定到位置」。
         .onAppear { location.refresh() }
+        // 语音那一段是这个功能在这台设备上成不成立的唯一显示口,进设置页就重查一遍
+        // (刚下载完模型、刚换了系统语言都会改变它)。
+        .task { await dictation.refresh() }
         .onChange(of: apiKey) { _, newValue in
             guard hasLoadedAPIKey else { return }
             if newValue == persistedAPIKey {
@@ -457,6 +485,41 @@ struct SettingsView: View {
             )
         }
         return HealthAuthStatus(message: "已授权，还没定到位置。", icon: "location", isError: false)
+    }
+
+    /// 语音识别在这台设备上是什么状况。
+    ///
+    /// **这一行同时是这个功能成不成立的验证口**:`SpeechTranscriber.supportedLocales` 是运行时
+    /// 的,SDK 里查不出来,模拟器上更是一个都没有。中文不在名单里的话,「按住说话」那颗按钮
+    /// 整个不出现,而这里要说清为什么——并指一条还走得通的路(键盘上那颗麦克风)。
+    private var voiceStatus: HealthAuthStatus {
+        switch dictation.availability {
+        case .ready:
+            let locale = dictation.resolvedLocale?.identifier ?? ""
+            return HealthAuthStatus(
+                message: "可以用，识别语言 \(locale)，全程在本机。",
+                icon: "checkmark.circle.fill",
+                isError: false
+            )
+        case .needsDownload:
+            return HealthAuthStatus(
+                message: "本机语音模型还没下载。第一次按住说话时会自动开始下载。",
+                icon: "arrow.down.circle",
+                isError: false
+            )
+        case .downloading:
+            return HealthAuthStatus(message: "本机语音模型正在下载。", icon: "arrow.down.circle", isError: false)
+        case .unsupportedLocale:
+            return HealthAuthStatus(
+                message: "这台设备上没有可用的中文语音识别，按住说话不会出现。键盘上那颗麦克风照样能用。",
+                icon: "mic.slash",
+                isError: true
+            )
+        case .unavailable:
+            return HealthAuthStatus(message: "这台设备用不了本机语音识别。", icon: "mic.slash", isError: true)
+        case .unknown:
+            return HealthAuthStatus(message: "正在检查…", icon: "mic", isError: false)
+        }
     }
 
     /// 换 provider 时,旧模型多半不属于新 provider,直接换成新 provider 的第一个可用模型。

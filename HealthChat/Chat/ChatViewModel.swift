@@ -799,6 +799,15 @@ final class ChatViewModel {
         harvestMemory(from: session)
     }
 
+    /// 按住说话时提示给识别器的那份词表。
+    ///
+    /// 从**这条会话的快照**拼(`medications` / `memory`),不去读盘:词表和 system 段里那两块
+    /// 是同一份材料,而按住说话的那一刻用户已经开口了,不是做磁盘 IO 的时候。两个开关也因此
+    /// 自动生效——关掉记忆或用药表时那两份快照本来就是空的。
+    var voiceVocabulary: [String] {
+        VoiceVocabulary.terms(medications: medications, memory: memory)
+    }
+
     private func refreshMemory() {
         guard EngineSettings.memoryEnabled else {
             memory = .empty
