@@ -191,11 +191,7 @@ struct ComposerBar: View {
                 HStack(spacing: 8) {
                     Image(systemName: sending > 0 ? "eye.fill" : "eye")
                         .foregroundStyle(sending > 0 ? Color.accentColor : .secondary)
-                    // 开关翻过去之后这句话说的是**已经发生的事**,不是又一次邀请:
-                    // 「原图会发出去」比「已开启」更像一句能被核对的话。
-                    Text(sending > 0
-                        ? (sending == 1 ? "原图会随这句话发出去" : "\(sending) 张原图会随这句话发出去")
-                        : (candidates.count == 1 ? "这张图没有文字，让 Vana 直接看图？" : "有 \(candidates.count) 张没有文字，让 Vana 直接看图？"))
+                    Text(Self.imageSendTitle(candidates: candidates, sending: sending))
                         .font(.footnote)
                         .foregroundStyle(sending > 0 ? .primary : .secondary)
                     Text(sending > 0 ? "撤销" : "好")
@@ -210,6 +206,26 @@ struct ComposerBar: View {
             .padding(.horizontal, 16)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
+    }
+
+    /// 那一行上写什么。
+    ///
+    /// 翻过去之后说的是**已经发生的事**(「原图会随这句话发出去」),不是又一次邀请——
+    /// 它比「已开启」更像一句能被核对的话,而这一行的全部作用就是在真的交出去之前被看见。
+    ///
+    /// 还没翻的时候,「没有文字」这半句只在**真的一张都没认出字**时才说。
+    /// `.always` 那档下面这几张里可能有化验单,照抄那句话就是在骗他。
+    private static func imageSendTitle(candidates: [DraftAttachment], sending: Int) -> String {
+        if sending > 0 {
+            return sending == 1 ? "原图会随这句话发出去" : "\(sending) 张原图会随这句话发出去"
+        }
+        let allBlank = candidates.allSatisfy { !$0.hasText }
+        if candidates.count == 1 {
+            return allBlank ? "这张图没有文字，让 Vana 直接看图？" : "让 Vana 直接看这张图？"
+        }
+        return allBlank
+            ? "有 \(candidates.count) 张没有文字，让 Vana 直接看图？"
+            : "让 Vana 直接看这 \(candidates.count) 张图？"
     }
 
     /// 玻璃底下的一层渐隐。
@@ -477,7 +493,7 @@ struct ComposerBar: View {
         Menu {
             // 标题说清这几件东西会怎么被处理。用户按下去之前就该知道图和文件不出这台手机——
             // 而这正是这个功能选择本机识别、不直传图片的全部理由。
-            Section("照片在本机识别成文字，文件直接取文字，发给模型的只有文字；认不出字的图会问你要不要直接发") {
+            Section("照片在本机识别成文字，文件直接取文字；原图默认不发，发送之前每一张都能单独决定") {
                 if DocumentScannerView.isSupported {
                     Button {
                         isScanning = true

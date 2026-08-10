@@ -10,6 +10,7 @@ enum EngineSettings {
     static let checkInsEnabledKey = "checkInsEnabled"
     static let memoryEnabledKey = "memoryEnabled"
     static let medicationsEnabledKey = "medicationsEnabled"
+    static let photoImagePolicyKey = "photoImagePolicy"
     static let morningCheckInHourKey = "morningCheckInHour"
     static let eveningCheckInHourKey = "eveningCheckInHour"
 
@@ -45,6 +46,19 @@ enum EngineSettings {
     /// 「先别用」,不是「看不见」。
     static var medicationsEnabled: Bool {
         UserDefaults.standard.object(forKey: medicationsEnabledKey) as? Bool ?? true
+    }
+
+    /// 照片原图默认发不发。**只是默认**——每一张在核对面板里都还能单独翻。
+    ///
+    /// 做成设置项而不是写死在「认不出字才发」上,是因为那条规则替用户做完了两个决定:
+    /// 「什么时候该发」和「他愿不愿意发」。前一个 app 判得了(有没有认出字是客观的),
+    /// 后一个判不了——一个只拍饭菜的人希望每张都直接发,一个只拍化验单的人一张都不想发,
+    /// 而默认那档对他们俩都不对。
+    ///
+    /// **默认仍然是「认不出字时问一句」**:它是三档里唯一不需要用户先想清楚一件事的那档。
+    static var photoImagePolicy: PhotoImagePolicy {
+        PhotoImagePolicy(rawValue: UserDefaults.standard.string(forKey: photoImagePolicyKey) ?? "")
+            ?? .askWhenNoText
     }
 
     /// 这台设备上配的那个模型看得了图吗。

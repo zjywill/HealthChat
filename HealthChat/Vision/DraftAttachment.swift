@@ -30,14 +30,23 @@ struct DraftAttachment: Identifiable, Equatable {
     /// 他点了「让 Vana 看这张图」。见 `ChatAttachment.sendsImage`。
     var sendsImage = false
 
-    /// 这张图值得问一句「要不要直接发给模型」吗。
+    /// 这一张的原图**发得出去**吗。
     ///
-    /// 三个条件缺一不可:是照片(文件里的字是原文,没有「图」这回事)、读完认完了、而且
-    /// **一个字都没认出来**。最后这条是全部的分寸所在——认出字来的那些是化验单、药盒、
-    /// 成分表,它们的信息就是字,本机那份文本已经把要的都给了,再把带着姓名和就诊号的原图
-    /// 发出去是净亏。认不出字的才是 OCR 够不着的那类:一顿饭、一处皮疹、一张没有文字的图。
-    var suggestsImage: Bool {
-        !isDocument && !isLoading && !isRecognizing && failure == nil && !hasText
+    /// 只管这件东西本身:是照片(文件里的字是原文,没有「图」这回事)、读完认完了、
+    /// 而且真的读出来了。**认没认出字不在这儿判**——那是「要不要主动问他」的事
+    /// (`PhotoImagePolicy`),不是「他能不能选」的事。合成一个的话,一个只拍饭菜的人和一个
+    /// 只拍化验单的人会被同一条规则各自逼到一边。
+    var canSendImage: Bool {
+        !isDocument && !isLoading && !isRecognizing && failure == nil
+    }
+
+    /// 按当前那档默认,要不要在输入框上方主动问他这一张。
+    ///
+    /// 认出字来的那些是化验单、药盒、成分表,它们的信息就是字,本机那份文本已经把要的都给了
+    /// ——默认那档(`.askWhenNoText`)因此连问都不问,把带着姓名和就诊号的原图交出去是净亏。
+    /// 认不出字的才是 OCR 够不着的那类:一顿饭、一处皮疹、一张没有文字的图。
+    func suggestsImage(under policy: PhotoImagePolicy) -> Bool {
+        canSendImage && policy.offers(hasText: hasText)
     }
 
     /// 占位:他刚选完,东西还在路上。

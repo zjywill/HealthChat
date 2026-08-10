@@ -138,12 +138,12 @@ struct ComplianceTests {
     @Test("同意之后会发出去的原图，两组里都说到了")
     func noticeCoversTheConsentedImage() {
         let leaving = DataUseNotice.leaves.points.joined()
-        #expect(leaving.contains("认不出文字"), "原图这条出站路径没有出现在「会发出去」里")
-        #expect(leaving.contains("直接看图"), "没说清这一步要用户自己点同意")
+        #expect(leaving.contains("照片原图"), "原图这条出站路径没有出现在「会发出去」里")
+        #expect(leaving.contains("你点了才发"), "没说清这一步要用户自己同意")
 
         let staying = DataUseNotice.stays.points.joined()
         #expect(staying.contains("默认"), "照片那条写成了绝对承诺，而它现在有一个例外")
-        #expect(staying.contains("连问都不会问"), "没说清认出了字的照片根本不会被问")
+        #expect(staying.contains("设置里定"), "没说清原图发不发这件事在用户手上")
     }
 
     /// 「保护你的隐私」这类话不可验证,写了等于没写。这条盯的是那一屏没有退化成一句套话。

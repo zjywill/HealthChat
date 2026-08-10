@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(EngineSettings.modelKey) private var model = EngineSettings.defaultModel
     @AppStorage(EngineSettings.personaKey) private var persona = EngineSettings.defaultPersona
     @AppStorage(EngineSettings.thinkingEnabledKey) private var thinkingEnabled = true
+    @AppStorage(EngineSettings.photoImagePolicyKey) private var photoImagePolicy = PhotoImagePolicy.askWhenNoText.rawValue
     @AppStorage(EngineSettings.checkInsEnabledKey) private var checkInsEnabled = false
     @AppStorage(EngineSettings.morningCheckInHourKey) private var morningHour = EngineSettings.defaultMorningHour
     @AppStorage(EngineSettings.eveningCheckInHourKey) private var eveningHour = EngineSettings.defaultEveningHour
@@ -242,6 +243,30 @@ struct SettingsView: View {
             } footer: {
                 Text("只改语气和详略，不改数据口径——同样只引用工具返回的数字，同样不做诊断。"
                     + "\n思考让多步分析更准，但更慢也更贵；有些模型不支持关闭，那就还是会思考。")
+            }
+
+            // 模型看不了图的时候整节不出现:三档在它身上是同一个结果,摆出来只会让人以为
+            // 自己选错了(同没配 key 时不挂 web_search)。
+            if EngineSettings.modelSupportsVision {
+                Section {
+                    Picker("照片原图", selection: $photoImagePolicy) {
+                        ForEach(PhotoImagePolicy.allCases) { option in
+                            Text(option.name).tag(option.rawValue)
+                        }
+                    }
+
+                    Text(PhotoImagePolicy(rawValue: photoImagePolicy)?.summary ?? "")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("照片")
+                } footer: {
+                    // 这一节说的是默认值,不是一道锁。不写清楚的话,选了「只发文字」的人会
+                    // 以为那颗单张开关坏了。
+                    Text("照片里的文字一律在本机识别，发出去的默认只有文字。这一项管的是"
+                        + "**原图**要不要跟着走，而且只是默认——发送之前点开任意一张，"
+                        + "都能单独决定这一张发不发。")
+                }
             }
 
             Section {

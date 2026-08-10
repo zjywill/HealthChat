@@ -317,7 +317,12 @@ final class ChatViewModel {
         case .photo(let preview, _):
             // 气泡和输入框上方那一排都从这里取图。落盘要等到真的发出去(隐私会话则永远不落)。
             AttachmentImageCache.shared.set(preview, for: id)
-            return DraftAttachment(id: id, preview: preview)
+            var draft = DraftAttachment(id: id, preview: preview)
+            // 「每张都发原图」那档在这儿就翻过去,不等识别结果:那一档的判据里根本没有
+            // 「认没认出字」。模型看不了图时不翻——`loadImagePayloads` 那边最后还会兜一道,
+            // 但让屏幕上先摆一个不会发生的承诺没有道理。
+            draft.sendsImage = modelSupportsVision && photoImagePolicy.sendsImageByDefault
+            return draft
         case .document(let name, let text, let droppedLines, let failure):
             return DraftAttachment(
                 id: id,
@@ -463,11 +468,18 @@ final class ChatViewModel {
     /// 和同一个 model,而带出去的图必须和真的要跑这一轮的那个对上。
     var modelSupportsVision: Bool { EngineSettings.modelSupportsVision }
 
-    /// 这一排里有几张是 OCR 够不着的照片(一顿饭、一处皮疹),而当前这个模型看得了图。
+    /// 照片原图默认发不发。**只是默认**,每一张在核对面板里都还能单独翻。
+    var photoImagePolicy: PhotoImagePolicy { EngineSettings.photoImagePolicy }
+
+    /// 输入框上方那一行要说哪几张。
     ///
-    /// 两个条件都不满足就一句话都不说:模型看不了图的时候提这一嘴,等于摆一个按不动的按钮。
+    /// 按当前那档默认挑(`PhotoImagePolicy.offers`),而不是死认「没认出字的」:
+    /// `.always` 那档说的是「这几张原图会发出去 · 撤销」,`.textOnly` 那档一个字都不说
+    /// (要发的自己去核对面板里开)。模型看不了图时同样一句话都不说——那等于摆一个按不动
+    /// 的按钮。
     var imageSendCandidates: [DraftAttachment] {
-        let candidates = draftAttachments.filter(\.suggestsImage)
+        let policy = photoImagePolicy
+        let candidates = draftAttachments.filter { $0.suggestsImage(under: policy) }
         guard !candidates.isEmpty, modelSupportsVision else { return [] }
         return candidates
     }
@@ -479,16 +491,25 @@ final class ChatViewModel {
     ///
     /// 一次拍三张菜、三张都没有字,让他一张一张点三下是把一个决定拆成三份同样的劳动;
     /// 真要单独控制某一张的,核对面板里那颗开关还在原位。
+    ///
+    /// 只翻**那一行提到的那几张**:`.askWhenNoText` 那档下面按一下「好」,不该顺手把这一排
+    /// 里那张化验单也翻过去——他答应的是屏幕上写着的那句话。
     func setSendsImage(_ sends: Bool) {
-        for index in draftAttachments.indices where draftAttachments[index].suggestsImage {
+        let policy = photoImagePolicy
+        for index in draftAttachments.indices
+        where draftAttachments[index].suggestsImage(under: policy) {
             draftAttachments[index].sendsImage = sends
         }
     }
 
     /// 单独一张。核对面板里那颗开关走这条。
+    ///
+    /// 这里认的是 `canSendImage` 不是 `suggestsImage`:那颗开关对**任何**一张读得出来的
+    /// 照片都开着,认出字的也一样。默认那档不主动问它们,不等于他不许自己开——那正是
+    /// 「认不出字才发」写死之后固化掉的那一格。
     func setSendsImage(_ sends: Bool, for id: UUID) {
         guard let index = draftAttachments.firstIndex(where: { $0.id == id }),
-              draftAttachments[index].suggestsImage
+              draftAttachments[index].canSendImage
         else { return }
         draftAttachments[index].sendsImage = sends
     }

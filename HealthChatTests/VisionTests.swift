@@ -285,39 +285,74 @@ struct VisionTests {
         #expect(viewModel.reserveAttachments(1).isEmpty)
     }
 
-    // MARK: - OCR 认不出字才问要不要发图
+    // MARK: - 原图发不发
 
-    /// **这一条是这颗开关的全部分寸所在。** 认出了字的那些是化验单、药盒、成分表——本机
-    /// 那份文本已经把要的都给了,再把带着姓名和就诊号的原图发出去是净亏。所以有字就不问,
-    /// 「模型有没有视觉」在这一步根本不参与判断。
-    @Test("认出了字就不问要不要发原图")
-    func recognizedTextNeverOffersTheImage() {
+    /// **默认那档的全部分寸所在。** 认出了字的那些是化验单、药盒、成分表——本机那份文本
+    /// 已经把要的都给了,再把带着姓名和就诊号的原图发出去是净亏。所以有字就不主动问。
+    @Test("默认那档只问认不出字的那几张")
+    func askWhenNoTextOnlyOffersBlankPhotos() {
         var draft = DraftAttachment(preview: UIImage())
         draft.isRecognizing = false
         draft.text = "血红蛋白 | 132"
-        #expect(!draft.suggestsImage)
+        #expect(!draft.suggestsImage(under: .askWhenNoText))
 
         draft.text = ""
-        #expect(draft.suggestsImage)
+        #expect(draft.suggestsImage(under: .askWhenNoText))
 
         // 还在读、还在认、读不出来的那几格也不问:那时候还不知道认没认出字。
         draft.isRecognizing = true
-        #expect(!draft.suggestsImage)
+        #expect(!draft.suggestsImage(under: .askWhenNoText))
         draft.isRecognizing = false
         draft.failure = "这张图读不出来。"
-        #expect(!draft.suggestsImage)
+        #expect(!draft.suggestsImage(under: .askWhenNoText))
     }
 
-    /// 文件里的字是原样取出来的,没有「图」这回事——一份 Word 不存在「让模型直接看图」。
-    @Test("文件从来不问要不要发原图")
-    func documentsNeverOfferTheImage() {
+    /// 三档管的是**主动问不问**,不是**能不能发**。合成一件事的话,一个只拍饭菜的人和一个
+    /// 只拍化验单的人会被同一条规则各自逼到一边——那正是「认不出字才发」写死之后固化掉的。
+    @Test("认出了字的照片照样发得出去，只是没人主动问")
+    func policyGovernsTheOfferNotThePermission() {
+        var withText = DraftAttachment(preview: UIImage())
+        withText.isRecognizing = false
+        withText.text = "血红蛋白 | 132"
+
+        // 开关对任何一张读得出来的照片都开着。
+        #expect(withText.canSendImage)
+
+        #expect(!withText.suggestsImage(under: .textOnly))
+        #expect(!withText.suggestsImage(under: .askWhenNoText))
+        // 「每张都发原图」那档连化验单也要出那一行——他自己设过一次,但每一次真的要交出去
+        // 之前仍然该看得见。
+        #expect(withText.suggestsImage(under: .always))
+
+        var blank = DraftAttachment(preview: UIImage())
+        blank.isRecognizing = false
+        // 「只发文字」那档一句话都不说,要发的自己去核对面板里开。
+        #expect(!blank.suggestsImage(under: .textOnly))
+        #expect(blank.canSendImage)
+    }
+
+    /// `.always` 是「默认翻过去」,`.askWhenNoText` 是「问一句」——后者不许替他答应。
+    @Test("只有「每张都发原图」那档是默认翻过去的")
+    func onlyAlwaysFlipsByDefault() {
+        #expect(!PhotoImagePolicy.textOnly.sendsImageByDefault)
+        #expect(!PhotoImagePolicy.askWhenNoText.sendsImageByDefault)
+        #expect(PhotoImagePolicy.always.sendsImageByDefault)
+    }
+
+    /// 文件里的字是原样取出来的,没有「图」这回事——一份 Word 不存在「让模型直接看图」,
+    /// 哪一档都一样。
+    @Test("文件从来不发原图")
+    func documentsNeverSendAnImage() {
         let draft = DraftAttachment(
             documentName: "体检报告.docx",
             text: "",
             droppedLines: 0,
             failure: nil
         )
-        #expect(!draft.suggestsImage)
+        #expect(!draft.canSendImage)
+        for policy in PhotoImagePolicy.allCases {
+            #expect(!draft.suggestsImage(under: policy))
+        }
     }
 
     /// 开了开关,发出去的那条消息里就真的有一张图,而正文里那句「第 N 张」要和它对上。
@@ -341,7 +376,7 @@ struct VisionTests {
         AttachmentIntake.scanned([Self.blankImage()], into: viewModel)
         try await waitUntil("识别跑完") { !viewModel.isRecognizingAttachments }
         // 白纸认不出字,所以这一格是问得出口的那一类。
-        #expect(viewModel.draftAttachments.allSatisfy { $0.suggestsImage })
+        #expect(viewModel.draftAttachments.allSatisfy { $0.suggestsImage(under: .askWhenNoText) })
         viewModel.setSendsImage(true)
         #expect(viewModel.sendingImageCount == 1)
 

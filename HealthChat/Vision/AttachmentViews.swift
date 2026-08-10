@@ -89,6 +89,18 @@ struct AttachmentThumbnail: View {
                             .clipShape(.rect(cornerRadius: 12, style: .continuous))
                         }
                     }
+                    // 这一张的原图要发出去。输入框上方那一行说的是总数,而单张是在核对面板里
+                    // 翻的——不在格子上留个记号,他翻完回到这一排,屏幕上没有一个字变过。
+                    .overlay(alignment: .bottomTrailing) {
+                        if draft.sendsImage {
+                            Image(systemName: "eye.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.white)
+                                .padding(3)
+                                .background(.black.opacity(0.5), in: .circle)
+                                .padding(3)
+                        }
+                    }
 
                 Text(caption)
                     .font(.caption2)
@@ -113,7 +125,8 @@ struct AttachmentThumbnail: View {
             .accessibilityLabel("移除这张照片")
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(draft.documentName ?? "照片")，\(caption)")
+        .accessibilityLabel("\(draft.documentName ?? "照片")，\(caption)"
+            + (draft.sendsImage ? "，原图会一起发出去" : ""))
         .accessibilityHint("打开可以核对和修改要发出去的文字")
     }
 
@@ -185,15 +198,24 @@ struct AttachmentReviewView: View {
                     Text(footprint)
                 }
 
-                if let onChangeSendsImage, draft.suggestsImage {
+                // **对任何一张读得出来的照片都开着**,认出字的也一样。默认那档不主动问它们
+                // (`PhotoImagePolicy`),不等于他不许自己开——这一格正是「认不出字才发」
+                // 写死之后固化掉的那一格。
+                if let onChangeSendsImage, draft.canSendImage {
                     Section {
                         Toggle("让 Vana 直接看这张图", isOn: Binding(
                             get: { draft.sendsImage },
                             set: onChangeSendsImage
                         ))
                     } footer: {
-                        Text("本机一个字都没认出来。一顿饭、一处皮疹这类照片的信息本来就不是字，"
-                            + "让模型直接看图才答得上——但那意味着这张照片本身会发到你配置的模型服务上。")
+                        // 两句话分开写:认不出字的那张,发图是**多给一件东西**;认出字的那张,
+                        // 发图是**多交一份身份**,而文字已经够用了。说成同一句就是在劝他随手
+                        // 把化验单发出去。
+                        Text(draft.hasText
+                            ? "文字已经识别出来了，上面那段就够回答问题。原图上还有姓名、就诊号、"
+                                + "医院和医生签名——真要发的话，它会一起发到你配置的模型服务上。"
+                            : "本机一个字都没认出来。一顿饭、一处皮疹这类照片的信息本来就不是字，"
+                                + "让模型直接看图才答得上——但那意味着这张照片本身会发到你配置的模型服务上。")
                     }
                 }
 

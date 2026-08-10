@@ -101,6 +101,7 @@
 		9D539A3360F66E802176FB76 /* DebugSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E12635C3DC0D5F69B0311 /* DebugSeeder.swift */; };
 		9E99DB6119B3D9F194C8F9C8 /* ChatTopic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FCC10525E1BE91F5812F60 /* ChatTopic.swift */; };
 		9F484C820055AA8555930844 /* ChatAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F906901C0ECFED808D8148C /* ChatAttachment.swift */; };
+		A2F07EEC782A930A7FA10018 /* PhotoImagePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07FE4841C695C6D89EDE987A /* PhotoImagePolicy.swift */; };
 		A308D642F92BE6D410101293 /* MedicationItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66F25A7BC9AED8D7930AD694 /* MedicationItem.swift */; };
 		A437AEE55596CD80E1CE043A /* TenantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2046AC08A253ECF0CB6CBCD /* TenantTests.swift */; };
 		A8BD34C03F9B28EFD118D4E2 /* HealthTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E650374FC8103EB913304E2 /* HealthTools.swift */; };
@@ -159,6 +160,7 @@
 		0220BC12F370803EFB063960 /* HealthSituation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSituation.swift; sourceTree = "<group>"; };
 		032C3FAE4B63DB9E446F4DA1 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		04960C14CFC19B595E93391C /* AttachmentImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImporter.swift; sourceTree = "<group>"; };
+		07FE4841C695C6D89EDE987A /* PhotoImagePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImagePolicy.swift; sourceTree = "<group>"; };
 		09B9AE29C0CB2B6771CCB916 /* ContextBudgetPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBudgetPerformanceTests.swift; sourceTree = "<group>"; };
 		0B9D40E54C5918AC9FB47F38 /* WebSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSearchTests.swift; sourceTree = "<group>"; };
 		0E6F0D20F7DB19CD9F1E975A /* HealthVitals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthVitals.swift; sourceTree = "<group>"; };
@@ -488,6 +490,7 @@
 				D7129BDB67EE77B0B2DCFA8F /* DocumentScannerView.swift */,
 				770138DD64152FE98D4490FF /* DocxText.swift */,
 				8E56B4D93BE62BE7F1DF482D /* DraftAttachment.swift */,
+				07FE4841C695C6D89EDE987A /* PhotoImagePolicy.swift */,
 				2048EA67B2399788A587F113 /* RecognizedTextLayout.swift */,
 				AA8A61FE1FF0031E88849349 /* TextRecognizer.swift */,
 				117EF60B1EA8D0FB9F745BC1 /* ZIPArchive.swift */,
@@ -804,6 +807,7 @@
 				5BE661DAD8951E551F4ABCE5 /* MemoryStore.swift in Sources */,
 				D27E946A7010E8603981265B /* MemoryTools.swift in Sources */,
 				B595BEB93CBBFFEB0B6F6F49 /* MemoryView.swift in Sources */,
+				A2F07EEC782A930A7FA10018 /* PhotoImagePolicy.swift in Sources */,
 				714E1B60AA93E8D539110E8B /* PrivacyPolicyView.swift in Sources */,
 				950C87E0AA3A6DB3B75F82B0 /* QuestionSuggester.swift in Sources */,
 				268386EE94BBB2212D6EDBCC /* QuickSummaryWriter.swift in Sources */,
