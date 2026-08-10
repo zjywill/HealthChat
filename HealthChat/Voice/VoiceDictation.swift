@@ -82,6 +82,13 @@ final class VoiceDictation {
     private(set) var notice: String?
     /// 最终真正用上的那个 locale。设置页显示它:「这台设备上认的是 zh_CN」。
     private(set) var resolvedLocale: Locale?
+    /// 这台设备到底认得哪几种语言。
+    ///
+    /// 只在「中文不可用」那一句里露出来,而那正是唯一需要它的时候:`supportedLocales` 是运行时
+    /// 的、SDK 里查不出来、模拟器上还是空的,所以「为什么不能用」在真机之外没有别的答案来源。
+    /// 上一版把这句话收成一句「不支持」,结果是拿着手机也说不清到底缺的是什么(那一轮排查
+    /// 花掉的时间比这个字段贵得多)。
+    private(set) var supportedLocaleIdentifiers: [String] = []
 
     var isListening: Bool { status == .listening }
 
@@ -131,6 +138,7 @@ final class VoiceDictation {
         }
 
         let supported = await SpeechTranscriber.supportedLocales
+        supportedLocaleIdentifiers = supported.map(\.identifier).sorted()
         guard let locale = await Self.resolveLocale(among: supported) else {
             availability = .unsupportedLocale
             resolvedLocale = nil
@@ -155,14 +163,24 @@ final class VoiceDictation {
         }
     }
 
-    /// 挑一个这台设备认得的 locale。
+    /// 挑一个这台设备认得的 locale。**只认中文。**
     ///
-    /// 先按用户的语言偏好挑,再退回简体中文——界面整个是中文的,而这份词表(药名、指标名)
-    /// 全是中文,拿一个英文识别器去认「甘氨酸镁」不如不认。
+    /// 上一版把 `Locale.preferredLanguages` 排在最前面,于是系统语言是英文的手机上挑中的是
+    /// `en_US`——它在 `supportedLocales` 里、资产也装着,一路 `.ready`,按住说话认得好好的,
+    /// 只是认出来的是英文。表现是「这手机识别不了中文」,而其实是这段代码自己选的。
+    ///
+    /// 界面整个是中文的(`developmentLanguage: zh-Hans`,文案全部硬编码),这份词表也全是中文
+    /// ——拿一个英文识别器去认「甘氨酸镁」不如不认。所以系统语言在这里**不是**判据:它说的是
+    /// 「这台手机的菜单用什么语言」,而这里要问的是「他会对这个 app 说什么语言」。
+    ///
+    /// 简繁跟着他的偏好走(那个区别是真的),都没有就退简体。一个中文都不支持时返回 nil,
+    /// 那颗按钮整个不出现——**不退回英文**:悄悄给他一个做不到那件事的功能,正是上一版的毛病。
     private static func resolveLocale(among supported: [Locale]) async -> Locale? {
-        var candidates = Locale.preferredLanguages.map { Locale(identifier: $0) }
-        candidates.append(Locale.current)
+        var candidates = Locale.preferredLanguages
+            .map { Locale(identifier: $0) }
+            .filter { $0.language.languageCode == .chinese }
         candidates.append(Locale(identifier: "zh-Hans-CN"))
+        candidates.append(Locale(identifier: "zh-Hant-TW"))
 
         for candidate in candidates {
             guard let match = await SpeechTranscriber.supportedLocale(equivalentTo: candidate) else {

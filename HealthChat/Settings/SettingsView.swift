@@ -510,8 +510,14 @@ struct SettingsView: View {
         case .downloading:
             return HealthAuthStatus(message: "本机语音模型正在下载。", icon: "arrow.down.circle", isError: false)
         case .unsupportedLocale:
+            // 把这台设备到底认得哪几种语言一并说出来。`supportedLocales` 只有真机答得了,
+            // 而「不支持」三个字说不清缺的是什么——这一行是这个功能能不能成立的唯一证据。
+            let available = dictation.supportedLocaleIdentifiers
+            let listing = available.isEmpty
+                ? "这台设备一种语言都没读到。"
+                : "这台设备支持的是：\(available.prefix(8).joined(separator: "、"))\(available.count > 8 ? " 等" : "")。"
             return HealthAuthStatus(
-                message: "这台设备上没有可用的中文语音识别，按住说话不会出现。键盘上那颗麦克风照样能用。",
+                message: "没有可用的中文语音识别，按住说话不会出现。\(listing)键盘上那颗麦克风照样能用。",
                 icon: "mic.slash",
                 isError: true
             )
