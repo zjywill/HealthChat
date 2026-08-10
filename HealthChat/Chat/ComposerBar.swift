@@ -8,7 +8,13 @@ import SwiftUI
 struct ComposerBar: View {
     @Bindable var model: ChatViewModel
 
-    @FocusState private var isFocused: Bool
+    /// 焦点由 `ChatView` 持有,不是这一层的私有状态。
+    ///
+    /// 要收键盘的那几个位置全在外面:会话列表是**盖在同一层上的 overlay**,用药表和健康
+    /// 详情是 sheet——这三样谁都不会把输入框从视图层级里摘掉,也就没有人替它收掉第一
+    /// 响应者。焦点丢了键盘还在,UIKit 只认后者,于是键盘一直悬在会话列表上面(踩过)。
+    /// 收的动作必须发生在那几层盖上来的地方,所以这个开关得在那一层。
+    @FocusState.Binding var isFocused: Bool
     /// 文档扫描器。全屏盖上来,不是 sheet:它自己就是一个相机界面。
     @State private var isScanning = false
     @State private var isPickingPhotos = false

@@ -13,6 +13,9 @@ struct ChatView: View {
     /// 首屏那张卡点开之后的那一页。和用药表一样走 sheet:它是一次离开对话的 detour,
     /// 看完就该回到刚才那一屏。
     @State private var isShowingStatus = false
+    /// 输入框的焦点。持有它的是这一层而不是 `ComposerBar`:盖住对话的那几层(抽屉、
+    /// 两张 sheet、首次那一屏)全在这儿开合,而它们一个都不会把输入框从视图层级里摘掉。
+    @FocusState private var isComposerFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     /// 首次那一屏(`DataUseNoticeSheet`)按过没有。设备级,不跟着成员走(同 provider 和
@@ -147,7 +150,7 @@ struct ChatView: View {
                     scroll(with: proxy, animated: true)
                 }
             }
-            .safeAreaInset(edge: .bottom) { ComposerBar(model: model) }
+            .safeAreaInset(edge: .bottom) { ComposerBar(model: model, isFocused: $isComposerFocused) }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Vana")
             // 隐私是整条会话的属性,不是刚才点过的一个动作,所以它得一直在视线里。放在
@@ -168,6 +171,12 @@ struct ChatView: View {
                     canGenerate: model.engineGuidance == nil,
                     onRefresh: model.regenerateQuickSummary
                 )
+            }
+            // 盖上来之前先把键盘收掉。挂在状态上而不是那几颗按钮的动作里:抽屉有四个
+            // 出口、两张 sheet 也不止一处能开,漏掉任何一个就是那条路上键盘照旧悬着。
+            .onChange(of: isCoveringConversation) { _, covering in
+                guard covering else { return }
+                isComposerFocused = false
             }
             .onAppear {
                 model.refreshEngineAvailability()
@@ -210,6 +219,15 @@ struct ChatView: View {
                 isShowingDataUseNotice = false
             }
         }
+    }
+
+    /// 有东西盖住对话了吗。
+    ///
+    /// 四层都在对话**上面**,而不是把对话换掉:抽屉是 overlay,两张 sheet 和首次那一屏
+    /// 底下那一屏都还在。所以输入框仍然是第一响应者,键盘不会自己走——push 出去的设置页
+    /// 不在这份名单里,那一下输入框真的离开了层级,系统自己会收。
+    private var isCoveringConversation: Bool {
+        isShowingSessions || isShowingMedications || isShowingStatus || isShowingDataUseNotice
     }
 
     /// 家人成员这儿不请求授权。这台设备的健康数据不属于他,请他去授权一份读不到的数据是一句
