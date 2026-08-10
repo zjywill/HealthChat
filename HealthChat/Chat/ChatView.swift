@@ -631,6 +631,13 @@ private struct MessageBubble: View, Equatable {
                     .accessibilityLabel(message.text)
             }
 
+            // 动作卡排在正文**下面**:模型先说清为什么挑这几个,图跟在后面。反过来的话,
+            // 一屏图会把他自己问的那句话推出去,而他还不知道这几张图是干嘛的。
+            if !exerciseMoves.isEmpty {
+                ExerciseCardList(moves: exerciseMoves)
+                    .padding(.top, 2)
+            }
+
             // 查询次数用光时这一轮是正常收尾的(该查的多半已经查到),但模型是被打断的,
             // 得说一声,否则用户只看到它说到一半自己停了。
             if message.stoppedAtToolRoundLimit {
@@ -655,6 +662,18 @@ private struct MessageBubble: View, Equatable {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 这一轮工具挑中的动作。**只认工具返回的 id**,不去正文里找标记——模型编一个库里没有的
+    /// 名字出来、而正文写着「参考下面的图示」,是这套东西最糟的一种失灵。
+    ///
+    /// 一轮里调了两次就按顺序接起来,去重:同一个动作出现两张卡,看起来就像渲染坏了。
+    private var exerciseMoves: [ExerciseMove] {
+        var seen = Set<String>()
+        let ids = message.toolCalls
+            .flatMap { $0.exerciseIDs ?? [] }
+            .filter { seen.insert($0).inserted }
+        return ExerciseLibrary.shared.moves(ids: ids)
     }
 
     /// 复制放在外面——它是最常用的那个,不值得多点一下。

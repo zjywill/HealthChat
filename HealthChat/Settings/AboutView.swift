@@ -38,6 +38,19 @@ struct AboutView: View {
                 Text("和你第一次打开 Vana 时看到的是同一份。")
             }
 
+            // 署名是**授权要求**,不是礼貌:CC BY-SA 和 Flaticon 都明写要保留出处。
+            // 声明和实际做的事对不上是这一整块唯一的失败模式,而且它是静默的——
+            // 没人会点进来发现少了一行。
+            Section {
+                ForEach(ExerciseLibrary.attributions, id: \.self) { line in
+                    Text(line)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("图片出处")
+            }
+
             Section {
                 LabeledContent("版本", value: AppInfo.version)
                 Link(destination: AppInfo.repository) {

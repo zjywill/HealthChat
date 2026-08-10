@@ -170,6 +170,10 @@ extension CapabilityRegistry {
         if includesHealthTools {
             registries.append(HealthTools.registry)
         }
+        // 动作库**不跟着 `includesHealthTools` 走,也没有自己的开关**。它不读 HealthKit、不落盘、
+        // 不联网,一份打进包里的闭集而已——所以家人成员那条路上照样挂得出去,而那正是这个
+        // app 里少有的、在家人身上完整成立的健康建议。隐私会话同理:它一个字都不往盘上写。
+        registries.append(ExerciseTools.registry())
         if let webSearch {
             registries.append(WebSearchTools.registry(client: webSearch))
         }

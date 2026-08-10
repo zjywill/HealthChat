@@ -61,16 +61,25 @@ struct ToolCallChip: View {
     /// 出自哪个站、哪一年——健康结论说不出处,和编的没区别。
     private var isWebSearch: Bool { call.name == WebSearchTools.searchToolName }
 
-    private var canOpenPanel: Bool { call.output != nil && !isMemory }
+    /// 挑动作的那一条。**点不开**——图和步骤已经在下面的卡片上了,再开一层面板是同一件事的
+    /// 第二个入口(同记忆那条)。
+    private var isExercise: Bool { call.name == ExerciseTools.suggestToolName }
+
+    private var canOpenPanel: Bool { call.output != nil && !isMemory && !isExercise }
 
     private var icon: String {
         if call.isError { return "exclamationmark.triangle" }
+        if isExercise { return "figure.flexibility" }
         if isMemory { return "brain" }
         if isWebSearch { return "globe" }
         return isRecall ? "clock.arrow.circlepath" : "heart.text.square"
     }
 
     private var note: String {
+        if isExercise {
+            let count = call.exerciseIDs?.count ?? 0
+            return count > 0 ? "挑了 \(count) 个动作" : "没找到合适的动作"
+        }
         if isWebSearch {
             guard let query = WebSearchTools.query(fromInput: call.input), !query.isEmpty else {
                 return "上网搜了一下"

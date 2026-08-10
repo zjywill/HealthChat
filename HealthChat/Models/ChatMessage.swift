@@ -15,6 +15,11 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
     let input: String
     var output: String?
     var report: HealthReport?
+    /// 这一轮挑中的动作(`suggest_exercises`)。卡片照着它渲染。
+    ///
+    /// 存 id 不存整条:库跟着 app 走,旧会话里的 id 万一被删了,那张卡不出现就是了——
+    /// 而存下整份步骤会让每条会话都带上一份动作库的副本。
+    var exerciseIDs: [String]?
     var isError: Bool
 
     init(
@@ -23,6 +28,7 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         input: String,
         output: String? = nil,
         report: HealthReport? = nil,
+        exerciseIDs: [String]? = nil,
         isError: Bool = false
     ) {
         self.id = id
@@ -30,7 +36,17 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         self.input = input
         self.output = output
         self.report = report
+        self.exerciseIDs = exerciseIDs
         self.isError = isError
+    }
+
+    /// 两种 metadata 并存在同一个字段上是安全的:必填键不一样,互相解不出来。
+    var metadataValue: RuntimeJSONValue? {
+        if let report { return HealthReport.encodeForToolMetadata(report) }
+        if let exerciseIDs {
+            return ExerciseSelection.encodeForToolMetadata(.init(moveIDs: exerciseIDs))
+        }
+        return nil
     }
 
     /// 同 `ChatMessage.rendersIdentically`。`report` 只比行数:它和 `output` 是
@@ -42,6 +58,7 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
             && isError == other.isError
             && output == other.output
             && report?.rows.count == other.report?.rows.count
+            && exerciseIDs == other.exerciseIDs
     }
 }
 
@@ -354,6 +371,8 @@ extension ChatMessage: AgentTurnSink {
         guard let index = toolCalls.firstIndex(where: { $0.id == id }) else { return }
         toolCalls[index].output = output.text
         toolCalls[index].report = HealthReport.decode(fromToolMetadata: output.metadata)
+        toolCalls[index].exerciseIDs = ExerciseSelection
+            .decode(fromToolMetadata: output.metadata)?.moveIDs
         toolCalls[index].isError = isError
     }
 
@@ -409,6 +428,8 @@ private extension ToolCallRecord {
         input = dto.input
         output = dto.output?.text
         report = dto.output.flatMap { HealthReport.decode(fromToolMetadata: $0.metadata) }
+        exerciseIDs = dto.output
+            .flatMap { ExerciseSelection.decode(fromToolMetadata: $0.metadata)?.moveIDs }
         isError = dto.isError
     }
 
@@ -421,7 +442,7 @@ private extension ToolCallRecord {
                 AgentToolOutput(
                     kind: report == nil ? .text : .table,
                     text: $0,
-                    metadata: report.flatMap(HealthReport.encodeForToolMetadata)
+                    metadata: metadataValue
                 )
             },
             isError: isError
