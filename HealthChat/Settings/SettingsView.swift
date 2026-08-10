@@ -104,6 +104,15 @@ struct SettingsView: View {
                         )
                     }
 
+                    // 选中那个模型能做什么,挂在它自己那一行下面。
+                    //
+                    // 下面几节的行为直接跟着这几颗走:「回答前先思考」在没有「思考」的模型上
+                    // 是空的,「照片原图」在没有「看图」的模型上不生效。让它们在同一屏上离得
+                    // 近一点,用户不用把两件事在脑子里对起来。
+                    if !model.isEmpty {
+                        ModelCapabilityTags.forModel(model, in: providerId)
+                    }
+
                     if model.isEmpty {
                         Label("请先选择模型", systemImage: "exclamationmark.triangle.fill")
                             .font(.footnote)
@@ -245,28 +254,42 @@ struct SettingsView: View {
                     + "\n思考让多步分析更准，但更慢也更贵；有些模型不支持关闭，那就还是会思考。")
             }
 
-            // 模型看不了图的时候整节不出现:三档在它身上是同一个结果,摆出来只会让人以为
-            // 自己选错了(同没配 key 时不挂 web_search)。
-            if EngineSettings.modelSupportsVision {
-                Section {
-                    Picker("照片原图", selection: $photoImagePolicy) {
-                        ForEach(PhotoImagePolicy.allCases) { option in
-                            Text(option.name).tag(option.rawValue)
-                        }
+            // 模型看不了图的时候这一节**照样显示**,只是多一行说它现在不起作用。
+            //
+            // 藏起来看着更干净,但那条路上有一个静默的坑:他在能看图的模型上选了「每张都发
+            // 原图」,换个模型之后这一节整个消失——设置还在(存的是这台设备的偏好),行为
+            // 却停了,而屏幕上没有一个字解释为什么。同刷新按钮那条:按下去必须说一句话。
+            Section {
+                Picker("照片原图", selection: $photoImagePolicy) {
+                    ForEach(PhotoImagePolicy.allCases) { option in
+                        Text(option.name).tag(option.rawValue)
                     }
-
-                    Text(PhotoImagePolicy(rawValue: photoImagePolicy)?.summary ?? "")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("照片")
-                } footer: {
-                    // 这一节说的是默认值,不是一道锁。不写清楚的话,选了「只发文字」的人会
-                    // 以为那颗单张开关坏了。
-                    Text("照片里的文字一律在本机识别，发出去的默认只有文字。这一项管的是"
-                        + "**原图**要不要跟着走，而且只是默认——发送之前点开任意一张，"
-                        + "都能单独决定这一张发不发。")
                 }
+
+                Text(PhotoImagePolicy(rawValue: photoImagePolicy)?.summary ?? "")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                if !EngineSettings.modelSupportsVision {
+                    Label {
+                        Text("当前模型（\(model)）看不了图，这一项暂时不起作用——"
+                            + "原图一张都不会发出去，换一个支持看图的模型才会生效。")
+                    } icon: {
+                        Image(systemName: "eye.slash")
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("照片")
+            } footer: {
+                // 这一节说的是默认值,不是一道锁。不写清楚的话,选了「只发文字」的人会
+                // 以为那颗单张开关坏了。
+                //
+                // 这里**不能用 `**` 加粗**:markdown 只对字符串字面量生效,而这几段是拼出来
+                // 的 `String`,那两颗星会原样显示在屏幕上(踩过)。要强调就分句,别靠符号。
+                Text("照片里的文字一律在本机识别，发出去的默认只有文字。这一项管的只是原图要不要"
+                    + "跟着走，而且只是默认——发送之前点开任意一张，都能单独决定这一张发不发。")
             }
 
             Section {

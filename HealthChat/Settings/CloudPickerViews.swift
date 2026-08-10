@@ -167,12 +167,15 @@ struct ModelPickerView: View {
             dismiss()
         } label: {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(CloudCatalog.displayName(of: model))
                         .foregroundStyle(.primary)
                     Text(subtitle(for: model))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    // 挑模型的那一刻是他唯一会比较这几项的时候。挑完再去别处发现「这个看不了图」,
+                    // 中间隔着一次白跑。
+                    ModelCapabilityTags(model: model)
                 }
 
                 Spacer(minLength: 12)

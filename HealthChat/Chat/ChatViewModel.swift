@@ -471,6 +471,18 @@ final class ChatViewModel {
     /// 照片原图默认发不发。**只是默认**,每一张在核对面板里都还能单独翻。
     var photoImagePolicy: PhotoImagePolicy { EngineSettings.photoImagePolicy }
 
+    /// 他设过一档会发原图的默认,可这个模型看不了图——那一档在这条会话里静静地不生效。
+    ///
+    /// 只在**真的对不上**时才有话说:设的就是「只发文字」的人不需要听这一句,而这一屏上
+    /// 每多一句用不上的话,真正要紧的那句就少被读到一次。
+    ///
+    /// 这条路是从「在能看图的模型上设了每张都发,然后换了个模型」来的。设置存的是这台设备的
+    /// 偏好,不跟着模型走——所以它一直在,只是不生效,而不生效这件事必须说出口。
+    var visionUnavailableNote: String? {
+        guard !modelSupportsVision, photoImagePolicy != .textOnly else { return nil }
+        return "你设的是「\(photoImagePolicy.name)」，但当前模型看不了图——这一档暂时不生效。"
+    }
+
     /// 输入框上方那一行要说哪几张。
     ///
     /// 按当前那档默认挑(`PhotoImagePolicy.offers`),而不是死认「没认出字的」:

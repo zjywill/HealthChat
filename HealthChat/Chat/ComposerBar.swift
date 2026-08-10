@@ -134,6 +134,7 @@ struct ComposerBar: View {
                 onChangeSendsImage: model.modelSupportsVision
                     ? { model.setSendsImage($0, for: draft.id) }
                     : nil,
+                visionUnavailableNote: model.visionUnavailableNote,
                 onRemove: { model.removeAttachment(draft.id) }
             )
         }

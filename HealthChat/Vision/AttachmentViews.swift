@@ -166,7 +166,16 @@ struct AttachmentReviewView: View {
     let onChangeText: (String) -> Void
     /// 这一张单独翻。整排一起翻的那颗在输入框上方(`ComposerBar.imageSendOffer`)——
     /// 一次拍三张菜让他点三下,是把一个决定拆成三份同样的劳动。
+    ///
+    /// nil 就是这个模型看不了图,那颗开关整个不出现:一颗按下去什么都不会改变的开关,
+    /// 比没有这颗开关更糟。
     var onChangeSendsImage: ((Bool) -> Void)?
+    /// 他设的是「每张都发原图」之类,可这个模型看不了图。
+    ///
+    /// **这一句必须有。** 没有它,他设过的那一档在这条会话里静静地不生效,而这一屏正是他
+    /// 会来核对「发出去的到底是什么」的地方——上面写着「只发下面这段文字」,和他记得的设置
+    /// 对不上,却没有一个字说是为什么。
+    var visionUnavailableNote: String?
     let onRemove: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -279,9 +288,13 @@ struct AttachmentReviewView: View {
     /// 这一件到底有什么会离开这台手机。
     private var footprint: String {
         if draft.isDocument { return "文件留在这台手机上，发给模型的只有下面这段文字。" }
-        return draft.sendsImage
-            ? "这张照片本身会发到你配置的模型服务上。关掉下面那个开关，就只发识别出来的文字。"
-            : "图片留在这台手机上，发给模型的只有下面这段文字。"
+        if draft.sendsImage {
+            return "这张照片本身会发到你配置的模型服务上。关掉下面那个开关，就只发识别出来的文字。"
+        }
+        let base = "图片留在这台手机上，发给模型的只有下面这段文字。"
+        // 他设过「每张都发原图」而这个模型看不了图时,上面那句和他记得的设置是对不上的。
+        guard let visionUnavailableNote else { return base }
+        return "\(base)\(visionUnavailableNote)"
     }
 
     private var footer: String {

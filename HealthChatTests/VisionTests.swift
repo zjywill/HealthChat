@@ -399,6 +399,51 @@ struct VisionTests {
         #expect(!client.lastPromptText.contains("看不了图像本身"))
     }
 
+    /// 他设了「每张都发原图」,或者手动翻开了某一张,然后换到一个看不了图的模型上。
+    ///
+    /// **最后一道闸在发送那一步**,而且认的是这一轮手上那个引擎、不是设置:图是跟着历史每一轮
+    /// 重发的,原样发过去是一个 400,而这条对话从此发不出去。摘掉之后正文自动退回那句
+    /// 「看不了图像本身」——两句话同源(`carriesImage`),不会出现「说了有图、其实没发」。
+    @MainActor
+    @Test("模型看不了图时，说好要发的原图在发送那一步被摘掉")
+    func imagesAreStrippedForAModelThatCannotSeeThem() async throws {
+        let client = ScriptedModelClient(
+            profile: .init(
+                providerId: "deepseek",
+                modelId: "deepseek-chat",
+                contextWindow: 64_000,
+                maxOutputTokens: 4_000
+            ),
+            turns: [.init(text: "我看不了图像本身。")]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in
+                var engine = LoopEngine(client: client, capabilities: stubRegistry([:]))
+                engine.supportsVision = false
+                return engine
+            },
+            loadsPersistedSession: false
+        )
+
+        AttachmentIntake.scanned([Self.blankImage()], into: viewModel)
+        try await waitUntil("识别跑完") { !viewModel.isRecognizingAttachments }
+        // 界面那层不该让他走到这儿,但这条闸不能依赖界面:设置是跟着设备走的,
+        // 而「在能看图的模型上翻开、然后换模型」是一条真实的路径。
+        viewModel.setSendsImage(true, for: try #require(viewModel.draftAttachments.first).id)
+        #expect(viewModel.sendingImageCount == 1)
+
+        viewModel.send("这是什么")
+        try await waitUntil("这轮结束") { !viewModel.isReplying }
+
+        let request = try #require(client.requests.last)
+        let hasFile = request.prompt.messages.contains { message in
+            message.parts.contains { if case .file = $0 { return true } else { return false } }
+        }
+        #expect(!hasFile, "图发给了一个收不了图的模型")
+        #expect(client.lastPromptText.contains("看不了图像本身"))
+        #expect(!client.lastPromptText.contains("随附的第"), "说了有图，其实没发")
+    }
+
     /// 没点同意就一张图都不发,正文也照旧说「看不了图像本身」。
     @MainActor
     @Test("没点同意就还是只发文字")
