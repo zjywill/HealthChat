@@ -89,6 +89,11 @@ struct AIKitEngine: AgentEngine {
     private let providerId: String
     private let model: String
     private let topic: ChatTopic?
+    /// 这条会话是在跟谁的健康情况打交道。
+    ///
+    /// 和 `memory` / `medications` 一样绑在会话上,理由更强:一条会话开到一半换个人,前面
+    /// 几轮说的"你"就全指错了。切成员在界面上本来就是整个换掉 `ChatViewModel`。
+    private let tenant: Tenant
     /// 这条会话属于哪件长期的事。目标线才有。
     private let goal: String?
     /// 会话开始时取好的记忆。引擎自己不去读盘:同一条会话里 system 段变来变去,既打掉
@@ -98,6 +103,13 @@ struct AIKitEngine: AgentEngine {
     private let medications: MedicationSnapshot
     /// 这条会话围绕清单里的哪一条(`SessionThread.medication`)。普通对话没有。
     private let focusMedication: MedicationItem?
+    /// 用户此刻大概在哪个城市。
+    ///
+    /// 和 `memory` / `medications` 那两份快照不同,这一份是**每轮现取**的(引擎本来就每轮
+    /// 现造,见 `ChatViewModel.resolveEngine`)。绑在会话上没有意义——人会走动,而这块东西
+    /// 存在的理由正是「他此刻在哪」。之所以不怕打掉 prompt 缓存,是因为它只精确到城市:
+    /// 一句话在一整条会话里逐字不变,除非用户真的换了个城市——那时候它本来就该变。
+    private let location: LocationSnapshot
     private let capabilityRegistry: CapabilityRegistry
     /// 生命周期上的旁观者。引擎每轮现造,而 hook 跨轮有状态,所以宿主由 app 传进来,
     /// 不在这儿造(见 `AgentHookDispatcher`)。
@@ -109,20 +121,24 @@ struct AIKitEngine: AgentEngine {
         providerId: String = "anthropic",
         model: String = "claude-sonnet-5",
         topic: ChatTopic? = nil,
+        tenant: Tenant = .owner(),
         goal: String? = nil,
         memory: MemorySnapshot = .empty,
         medications: MedicationSnapshot = .empty,
         focusMedication: MedicationItem? = nil,
+        location: LocationSnapshot = .unknown,
         capabilityRegistry: CapabilityRegistry = .healthChat(),
         hooks: AgentHookDispatcher? = nil
     ) {
         self.providerId = providerId
         self.model = model
         self.topic = topic
+        self.tenant = tenant
         self.goal = goal
         self.memory = memory
         self.medications = medications
         self.focusMedication = focusMedication
+        self.location = location
         self.capabilityRegistry = capabilityRegistry
         self.hooks = hooks
     }
@@ -180,11 +196,23 @@ struct AIKitEngine: AgentEngine {
     /// - Parameter acceptsInterjections: 这一轮有可能被用户中途插话(前台对话都是)。
     ///   后台派生的那几轮没有用户在场,那段话对它们只是白占 token。
     func systemInstruction(acceptsInterjections: Bool = false) -> String {
-        var instructions = HealthAssistantInstructions.text()
+        var instructions = HealthAssistantInstructions.text(hasHealthData: tenant.isOwner)
+        // 身份**排在最前面**,紧跟着日期,别的块全在它后面:它决定了后面每一句里的「他」
+        // 指的是谁。放到记忆和用药表后面的话,模型已经按"用户本人"读完那两块了,再纠正一次
+        // 不如一开始就说对。机主返回 nil,不为一件已经成立的事花 token。
+        if let block = tenant.instructionBlock {
+            instructions += "\n\n\(block)"
+        }
         // 召回工具是按「用户提没提过去」逐条会话挂的(`SessionRecallTrigger`),所以下面每一处
         // 提到 search_sessions 的话都得先问一句它在不在。对着一个没挂出去的工具发指令,模型
         // 只会调一次、失败一次,再自己想办法圆场。
         let canRecall = capabilityRegistry.definition(named: SessionRecallTools.searchToolName) != nil
+        let canSearchWeb = capabilityRegistry.definition(named: WebSearchTools.searchToolName) != nil
+        // 地点紧跟着日期(在 `HealthAssistantInstructions.text()` 里),两块是同一类东西:
+        // 模型看不见手机时钟,也看不见手机在哪。没授权、还没定到、编码失败时这一段整个不发。
+        if let block = location.instructionBlock(canSearchWeb: canSearchWeb) {
+            instructions += "\n\n\(block)"
+        }
         if let topic {
             instructions += "\n\n本次对话的话题：\(topic.name)。\(topic.focus)"
         }
@@ -252,7 +280,7 @@ struct AIKitEngine: AgentEngine {
         //
         // 措辞收在「这件事不在你的知识里」上,不是「不确定就搜」。后者模型每轮都会觉得自己
         // 有点不确定,于是每轮多一次往返、多一个 credit,而多数健康问题它本来就答得了。
-        if capabilityRegistry.definition(named: WebSearchTools.searchToolName) != nil {
+        if canSearchWeb {
             instructions += "\n\n遇到你的知识里没有、或者很可能已经过时的东西"
                 + "（近一两年才出现的说法或指南、某个具体的品牌或产品、某样你没把握是否存在的东西）时，"
                 + "用 \(WebSearchTools.searchToolName) 搜一下再回答，并说清出处和日期。"

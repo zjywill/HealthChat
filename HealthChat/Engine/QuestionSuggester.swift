@@ -94,5 +94,19 @@ enum ModelLines {
         return Array(usable.prefix(limit))
     }
 
+    /// 「让模型写**一句**话」的收尾:多行先拼回一段,再剥壳,最后按总长筛。
+    ///
+    /// 不能拿 `parse(limit: 1)` 顶替:模型把两句话写成两行是常事,那样只会取到前半句——
+    /// 而丢掉的后半句往往正好是"要不要在意"那一半,只留前半句读起来像话说了一半。
+    static func single(_ text: String, minCharacters: Int, maxCharacters: Int) -> String? {
+        let joined = text
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: shell) }
+            .filter { !$0.isEmpty }
+            .joined()
+        guard joined.count >= minCharacters, joined.count <= maxCharacters else { return nil }
+        return joined
+    }
+
     private static let shell = CharacterSet(charactersIn: "0123456789.、-–—*·「」\"“” ")
 }

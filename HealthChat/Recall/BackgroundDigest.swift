@@ -12,10 +12,15 @@ enum BackgroundDigest {
 
     /// 有活就干一件,返回是否真的产出了新结论(调用方据此决定要不要重排通知)。
     @discardableResult
+    /// - Parameters:
+    ///   - memoryStore: **机主那一份,不跟着当前选中的成员走。** 这一轮读的是 HealthKit,
+    ///     而那份数据只有机主有;用户此刻正好在看妈妈那一栏,不该让后台这一轮把机主的结论
+    ///     写进妈妈的会话里。同 `CheckInScheduler`、`SpokenBrief`。
+    ///   - sessionStore: 同上。「今天跑过没有」那道闸读的也是机主那边的会话。
     static func runIfDue(
         now: Date = Date(),
-        memoryStore: MemoryStore = .shared,
-        sessionStore: SessionStore = .shared
+        memoryStore: MemoryStore = TenantScope.ownerStores.memory,
+        sessionStore: SessionStore = TenantScope.ownerStores.sessions
     ) async -> Bool {
         // check-in 关掉就没有送达的路子,这一轮纯粹是花钱写给自己看。
         // 云端设置不齐则是发都发不出去。

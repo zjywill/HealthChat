@@ -81,6 +81,9 @@ struct MemoryView: View {
             }
         }
         .navigationTitle("Vana 记住的事")
+        // 记忆也跟着当前成员走(`MemoryStore.shared`)。同用药表:看不见名字,用户会以为
+        // 自己在改的是"Vana 对我的印象"。
+        .navigationSubtitle(TenantScope.isOwnerActive ? "" : TenantScope.current.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

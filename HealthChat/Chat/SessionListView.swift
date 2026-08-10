@@ -96,6 +96,10 @@ struct SessionListView: View {
     let model: ChatViewModel
     var onClose: () -> Void
 
+    /// 成员切换器就挂在这一屏顶上:切成员 = 换一整个会话空间,那正是这一屏在说的事。
+    /// 放 toolbar 的话,leading 那排已经有会话列表和用药表两颗,第三颗只会让它开始需要辨认。
+    @Environment(TenantContext.self) private var tenants
+
     /// 列表打开时定一次「现在」。段的边界不该在用户滚动到一半时跳过去。
     @State private var now = Date()
     /// 正在起名字的那条线;新建时是 nil 加一个空标题。
@@ -117,6 +121,7 @@ struct SessionListView: View {
 
     var body: some View {
         List {
+            tenantSection
             goalSection
 
             // 只剩目标线的时候下面这几组是空的,但那不叫"还没有会话"。
@@ -172,6 +177,14 @@ struct SessionListView: View {
                     } label: {
                         Label("新对话", systemImage: "square.and.pencil")
                     }
+                    // 从输入区那颗 `+` 挪过来的:那颗现在管「给这句话加张照片」,而这两条是
+                    // 「离开这条,开一条新的」——和会话列表是同一件事,本来就该在这儿。
+                    Button {
+                        model.startNewSession(isPrivate: true)
+                        onClose()
+                    } label: {
+                        Label("隐私对话（不保存）", systemImage: "eye.slash")
+                    }
                     Button {
                         draftName = ""
                         naming = nil
@@ -218,6 +231,39 @@ struct SessionListView: View {
         isNamingNewGoal = false
         naming = nil
         draftName = ""
+    }
+
+    /// 成员那一行。**一行,不是一整段名单**。
+    ///
+    /// 切成员一天最多几次,而这一屏每天要开十几回——把三五位成员平铺在最上面,等于让最常
+    /// 用的那件事(找一条会话)每次都先翻过一段几乎不变的内容。所以只留一行,顺带把「当前
+    /// 是谁」摆在会话列表的最上面:进这一屏的人正要挑一条会话,而挑之前该先确认这是谁的列表。
+    ///
+    /// 迁移失败时(`isolationAvailable == false`)整行不出现:一个点进去不起作用的入口,
+    /// 比没有这个入口糟。
+    @ViewBuilder
+    private var tenantSection: some View {
+        if tenants.isolationAvailable {
+            Section {
+                NavigationLink {
+                    TenantListView(context: tenants, onSelect: onClose)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.2")
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityHidden(true)
+                        Text("家庭成员")
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 8)
+                        Text(tenants.current.displayName)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
     }
 
     /// 目标区。一条线一行,不管它已经分成几段。

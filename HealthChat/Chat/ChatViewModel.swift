@@ -24,12 +24,31 @@ final class ChatViewModel {
     private(set) var retryNotice: String?
     /// 先给按时段挑的默认问题,AI 生成的回来了再替换。
     var suggestions = SuggestedQuestions.defaults()
+    /// 首屏那句话:打开 app 先说发生了什么,不是先问他一个问题。
+    ///
+    /// 和 `suggestions` 同一套两级:本地那句立刻出,模型润色好了原地换掉。`nil` 只出现在
+    /// 处境还没判定完的那几十毫秒里——之后它永远有内容,连"没读到值得留意的波动"都是一种
+    /// 回答("要不要在意"的答案是"不用")。
+    private(set) var quickSummary: String?
     /// 接着刚才那段回答问的几条追问。
     ///
     /// 空着不是错误状态,是常态的一半:还没答完、生成失败、没配 key 都是空的,那时候
     /// `ComposerBar` 用固定那几条顶上。所以这里不需要"正在生成"这种状态——多一个状态就多
     /// 一个转圈,而它转的那两秒里用户什么都不缺。
     private(set) var followUps: [String] = []
+    /// 输入框上方那排还没发出去的照片。
+    ///
+    /// 排在这儿而不是直接变成气泡:识别要花几百毫秒,而识别错一个小数点在健康场景里不是
+    /// 「有点脏数据」——他得先看见发出去的是什么,才谈得上核对。
+    private(set) var draftAttachments: [DraftAttachment] = []
+    /// 还有图在认。这时候发送要等一下:发出去的是空文本的话,模型只能说"没看到"。
+    var isRecognizingAttachments: Bool { draftAttachments.contains(where: \.isRecognizing) }
+    /// 一句话最多带几张照片。
+    static let maxAttachments = 6
+    var canAttachMore: Bool { draftAttachments.count < Self.maxAttachments }
+
+    /// 正在跑的识别,按附件编号存着,删掉那张就取消它。
+    private var recognitionTasks: [UUID: Task<Void, Never>] = [:]
 
     private var currentReplyTask: Task<Void, Never>?
     /// 思考的增量攒一小会儿再落盘。
@@ -76,6 +95,29 @@ final class ChatViewModel {
     private let memoryStore: MemoryStore
     private let sessionStore: SessionStore
     private let medicationStore: MedicationStore
+    /// 这个 view model 服务的是哪位成员。
+    ///
+    /// **一个 view model 一位成员,不给它换人的方法**。切成员在 `ChatView` 那边是整个换掉
+    /// 这个对象(`.id(tenant.id)`),不是给它发一条「现在换成妈妈」的消息:回复可能正在飞、
+    /// hook 记着上一句、四个 store 的缓存全是上一个人的东西,而漏掉其中任何一样都是把上一位
+    /// 的内容端到下一位名下。换掉整个对象,这几件一次性全没了。
+    private let tenant: Tenant
+    /// 这位成员有没有 Apple 健康数据。**只有机主有**(见 `Tenant.Kind`)。
+    var hasHealthData: Bool { tenant.isOwner }
+    var currentTenant: Tenant { tenant }
+
+    /// 导航栏副标题。成员名字和隐私状态挤在同一行。
+    ///
+    /// **机主不标注**。「我以为在自己这儿、其实在妈妈那儿」是这个功能最糟的失灵,而反过来那次
+    /// 不会出事——所以只给家人挂一直在视线里的名字,单人用户那一屏一个字都没变。给每个人都
+    /// 标上的话,那行字在 99% 的时间里说的是一件恒成立的事,人几天就不看它了,而它恰恰是要
+    /// 在剩下 1% 里被看见的。
+    var navigationSubtitle: String {
+        var parts: [String] = []
+        if !tenant.isOwner { parts.append(tenant.displayName) }
+        if session.isPrivate { parts.append("隐私对话 · 不保存") }
+        return parts.joined(separator: " · ")
+    }
 
     var messages: [ChatMessage] { session.messages }
 
@@ -97,11 +139,13 @@ final class ChatViewModel {
     init(
         engineFactory: EngineFactory? = nil,
         loadsPersistedSession: Bool = true,
+        tenant: Tenant = TenantScope.current,
         memoryStore: MemoryStore = .shared,
         sessionStore: SessionStore = .shared,
         medicationStore: MedicationStore = .shared
     ) {
         self.engineFactory = engineFactory
+        self.tenant = tenant
         self.memoryStore = memoryStore
         self.sessionStore = sessionStore
         self.medicationStore = medicationStore
@@ -127,9 +171,17 @@ final class ChatViewModel {
     func send(_ suggestedQuestion: String? = nil) {
         guard !isLoadingConversation else { return }
         let text = (suggestedQuestion ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty {
+        // 排在输入框上方的照片跟着下一句话一起走,不管这句话是打出来的还是点 chip 点出来的:
+        // 规矩只有一条才记得住。
+        let attachments = takeDraftAttachments()
+        if !text.isEmpty || !attachments.isEmpty {
             input = ""
-            session.messages.append(ChatMessage(role: .user, text: text, isQueued: true))
+            session.messages.append(ChatMessage(
+                role: .user,
+                text: text,
+                attachments: attachments,
+                isQueued: true
+            ))
         }
         // 正在回复:这一句排进队列就完了,不再开一轮。取走它的是 `takeQueuedInput`。
         guard !isReplying, hasQueuedInput else { return }
@@ -142,9 +194,143 @@ final class ChatViewModel {
     /// 的对话和模型记得的对话对不上。
     func withdrawQueued(_ messageID: UUID) {
         guard let index = index(of: messageID), session.messages[index].isQueued else { return }
-        let text = session.messages[index].text
+        let message = session.messages[index]
         session.messages.remove(at: index)
-        input = input.isEmpty ? text : "\(text)\n\(input)"
+        input = input.isEmpty ? message.text : "\(message.text)\n\(input)"
+        // 照片也一起退回到输入框上方。只把字还回来的话,那几张图就凭空没了,而他收回这条
+        // 多半正是因为发现某一页拍糊了。
+        for attachment in message.attachments {
+            if let documentName = attachment.documentName {
+                draftAttachments.append(DraftAttachment(
+                    id: attachment.id,
+                    documentName: documentName,
+                    text: attachment.text,
+                    droppedLines: attachment.droppedLines,
+                    failure: nil
+                ))
+                continue
+            }
+            guard let image = AttachmentImageCache.shared.cached(attachment.id) else { continue }
+            var draft = DraftAttachment(id: attachment.id, preview: image)
+            draft.text = attachment.text
+            draft.droppedLines = attachment.droppedLines
+            draft.isRecognizing = false
+            draftAttachments.append(draft)
+        }
+    }
+
+    // MARK: - 照片
+
+    /// 拍完/选完,先占位再识别。
+    ///
+    /// 识别在本机跑,图片不出设备——发给模型的只有文本。这不是"因为模型没视觉"的权宜之计:
+    /// 一张化验单上有姓名、就诊号、医院和条码,而这次对话要的只是那几行数值。
+    func attach(_ images: [UIImage]) {
+        attach(images.map(ImportedAttachment.photo))
+    }
+
+    /// 拍的、选的、从「文件」里挑的,都从这儿进来。
+    ///
+    /// 照片要识别,文件已经是文字了(`AttachmentImporter` 那边直接取的原文)——两条路在这里
+    /// 合流,后面的排队、核对、发送、存盘就只有一套。
+    func attach(_ items: [ImportedAttachment]) {
+        for item in items {
+            // 一句话最多带这么多件。每件能带四千字,六件已经是一次请求里最大的一块了——
+            // 而 `ContextPolicy` 那四档降级只管工具输出,拦不住用户消息。
+            guard draftAttachments.count < Self.maxAttachments else { break }
+            switch item {
+            case .photo(let image):
+                let id = UUID()
+                let preview = AttachmentImage.downscaled(image)
+                // 气泡和这一排都从这里取图。落盘要等到真的发出去(隐私会话则永远不落)。
+                AttachmentImageCache.shared.set(preview, for: id)
+                draftAttachments.append(DraftAttachment(id: id, preview: preview))
+                recognize(image, for: id)
+            case .document(let name, let text, let droppedLines, let failure):
+                draftAttachments.append(DraftAttachment(
+                    documentName: name,
+                    text: text,
+                    droppedLines: droppedLines,
+                    failure: failure
+                ))
+            }
+        }
+    }
+
+    /// 用户改过的那一份就是发出去的那一份。
+    func updateAttachmentText(_ id: UUID, to text: String) {
+        guard let index = draftAttachments.firstIndex(where: { $0.id == id }) else { return }
+        draftAttachments[index].text = text
+        // 他自己删掉几行之后,「后面 N 行没识别进来」那句话就不再是这段文字的实情了。
+        draftAttachments[index].droppedLines = 0
+    }
+
+    func removeAttachment(_ id: UUID) {
+        recognitionTasks.removeValue(forKey: id)?.cancel()
+        draftAttachments.removeAll { $0.id == id }
+    }
+
+    private func recognize(_ image: UIImage, for id: UUID) {
+        recognitionTasks[id] = Task {
+            let result = try? await TextRecognizer.recognize(image)
+            guard !Task.isCancelled,
+                  let index = draftAttachments.firstIndex(where: { $0.id == id })
+            else { return }
+            draftAttachments[index].isRecognizing = false
+            recognitionTasks[id] = nil
+            guard let result else {
+                draftAttachments[index].failure = TextRecognizer.Failure.unreadableImage.localizedDescription
+                return
+            }
+            draftAttachments[index].text = result.text
+            draftAttachments[index].droppedLines = result.droppedLines
+        }
+    }
+
+    /// 取走这一排,变成消息上的附件。**返回即消费**,同 `takeQueuedInput`。
+    private func takeDraftAttachments() -> [ChatAttachment] {
+        guard !draftAttachments.isEmpty else { return [] }
+        let drafts = draftAttachments
+        draftAttachments = []
+        recognitionTasks.values.forEach { $0.cancel() }
+        recognitionTasks = [:]
+
+        // 隐私会话不落盘,图片跟着不落——那条会话的全部意义就是不留本机痕迹。屏幕上照常
+        // 看得见:内存里那份还在,关掉就没了。
+        let persists = !session.isPrivate
+        if persists {
+            persistImages(of: drafts)
+        }
+        return drafts.map { draft in
+            ChatAttachment(
+                id: draft.id,
+                text: draft.text,
+                droppedLines: draft.droppedLines,
+                // 文件没有图可存,那一栏永远是 nil——气泡靠 `documentName` 认出该画文档卡。
+                imageFileName: persists && !draft.isDocument
+                    ? ChatAttachment.fileName(for: draft.id)
+                    : nil,
+                documentName: draft.documentName
+            )
+        }
+    }
+
+    /// 写盘和这句话的发送互不相干:写失败最多是重开会话时少一张缩略图,而真正要紧的那段
+    /// 识别文本存在消息里,一个字都不会丢。所以它不该挡住提问。
+    private func persistImages(of drafts: [DraftAttachment]) {
+        for draft in drafts {
+            let id = draft.id
+            guard let preview = draft.preview,
+                  let data = AttachmentImage.jpegData(from: preview)
+            else { continue }
+            Task {
+                do {
+                    try await AttachmentStore.shared.store(data, id: id)
+                } catch {
+                    print("保存照片失败：\(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     func stopReply() {
@@ -438,32 +624,60 @@ final class ChatViewModel {
     /// 每次启动只生成一次:模型那步是一次真实调用,不该每回到首屏就花一遍钱。
     ///
     /// 分两级:先本地判定处境(纯 HealthKit 查询,没配 key 也有),再交给模型润色成人话。
+    /// 一次判定喂两个消费者——首屏那句话和下面那三条问题说的必须是同一件事,各判定一遍
+    /// 迟早会在同一屏上说出两种结论。
     func refreshSuggestionsIfNeeded() {
         guard !hasRequestedSuggestions, !isLoadingConversation, messages.isEmpty else { return }
         hasRequestedSuggestions = true
 
         Task {
+            // 家人成员这条路上 `HealthSituation` 整个不跑。它读的是 HealthKit,而那份数据
+            // 属于机主——跑一遍拿回来的「昨晚只睡了 6.2 小时」说的是机主,却会印在妈妈的
+            // 首屏上。这是 `HealthStore` 五个调用方里最容易漏掉的一个:它藏在"首屏建议"
+            // 后面,看着和健康数据没关系。
+            guard hasHealthData else {
+                situationSuggestions = TenantOpening.questions(for: tenant, medications: medications)
+                quickSummary = TenantOpening.quickSummary(for: tenant, medications: medications)
+                if session.topicId == nil {
+                    suggestions = situationSuggestions
+                }
+                return
+            }
             let situation = await HealthSituation.detect(
                 interests: await sessionStore.interests()
             )
             guard messages.isEmpty else { return }
             situationSuggestions = situation.questions
+            quickSummary = situation.quickSummary
             if session.topicId == nil {
                 suggestions = situationSuggestions
             }
 
             guard let settings = try? cloudSettings() else { return }
+            let writer = QuickSummaryWriter(
+                providerId: settings.provider,
+                model: settings.model,
+                situation: situation
+            )
             let suggester = QuestionSuggester(
                 providerId: settings.provider,
                 model: settings.model,
                 situation: situation
             )
-            guard let generated = try? await suggester.suggestions() else { return }
+            // 并发发出去。串起来的话用户要等两次往返,而这两件事互不相干——一边失败了
+            // 另一边照常换掉,各自的兜底也各自还在。
+            async let written = writer.summary()
+            async let generated = suggester.suggestions()
+
             // 回来得太晚就别抢了——用户已经开聊或者已经自己选了话题。
-            guard messages.isEmpty else { return }
-            situationSuggestions = generated
-            if session.topicId == nil {
-                suggestions = generated
+            if let text = try? await written, messages.isEmpty {
+                quickSummary = text
+            }
+            if let questions = try? await generated, messages.isEmpty {
+                situationSuggestions = questions
+                if session.topicId == nil {
+                    suggestions = questions
+                }
             }
         }
     }
@@ -482,6 +696,11 @@ final class ChatViewModel {
         // 的会话号挡住。
         hooks = nil
         followUps = []
+        // 还没发出去的那几张图跟着走的那条会话一起丢:它们是那一刻的东西,跟到新会话里
+        // 只会在他问一件别的事时莫名其妙地被一起发出去。
+        recognitionTasks.values.forEach { $0.cancel() }
+        recognitionTasks = [:]
+        draftAttachments = []
         if harvestingPrevious {
             harvestMemory(from: previous)
         }
@@ -585,6 +804,10 @@ final class ChatViewModel {
         isReplying = true
         didStartReplyInSession = true
         retryNotice = nil
+        // 定位是异步的,这一次多半来不及赶上下面这轮请求——赶上的是下一句。发一句话就顺手
+        // 定一次(内部按 `LocationProvider.refreshInterval` 节流,没授权直接返回),
+        // 是为了让「他换了个城市」这件事在他开口的时候就已经在路上了。
+        LocationProvider.shared.refresh()
         // 那几条接的是上一段回答,新的一段就要开始写了。留着比空着糟:它们和固定那几条
         // 长得一模一样,而点下去问的是三句话之前的事。
         followUps = []
@@ -687,7 +910,9 @@ final class ChatViewModel {
             session.messages[index].isQueued = false
             taken.append(AgentPendingInput(
                 id: session.messages[index].id,
-                text: session.messages[index].text
+                // 插话也可能带着一张刚拍的图。发的是拼好的那一份,和它当成普通历史发出去时
+                // 一模一样(`ChatMessage.modelText`)。
+                text: session.messages[index].modelText
             ))
         }
         return taken
@@ -778,6 +1003,10 @@ final class ChatViewModel {
             providerId: settings.provider,
             model: settings.model,
             topic: session.topic,
+            // 家人成员在这儿多一块 system 段(「这不是用户本人,而且你读不到他的健康数据」),
+            // 而健康工具在下面一个都不挂。两处必须一起变:只挡工具不说话,模型会为了有话说
+            // 而猜一个数字;只说话不挡工具,它会去查,查回来的是机主的数字。
+            tenant: tenant,
             goal: session.thread?.isGoal == true ? session.threadTitle : nil,
             // 隐私会话照样**读**记忆:承诺的是不往盘上写,不是失忆。真要把已经知道的也关掉,
             // 用户恰恰是在想问点私密事的时候拿到一个不认识他的助手,那这个开关只会没人用。
@@ -786,8 +1015,18 @@ final class ChatViewModel {
             // 尤其不能关掉。承诺的是不留痕迹,不是不管他死活。
             medications: medications,
             focusMedication: focusMedication,
+            // **每轮现取**,不像上面几份绑在会话上:人会走动,而这块东西存在的理由正是
+            // 「他此刻在哪」。没授权就是 `.unknown`,那一段 system 段不发。
+            //
+            // 隐私会话照样带。它不往盘上写任何东西(承诺的是不留本机痕迹),而问题终究要发给
+            // 云端模型才有人回答——同记忆、同用药表。
+            location: LocationProvider.shared.snapshot,
             // 写的那一头堵死:`remember` 在这条会话里根本不挂出去。
             capabilityRegistry: .healthChat(
+                // 这台设备的 HealthKit 只有机主一个人的数据。给家人挂上健康工具,模型会去查,
+                // 而查回来的是**机主的**数字——它会一本正经地拿爸爸的静息心率解释妈妈的化验单,
+                // 并且不报错。
+                includesHealthTools: tenant.isOwner,
                 allowsMemoryWrites: !session.isPrivate,
                 // 他自己提起过去,才有「过去」可翻。没提就连工具都不挂——留着的话模型每轮都要
                 // 判一次要不要翻,而健康对话句句连着上一句,那个判断天然偏向"要"。

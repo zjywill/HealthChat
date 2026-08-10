@@ -6,7 +6,9 @@ import Foundation
 /// 而存在的,代价是漏召回——索引说有、模型没去读。这里的记忆对象只有一个人,全部加起来几十
 /// 条、一两千 token,**全量进 system 段**最简单也最可靠,加个硬上限就够了。
 actor MemoryStore {
-    static let shared = MemoryStore()
+    /// 当前那位成员的记忆(同 `SessionStore.shared`)。「关于这位用户」在多成员之后就是
+    /// 「关于这位成员」——妈妈的忌口和机主的作息本来就不该在一个文件里。
+    static var shared: MemoryStore { TenantScope.currentStores.memory }
 
     /// 上限存在的意义是「别让 system 段慢慢长成一篇作文」,不是省那点存储。
     /// 两个都卡:条数管住列表长度,字数管住有人写小作文。

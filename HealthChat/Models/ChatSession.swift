@@ -88,11 +88,13 @@ struct ChatSession: Identifiable, Equatable, Codable, Sendable {
     /// 界面上这条会话叫什么。算法和索引那份共用一份(`SessionTitle`)——各写一遍迟早会漂,
     /// 而漂的结果是列表上一个名字、召回结果里另一个名字。
     var title: String {
-        SessionTitle.make(
+        let firstSpoken = messages.first { $0.role == .user }
+        return SessionTitle.make(
             threadId: threadId,
             threadTitle: threadTitle,
             topicId: topicId,
-            firstUserText: messages.first { $0.role == .user }?.text,
+            firstUserText: firstSpoken?.text,
+            firstUserHasAttachments: !(firstSpoken?.attachments.isEmpty ?? true),
             createdAt: createdAt
         )
     }

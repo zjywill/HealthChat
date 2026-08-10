@@ -44,9 +44,12 @@ struct SessionIndexEntry: Decodable, Sendable, Identifiable {
         let role: ChatMessage.Role
         let text: String
         let toolNames: [String]
+        /// 只问「有没有」,不解出来。照片识别出来的文本可能有几千字,而索引常驻内存——
+        /// 把它们留在这儿,就是为一个只用来定标题的判断付一整年的内存。
+        let hasAttachments: Bool
 
         private enum CodingKeys: String, CodingKey {
-            case role, text, toolCalls
+            case role, text, toolCalls, attachments
         }
 
         private struct SlimToolCall: Decodable {
@@ -59,6 +62,7 @@ struct SessionIndexEntry: Decodable, Sendable, Identifiable {
             text = (try? container.decode(String.self, forKey: .text)) ?? ""
             toolNames = ((try? container.decodeIfPresent([SlimToolCall].self, forKey: .toolCalls)) ?? [])?
                 .map(\.name) ?? []
+            hasAttachments = container.contains(.attachments)
         }
     }
 
@@ -102,11 +106,13 @@ struct SessionIndexEntry: Decodable, Sendable, Identifiable {
 
         let messages = try container.decode([SlimMessage].self, forKey: .messages)
         messageCount = messages.count
+        let firstSpoken = messages.first { $0.role == .user }
         title = SessionTitle.make(
             threadId: threadId,
             threadTitle: threadTitle,
             topicId: topicId,
-            firstUserText: messages.first { $0.role == .user }?.text,
+            firstUserText: firstSpoken?.text,
+            firstUserHasAttachments: firstSpoken?.hasAttachments ?? false,
             createdAt: createdAt
         )
 
@@ -137,6 +143,8 @@ enum SessionTitle {
         threadTitle: String?,
         topicId: String?,
         firstUserText: String?,
+        /// 第一句话是一张照片,一个字都没打。不认这一条的话,列表上那行会一直叫「新对话」。
+        firstUserHasAttachments: Bool = false,
         createdAt: Date
     ) -> String {
         // 延续线用线程名。一条攒了四天 check-in 的会话首条消息是「昨晚睡得怎么样？」——
@@ -148,6 +156,7 @@ enum SessionTitle {
 
         let first = firstUserText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !first.isEmpty else {
+            if firstUserHasAttachments { return "照片" }
             return ChatTopics.topic(id: topicId)?.name ?? "新对话"
         }
         let firstLine = first.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? first

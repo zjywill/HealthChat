@@ -81,6 +81,10 @@ struct MedicationListView: View {
                 }
             }
             .navigationTitle("用药与补剂")
+            // 这张表跟着当前成员走(`MedicationStore.shared`),所以「这是谁的表」必须写在
+            // 标题下面。看不见名字的话,用户会把妈妈的降压药录进自己那一份——而这张表里
+            // 「不能吃」那一组是拿来救命的。机主不标,理由同 `ChatViewModel.navigationSubtitle`。
+            .navigationSubtitle(TenantScope.isOwnerActive ? "" : TenantScope.current.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

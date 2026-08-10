@@ -48,6 +48,18 @@ targets:
         product: AgentRuntime
       - package: AIKitSwift
         product: AIKit
+    # 上面那些 `INFOPLIST_KEY_*` 走的是 Xcode 的生成器,而它只认自己列表里的那些键——
+    # `NSLocationDefaultAccuracyReduced` 不在里面,写成 build setting 会被静默丢掉(试过)。
+    # 所以单给它一份基础 plist:`GENERATE_INFOPLIST_FILE` 仍然开着,Xcode 会把上面那些键
+    # 合并进这份文件,两条路并存。
+    #
+    # 这个键让 iOS 那张授权面板连「精确位置」的开关都不露出来——申请的就只是大概位置。
+    # 实际拿到的数据由 `LocationProvider` 里的 `kCLLocationAccuracyReduced` 兜住,两处都要有:
+    # 用户自己在系统设置里把精确位置打开了,那一行仍然把我们限制在粗定位上。
+    info:
+      path: HealthChat/Info.plist
+      properties:
+        NSLocationDefaultAccuracyReduced: true
     entitlements:
       path: HealthChat/HealthChat.entitlements
       properties:
@@ -69,5 +81,11 @@ targets:
         INFOPLIST_KEY_NSHealthShareUsageDescription: 用于在对话中分析你的步数、睡眠、心率等健康数据;端上模型模式下数据不离开设备。
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: 仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。
         INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription: 用于在对话中读取你已连接到「健康」的化验和体检记录；数据只在你提问时被读取，不会被修改。
+        # 只要粗定位:城市决定气候、季节、时差、饮食和就医方式,而那几件正是要位置的全部理由。
+        # 街道地址一件都回答不了,只是多给模型一样能说漏嘴的东西。
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: 用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。
+        # 拍化验单、药瓶和说明书。文字识别全在本机跑，发给模型的只有识别出来的文字，图片不离开这台设备。
+        INFOPLIST_KEY_NSCameraUsageDescription: 用于拍摄化验单、药瓶或说明书；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: 用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_STRICT_CONCURRENCY: targeted

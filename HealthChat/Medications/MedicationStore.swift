@@ -10,7 +10,11 @@ import Foundation
 /// `MedicationSnapshot` 的问题(它裁的是**进模型的那一份**,盘上一条不少),不是存储的问题。
 /// 只留一个防跑飞的硬上限,挡住模型连着调二百次 `log_medication`。
 actor MedicationStore {
-    static let shared = MedicationStore()
+    /// 当前那位成员的用药与补剂表(同 `SessionStore.shared`)。
+    ///
+    /// 这张表是家人成员**最主要**的信息来源:他没有 HealthKit,「他在吃什么、什么不能吃」
+    /// 几乎就是模型手上的全部。混在一起的那天,禁忌那一组会指到另一个人身上去。
+    static var shared: MedicationStore { TenantScope.currentStores.medications }
 
     /// 防跑飞用的硬上限,不是容量规划。真有人吃六十样东西,那也是他的事。
     static let maxItems = 200

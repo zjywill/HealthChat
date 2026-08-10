@@ -20,6 +20,8 @@ enum CheckInScheduler {
     /// 由这里写死而不是让 app 那头去推:通知文案是排程那一刻定下的,它说的是哪条线,点开就该
     /// 落在哪条线。留给收件方现算的话,两边的判断迟早分叉。
     static let threadKey = "threadId"
+    /// 点开之后落在哪位成员那儿。见 `schedule` 里那段。
+    static let tenantKey = "tenantId"
 
     private static let morningIdentifier = "checkin.morning"
     private static let eveningIdentifier = "checkin.evening"
@@ -48,16 +50,16 @@ enum CheckInScheduler {
             return
         }
 
-        let situation = await HealthSituation.detect(interests: await SessionStore.shared.interests())
+        let situation = await HealthSituation.detect(interests: await TenantScope.ownerStores.sessions.interests())
         let dueFollowUps = EngineSettings.memoryEnabled
-            ? await MemoryStore.shared.snapshot().due(at: Date())
+            ? await TenantScope.ownerStores.memory.snapshot().due(at: Date())
             : []
         var conclusions: [UUID: String] = [:]
         for followUp in dueFollowUps {
             conclusions[followUp.id] = await FollowUpRunner.conclusion(for: followUp)
         }
         let dueMedications = EngineSettings.medicationsEnabled
-            ? await MedicationStore.shared.dueFollowUps()
+            ? await TenantScope.ownerStores.medications.dueFollowUps()
             : []
         let goalNote = await morningGoalNote()
         let morningHour = hour(forKey: EngineSettings.morningCheckInHourKey, fallback: EngineSettings.defaultMorningHour)
@@ -222,7 +224,7 @@ enum CheckInScheduler {
     ///
     /// 只挑一条。两条目标各占一行,早上那条通知就成了一份日报——而通知只有一行的位置。
     private static func morningGoalNote() async -> GoalNote? {
-        for goal in await SessionStore.shared.goals() {
+        for goal in await TenantScope.ownerStores.sessions.goals() {
             guard let conclusion = await GoalDigest.conclusion(for: goal) else { continue }
             return GoalNote(threadId: goal.threadId, title: goal.title, conclusion: conclusion)
         }
@@ -253,9 +255,9 @@ enum CheckInScheduler {
             return "还没有通知权限，先打开每日 check-in。"
         }
 
-        let situation = await HealthSituation.detect(interests: await SessionStore.shared.interests())
+        let situation = await HealthSituation.detect(interests: await TenantScope.ownerStores.sessions.interests())
         let dueFollowUps = EngineSettings.memoryEnabled
-            ? await MemoryStore.shared.snapshot().due(at: Date())
+            ? await TenantScope.ownerStores.memory.snapshot().due(at: Date())
             : []
         var conclusions: [UUID: String] = [:]
         for followUp in dueFollowUps {
@@ -305,7 +307,12 @@ enum CheckInScheduler {
             questionKey: content.question ?? "",
             followUpKey: content.followUpId?.uuidString ?? "",
             // 没写线程的走 check-in 那条线,和这个功能上线之前一样。
-            threadKey: content.threadId ?? SessionThread.checkIn.id
+            threadKey: content.threadId ?? SessionThread.checkIn.id,
+            // 点开落在哪位成员那儿,**排程时就写死**(同 `threadKey`)。check-in 讲的是
+            // HealthKit 里的事,那份数据只有机主有,所以这里恒是机主——但仍然把它写进去而
+            // 不是让收件方现算:用户可能正看着妈妈那一栏点开这条通知,而通知说的是机主的
+            // 睡眠。留给收件方判断,两边的口径迟早分叉。
+            tenantKey: TenantScope.owner.id.uuidString
         ]
 
         try? await UNUserNotificationCenter.current().add(

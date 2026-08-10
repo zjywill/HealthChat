@@ -53,7 +53,14 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
 
     let id: UUID
     let role: Role
+    /// **用户打的字**,不含照片识别出来的那几段。
+    ///
+    /// 发给模型的是 `modelText`(它把附件的文本接在后面)。分开存不是重复:标题、召回索引
+    /// (`SessionIndexEntry.userText`)、记忆抽取要的都是他自己说的那句话——把几千字的化验单
+    /// 掺进去,会话列表上的标题会变成一行血常规,常驻内存的那份索引也跟着胖一个数量级。
     var text: String
+    /// 随这句话拍进来的照片。识别出来的文字在每一条里,图片在 `AttachmentStore`。
+    var attachments: [ChatAttachment]
     /// `text` 是 app 写给用户的占位("已停止回复"/"无法回复：…"),不是模型说的话。
     ///
     /// 有这个标记,runtime 判断该不该回放时就不用去比对某句中文——那句话属于 app。
@@ -83,6 +90,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         case id
         case role
         case text
+        case attachments
         case textIsPlaceholder
         case reasoning
         case toolCalls
@@ -103,6 +111,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         id: UUID = UUID(),
         role: Role,
         text: String,
+        attachments: [ChatAttachment] = [],
         textIsPlaceholder: Bool = false,
         reasoning: String = "",
         toolCalls: [ToolCallRecord] = [],
@@ -114,6 +123,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         self.id = id
         self.role = role
         self.text = text
+        self.attachments = attachments
         self.textIsPlaceholder = textIsPlaceholder
         self.reasoning = reasoning
         self.toolCalls = toolCalls
@@ -127,6 +137,9 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         id = dto.id
         role = Role(dto.role)
         text = dto.text
+        // DTO 那份的 `text` 已经是拼好的模型文本(`modelText`),再挂一次附件就会把识别出来的
+        // 那几段写两遍。附件本来也只有 app 这一侧认得。
+        attachments = []
         textIsPlaceholder = dto.textIsPlaceholder
         reasoning = dto.reasoning
         toolCalls = dto.toolCalls.map(ToolCallRecord.init)
@@ -144,6 +157,7 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         id = try container.decode(UUID.self, forKey: .id)
         role = try container.decode(Role.self, forKey: .role)
         text = try container.decode(String.self, forKey: .text)
+        attachments = try container.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
         textIsPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .textIsPlaceholder) ?? false
         reasoning = try container.decodeIfPresent(String.self, forKey: .reasoning) ?? ""
         toolCalls = try container.decodeIfPresent([ToolCallRecord].self, forKey: .toolCalls) ?? []
@@ -182,6 +196,9 @@ struct ChatMessage: Identifiable, Equatable, Codable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(role, forKey: .role)
         try container.encode(text, forKey: .text)
+        if !attachments.isEmpty {
+            try container.encode(attachments, forKey: .attachments)
+        }
         try container.encode(textIsPlaceholder, forKey: .textIsPlaceholder)
         if !reasoning.isEmpty {
             try container.encode(reasoning, forKey: .reasoning)
@@ -226,6 +243,21 @@ extension ChatMessage {
         !text.isEmpty || !reasoning.isEmpty || !toolCalls.isEmpty
     }
 
+    /// 模型收到的那一份:用户打的字 + 每张照片识别出来的文本。
+    ///
+    /// 和气泡上显示的是**同一个来源**(`ChatAttachment.modelText` 那一支),两边各拼一遍
+    /// 迟早对不上——同 `HealthReport` 的 `modelText` / 面板那套。
+    var modelText: String {
+        ChatAttachment.modelText(typed: text, attachments: attachments)
+    }
+
+    /// 这条消息有东西可发。
+    ///
+    /// 只拍了一张化验单、一个字没打也算——那时候 `text` 是空的,而他确实说了点什么。
+    var hasContentToSend: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+    }
+
     /// 这一轮是被单轮查询次数上限截住的。
     ///
     /// 不是失败:已经查到的东西都在,只是模型还想接着查。用户需要知道这件事——不然它
@@ -244,6 +276,7 @@ extension ChatMessage {
     func rendersIdentically(to other: ChatMessage) -> Bool {
         id == other.id
             && text == other.text
+            && attachments == other.attachments
             && reasoning == other.reasoning
             && errorDescription == other.errorDescription
             && createdAt == other.createdAt
@@ -265,7 +298,9 @@ extension ChatMessage {
         AgentChatMessageDTO(
             id: id,
             role: AgentChatMessageDTO.Role(role),
-            text: text,
+            // 交给 runtime 的是拼好的那一份:照片识别出来的文字要跟着这句话一起进上下文,
+            // 而 runtime 那边不认识附件(会话文件里也不该出现只有界面看得懂的类型)。
+            text: modelText,
             textIsPlaceholder: textIsPlaceholder,
             reasoning: reasoning,
             toolCalls: toolCalls.map(\.dto),

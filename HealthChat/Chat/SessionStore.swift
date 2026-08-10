@@ -18,9 +18,16 @@ import Foundation
 ///
 /// 读某一条会话的全文走 `load(id:)`,那是一次一条,该解就解。
 actor SessionStore {
-    static let shared = SessionStore()
+    /// **当前那位成员**的会话。不是一个固定实例——切成员就是换一整个会话空间
+    /// (`TenantScope`),而全 app 几十处 `.shared` 因此一行都不用改。
+    ///
+    /// 后台那几件事(check-in、Siri、派生轮)不能用它:那些从头到尾都是机主的,
+    /// 要的是 `TenantScope.ownerStores.sessions`。
+    static var shared: SessionStore { TenantScope.currentStores.sessions }
 
     private let directory: URL
+    /// 会话里那几张照片的去处。存的时候不经过这儿(拍完就存了),但**删的时候必须一起删**。
+    private let attachments: AttachmentStore
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
@@ -41,6 +48,9 @@ actor SessionStore {
     ///   同一条规矩见 `MemoryStore.init(directory:)`。
     init(parent: URL = URL.documentsDirectory) {
         directory = parent.appending(path: "sessions", directoryHint: .isDirectory)
+        // 跟着同一个 parent 走,测试拿到的就是自己那份临时的——删会话会连图片一起删,
+        // 指着真目录的话一次 `swift test` 能把用户拍的化验单清空(同 `MemoryStore` 那条血泪)。
+        attachments = AttachmentStore(parent: parent)
         decoder.dateDecodingStrategy = .iso8601
         encoder.dateEncodingStrategy = .iso8601
     }
@@ -166,19 +176,33 @@ actor SessionStore {
         }
     }
 
-    func delete(id: UUID) throws {
+    func delete(id: UUID) async throws {
         let url = fileURL(for: id)
         guard FileManager.default.fileExists(atPath: url.path) else { return }
+        await removeAttachments(of: id)
         try FileManager.default.removeItem(at: url)
         invalidate()
     }
 
     /// 整条线一起删。目标线是用户当成"一件事"来管的,删掉的时候也该是一件事。
-    func deleteThread(_ thread: SessionThread) throws {
+    func deleteThread(_ thread: SessionThread) async throws {
         for entry in entries() where entry.threadId == thread.id {
+            await removeAttachments(of: entry.id)
             try? FileManager.default.removeItem(at: fileURL(for: entry.id))
         }
         invalidate()
+    }
+
+    /// 这条会话带的照片跟着它一起走。
+    ///
+    /// 用户刚把这段对话删了,那张化验单还留在盘上,是这套东西最难解释的一种失灵——同
+    /// 「删掉的会话必须立刻从召回索引里消失」。为此要把整份会话解一遍(索引里没有附件),
+    /// 但删会话是他自己按下去的、一次一条的事,不在任何人等着的那条路上。
+    private func removeAttachments(of id: UUID) async {
+        guard let session = try? load(id: id) else { return }
+        let names = session.messages.flatMap { $0.attachments.compactMap(\.imageFileName) }
+        guard !names.isEmpty else { return }
+        await attachments.remove(named: names)
     }
 
     // MARK: - 索引

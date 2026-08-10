@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// 底部输入区:一颗玻璃胶囊装下输入框和它的动作,快捷 chip 浮在它上方。
@@ -8,6 +9,14 @@ struct ComposerBar: View {
     @Bindable var model: ChatViewModel
 
     @FocusState private var isFocused: Bool
+    /// 文档扫描器。全屏盖上来,不是 sheet:它自己就是一个相机界面。
+    @State private var isScanning = false
+    @State private var isPickingPhotos = false
+    @State private var isImportingFiles = false
+    @State private var pickedPhotos: [PhotosPickerItem] = []
+    /// 正在核对哪一张。识别错一个小数点在健康场景里不是「有点脏数据」,所以发出去之前
+    /// 每一张都点得开、改得动。
+    @State private var reviewing: DraftAttachment.ID?
 
     /// 单行时正好是半高(`ComposerLayout.rowMinHeight` 的一半),画出来就是一颗胶囊;
     /// 长成多行之后才真的当成 27 的圆角用。
@@ -43,11 +52,95 @@ struct ComposerBar: View {
             // chip 那排自己贴到屏幕两边:横向滚动的东西在离边 12pt 处被切断,看着像是
             // 排版错了而不是「右边还有」。
             quickRow
+            // 排在输入框**上方**而不是塞进胶囊里:一张缩略图加一行说明比一行字高得多,
+            // 塞进去会把输入框顶成两层,而多数时候这一排根本不存在。
+            if !model.draftAttachments.isEmpty {
+                attachmentStrip
+            }
             card.padding(.horizontal, 12)
         }
         .padding(.top, 8)
         .padding(.bottom, 6)
         .background(alignment: .bottom) { scrim }
+        .animation(.smooth(duration: 0.2), value: model.draftAttachments.count)
+        .fullScreenCover(isPresented: $isScanning) {
+            DocumentScannerView { pages in
+                isScanning = false
+                model.attach(pages)
+            }
+            .ignoresSafeArea()
+        }
+        .photosPicker(
+            isPresented: $isPickingPhotos,
+            selection: $pickedPhotos,
+            maxSelectionCount: ChatViewModel.maxAttachments,
+            matching: .images
+        )
+        .fileImporter(
+            isPresented: $isImportingFiles,
+            allowedContentTypes: AttachmentImporter.contentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            guard case .success(let urls) = result else { return }
+            model.attach(urls.flatMap(AttachmentImporter.load(at:)))
+        }
+        .onChange(of: pickedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            pickedPhotos = []
+            loadPickedPhotos(items)
+        }
+        .sheet(item: reviewingBinding) { draft in
+            AttachmentReviewView(
+                draft: draft,
+                onChangeText: { model.updateAttachmentText(draft.id, to: $0) },
+                onRemove: { model.removeAttachment(draft.id) }
+            )
+        }
+    }
+
+    /// 正在核对的那一张。存的是 id 不是整份 draft:识别是异步回来的,存着旧值的话
+    /// 面板会一直显示"正在识别"。
+    private var reviewingBinding: Binding<DraftAttachment?> {
+        Binding(
+            get: { model.draftAttachments.first { $0.id == reviewing } },
+            set: { reviewing = $0?.id }
+        )
+    }
+
+    private func loadPickedPhotos(_ items: [PhotosPickerItem]) {
+        Task {
+            var images: [UIImage] = []
+            for item in items {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data)
+                else { continue }
+                images.append(image)
+            }
+            model.attach(images)
+        }
+    }
+
+    // MARK: - 待发的照片
+
+    /// 已经拍进来、还没发出去的那几张。
+    ///
+    /// 每一张都显示识别到了多少行,而不是只放一张缩略图:发出去的是**文字**不是图,
+    /// 用户得看得出来这一步到底认到了没有。
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(model.draftAttachments) { draft in
+                    AttachmentThumbnail(draft: draft) {
+                        reviewing = draft.id
+                    } onRemove: {
+                        model.removeAttachment(draft.id)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .scrollIndicators(.hidden)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     /// 玻璃底下的一层渐隐。
@@ -157,7 +250,11 @@ struct ComposerBar: View {
     /// 聊到第三段就和正在问的事对不上了(同 `ChatViewModel.open`)。
     @ViewBuilder
     private var topicChip: some View {
-        if model.session.thread?.isGoal == true {
+        // 话题(跑步、睡眠、心率与 HRV…)每一个都指着一个健康工具。家人那边它们一个都不挂,
+        // 选了只会让 system 段声明一个查不了的话题——同这一屏上的话题格子整个不出现。
+        if !model.hasHealthData {
+            EmptyView()
+        } else if model.session.thread?.isGoal == true {
             EmptyView()
         } else if model.messages.isEmpty {
             Menu {
@@ -262,7 +359,12 @@ struct ComposerBar: View {
     /// `lineLimit(1...6)` 是给超长粘贴兜底的那一档:到第六行就不再长,里面自己滚。没有它
     /// 的话粘一篇文章进来,输入框会一路顶到屏幕顶上,对话一条都看不见。
     private var field: some View {
-        TextField("问问你的健康数据…", text: $model.input, axis: .vertical)
+        // 家人那边不写「问问你的健康数据」——那句话许的正是这条路上唯一给不了的东西。
+        TextField(
+            model.hasHealthData ? "问问你的健康数据…" : "问问\(model.currentTenant.displayName)的情况…",
+            text: $model.input,
+            axis: .vertical
+        )
             .lineLimit(1...6)
             .focused($isFocused)
             .submitLabel(.send)
@@ -289,23 +391,40 @@ struct ComposerBar: View {
         return false
     }
 
+    /// 加号是**给这句话添东西**,不是「开一条新对话」。
+    ///
+    /// 原来这颗菜单里放的是新对话和隐私对话——那是「离开这条会话」,和它旁边的输入框、发送
+    /// 键根本不是一件事,而输入区里唯一那个"加"的位置本该属于"给这句话加点什么"。两条都挪到
+    /// 会话列表那颗「新建」里去了,那儿本来就管这个。
+    ///
+    /// 三条入口,不是一条的三种降级:文档扫描自己找边纠偏,拍纸质化验单最好;相册是已经拍过
+    /// 的那些;文件是医院导出来的 PDF。模拟器上没有摄像头(`isSupported` 为 false),那时候
+    /// 相册那条是唯一验得动的入口。
     private var moreMenu: some View {
         Menu {
-            Button {
-                model.startNewSession()
-            } label: {
-                Label("新对话", systemImage: "square.and.pencil")
-            }
-            .disabled(model.messages.isEmpty)
+            // 标题说清这几件东西会怎么被处理。用户按下去之前就该知道图和文件不出这台手机——
+            // 而这正是这个功能选择本机识别、不直传图片的全部理由。
+            Section("照片在本机识别成文字，文件直接取文字，只有文字发给模型") {
+                if DocumentScannerView.isSupported {
+                    Button {
+                        isScanning = true
+                    } label: {
+                        Label("拍文件", systemImage: "doc.viewfinder")
+                    }
+                }
 
-            // 两条都是「离开这条，开一条新的」,所以停用条件也一样。空会话时想切隐私走
-            // chip:菜单这条会连话题一起清掉,而那时候人多半刚选完话题。
-            Button {
-                model.startNewSession(isPrivate: true)
-            } label: {
-                Label("隐私对话（不保存）", systemImage: "eye.slash")
+                Button {
+                    isPickingPhotos = true
+                } label: {
+                    Label("从相册选取", systemImage: "photo.on.rectangle")
+                }
+
+                Button {
+                    isImportingFiles = true
+                } label: {
+                    Label("选取文件", systemImage: "folder")
+                }
             }
-            .disabled(model.messages.isEmpty)
         } label: {
             RoundIcon(
                 systemName: "plus",
@@ -314,8 +433,10 @@ struct ComposerBar: View {
             )
         }
         .tint(Color.secondary)
-        .disabled(model.isReplying)
-        .accessibilityLabel("更多")
+        // 回复期间照样能拍:这一排是排队等着跟下一句一起走的东西,和插话同一个道理。
+        // 满了就不再给入口——不然点进相册选完才发现没加进来。
+        .disabled(!model.canAttachMore)
+        .accessibilityLabel("添加照片或文件")
     }
 
     /// 这颗按钮做什么,只看输入框里有没有字。
@@ -326,12 +447,16 @@ struct ComposerBar: View {
     private enum SendAction {
         case send
         case stop
+        /// 还有图在认。发出去的会是一条空附件——不如让他等这几百毫秒,而且要看得出在等什么。
+        case recognizing
         case idle
     }
 
     private var sendAction: SendAction {
         guard !model.isLoadingConversation else { return .idle }
-        if !model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .send }
+        if model.isRecognizingAttachments { return .recognizing }
+        let hasText = !model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasText || !model.draftAttachments.isEmpty { return .send }
         if model.isReplying { return .stop }
         // 停止之后队列里可能还剩着东西,这颗就是「把排着的那几句发出去」。
         return model.hasQueuedInput ? .send : .idle
@@ -344,24 +469,38 @@ struct ComposerBar: View {
             switch action {
             case .send: model.send()
             case .stop: model.stopReply()
-            case .idle: break
+            case .recognizing, .idle: break
             }
         } label: {
-            RoundIcon(
-                systemName: action == .stop ? "stop.fill" : "arrow.up",
-                foreground: AnyShapeStyle(action == .idle ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white)),
-                background: {
-                    switch action {
-                    case .stop: AnyShapeStyle(Color(.systemRed))
-                    case .send: AnyShapeStyle(Color.accentColor)
-                    case .idle: AnyShapeStyle(.fill.tertiary)
-                    }
-                }()
-            )
+            if action == .recognizing {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 44, height: 44)
+            } else {
+                RoundIcon(
+                    systemName: action == .stop ? "stop.fill" : "arrow.up",
+                    foreground: AnyShapeStyle(action == .idle ? AnyShapeStyle(.secondary) : AnyShapeStyle(.white)),
+                    background: {
+                        switch action {
+                        case .stop: AnyShapeStyle(Color(.systemRed))
+                        case .send: AnyShapeStyle(Color.accentColor)
+                        case .recognizing, .idle: AnyShapeStyle(.fill.tertiary)
+                        }
+                    }()
+                )
+            }
         }
         .buttonStyle(.plain)
-        .disabled(action == .idle)
-        .accessibilityLabel(action == .stop ? "停止回复" : "发送")
+        .disabled(action == .idle || action == .recognizing)
+        .accessibilityLabel(accessibilityLabel(for: action))
+    }
+
+    private func accessibilityLabel(for action: SendAction) -> String {
+        switch action {
+        case .stop: "停止回复"
+        case .recognizing: "正在识别照片里的文字"
+        case .send, .idle: "发送"
+        }
     }
 }
 

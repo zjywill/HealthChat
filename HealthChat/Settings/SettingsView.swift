@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     let canClearConversation: Bool
@@ -24,6 +25,7 @@ struct SettingsView: View {
     @State private var isShowingClearConfirmation = false
     @State private var isRequestingHealth = false
     @State private var healthStatus: HealthAuthStatus?
+    @State private var location = LocationProvider.shared
     @FocusState private var focusedField: Field?
     @Environment(\.openURL) private var openURL
 
@@ -303,6 +305,38 @@ struct SettingsView: View {
             }
 
             Section {
+                if location.isAuthorized {
+                    LabeledContent("当前位置", value: location.snapshot.place ?? "正在定位…")
+                        .privacySensitive()
+                } else if location.isDenied {
+                    Button {
+                        openURL(URL(string: UIApplication.openSettingsURLString)!)
+                    } label: {
+                        Label("在系统设置里打开位置", systemImage: "arrow.up.forward.app")
+                    }
+                } else {
+                    Button {
+                        location.requestAccess()
+                    } label: {
+                        Label("允许使用大概位置", systemImage: "location")
+                    }
+                }
+
+                Label(locationStatus.message, systemImage: locationStatus.icon)
+                    .font(.footnote)
+                    .foregroundStyle(locationStatus.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .accessibilityElement(children: .combine)
+            } header: {
+                Text("位置")
+            } footer: {
+                // 授权本身就是开关,所以这段话得说清「给了会怎样、不给会怎样」,不然用户会去找
+                // 一个并不存在的开关(同上面那把搜索 key)。也要说清它到底拿到了什么——
+                // 「大概位置」四个字在 iOS 那张面板上有确切含义,这里不该说得比它更模糊。
+                Text("给了之后 Vana 每次回答都知道你大概在哪个城市，季节气候、时差、当地饮食和就医方式才答得准。"
+                    + "只取到城市，不取街道地址，也不会保存在本机；不给就完全不带位置，其余功能照常。")
+            }
+
+            Section {
                 Button(role: .destructive) {
                     isShowingClearConfirmation = true
                 } label: {
@@ -333,6 +367,9 @@ struct SettingsView: View {
         }
         .navigationTitle("设置")
         .task(loadAPIKey)
+        // 刚在 iOS 设置里把位置打开又切回来的那种情况:授权状态由 delegate 更新,但那时候
+        // 还没有人去定过位,页面上会一直停在「还没定到位置」。
+        .onAppear { location.refresh() }
         .onChange(of: apiKey) { _, newValue in
             guard hasLoadedAPIKey else { return }
             if newValue == persistedAPIKey {
@@ -388,6 +425,30 @@ struct SettingsView: View {
         }
     }
 
+    /// 三种状态各说各的话:没问过(可以问)、拒了(只能去 iOS 设置改)、给了但还没定到
+    /// (等一下就有)。合并成一句「位置不可用」的话,前两种会被当成第三种,用户就一直在等
+    /// 一件永远不会发生的事。
+    private var locationStatus: HealthAuthStatus {
+        if location.isDenied {
+            return HealthAuthStatus(
+                message: "已拒绝，Vana 不会带上位置。要打开请到「设置 > Vana > 位置」。",
+                icon: "location.slash",
+                isError: true
+            )
+        }
+        if !location.isAuthorized {
+            return HealthAuthStatus(message: "还没授权，回答里不会带位置。", icon: "location", isError: false)
+        }
+        if location.snapshot.isKnown {
+            return HealthAuthStatus(
+                message: "只到城市这一级，模型看到的就是上面这一行。",
+                icon: "checkmark.circle.fill",
+                isError: false
+            )
+        }
+        return HealthAuthStatus(message: "已授权，还没定到位置。", icon: "location", isError: false)
+    }
+
     /// 换 provider 时,旧模型多半不属于新 provider,直接换成新 provider 的第一个可用模型。
     private func selectProvider(_ id: String) {
         guard id != providerId else { return }
@@ -433,7 +494,11 @@ struct SettingsView: View {
         Task {
             defer { isRequestingHealth = false }
             do {
-                let didAsk = try await HealthStore.shared.requestAuthorizationIfNeeded(force: true)
+                // `.owner` 而不是 `.shared`:设置页说的是「这台设备怎么工作」(provider、
+                // model、key、通知时间全是这一类),而 HealthKit 授权本来就是这台设备机主的
+                // 授权,和此刻正在看哪位成员没关系。这一节也因此不随成员消失——切到妈妈就少
+                // 一节设置,用户只会以为设置丢了。
+                let didAsk = try await HealthStore.owner.requestAuthorizationIfNeeded(force: true)
                 healthStatus = HealthAuthStatus(
                     message: didAsk
                         ? "已弹出授权面板，你的选择已保存。"

@@ -101,7 +101,26 @@ struct ClinicalItem: Sendable, Equatable {
 
 /// HealthKit 读取层,只读不写。所有查询返回按天聚合值(工具输出要紧凑)。
 final class HealthStore: Sendable {
-    static let shared = HealthStore()
+    /// 这台设备上的健康数据**只有机主一个人的**(见 `Tenant.Kind`)。
+    ///
+    /// 归属这件事的真正防线在调用方:健康工具在家人身上一个都不挂,`HealthSituation`、
+    /// `SpokenBrief`、check-in 也都不跑。这里这道断言是补网——漏掉其中一条路的后果是把机主的
+    /// 数字端到另一个人名下,静默、看着正常、事后查不出来,所以宁可在开发期当场崩掉。
+    ///
+    /// 只在 DEBUG 崩。线上真漏了一条,让用户看到一个错的数字也好过让 app 挂掉——但那条路
+    /// 应该在这之前就被这句断言逼出来了。
+    static var shared: HealthStore {
+        assert(
+            TenantScope.isOwnerActive,
+            "当前是家人成员（\(TenantScope.current.displayName)），这台设备的健康数据不属于他。"
+                + "调用方应该先按 Tenant.isOwner 挡住这条路。"
+        )
+        return owner
+    }
+
+    /// 不看当前选中的是谁。check-in、Siri 播报、后台派生这几件从头到尾都是机主的事,
+    /// 它们要的就是这一份(同 `TenantScope.ownerStores`)。
+    static let owner = HealthStore()
 
     /// 算个人基线用多长的窗口。
     ///

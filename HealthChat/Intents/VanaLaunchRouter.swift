@@ -19,7 +19,14 @@ final class VanaLaunchRouter {
     func ask(_ question: String) {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        pending = CheckInLaunch(topicId: nil, question: trimmed, autoSend: true)
+        // 落在机主那儿。对着手机说话的就是这台设备的主人,而 Siri 那几条问的本来就是他自己的
+        // 数据;app 恰好停在妈妈那一栏时不切回去,这句话会落进一条读不到健康数据的会话里。
+        pending = CheckInLaunch(
+            topicId: nil,
+            question: trimmed,
+            autoSend: true,
+            tenantId: TenantScope.owner.id
+        )
     }
 
     /// 取走并清空。清空是必须的:留着的话下次回到前台会被当成一次新提问再发一遍。

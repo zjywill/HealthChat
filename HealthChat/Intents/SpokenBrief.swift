@@ -19,11 +19,11 @@ enum SpokenBrief {
         if let blocked = await blockedReason() { return blocked }
 
         do {
-            let today = try await HealthStore.shared.dailyActivity(days: 1).last
+            let today = try await HealthStore.owner.dailyActivity(days: 1).last
             // 触发点的识别逻辑和 check-in 通知、首屏建议共用一套。同一份数据在三个地方
             // 说出三种结论,用户只会觉得这 app 自己都没想清楚。
             let situation = await HealthSituation.detect(
-                interests: await SessionStore.shared.interests()
+                interests: await TenantScope.ownerStores.sessions.interests()
             )
             return todayLine(activity: today, situation: situation)
         } catch {
@@ -36,7 +36,7 @@ enum SpokenBrief {
         if let blocked = await blockedReason() { return blocked }
 
         do {
-            return sleepLine(nights: try await HealthStore.shared.sleepSummary(days: 14))
+            return sleepLine(nights: try await HealthStore.owner.sleepSummary(days: 14))
         } catch {
             return failureLine(error)
         }
@@ -47,7 +47,7 @@ enum SpokenBrief {
         if let blocked = await blockedReason() { return blocked }
 
         do {
-            return workoutLine(sessions: try await HealthStore.shared.workouts(days: 14))
+            return workoutLine(sessions: try await HealthStore.owner.workouts(days: 14))
         } catch {
             return failureLine(error)
         }
@@ -158,7 +158,7 @@ enum SpokenBrief {
 
     /// 查之前先确认读得到。读不到的几种原因分开说——用户能据此知道下一步该干什么。
     private static func blockedReason() async -> String? {
-        switch await HealthStore.shared.readAccess() {
+        switch await HealthStore.owner.readAccess() {
         case .ready:
             return nil
         case .notRequested:

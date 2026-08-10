@@ -41,9 +41,17 @@ struct ChatView: View {
                                     Self.privacyNote
                                 }
 
+                                // 排在欢迎卡**前面**:欢迎卡的开头是这个 app 是什么,
+                                // 而回头客要的是"我怎么样"。第一次打开的人少读一句没损失,
+                                // 之后每一次打开都是这句先被读到。
+                                if let summary = model.quickSummary {
+                                    QuickSummaryCard(text: summary)
+                                }
+
                                 WelcomeCard(
                                     setupGuidance: model.engineGuidance,
                                     questions: model.suggestions,
+                                    tenant: model.currentTenant,
                                     selectedTopic: model.session.topic,
                                     onSelectTopic: model.selectTopic,
                                     onSelectQuestion: model.send
@@ -122,7 +130,7 @@ struct ChatView: View {
             .navigationTitle("Vana")
             // 隐私是整条会话的属性,不是刚才点过的一个动作,所以它得一直在视线里。放在
             // 标题下面而不是 chip 排里:那排会随着开聊消失,而这条承诺要一直有效。
-            .navigationSubtitle(model.session.isPrivate ? "隐私对话 · 不保存" : "")
+            .navigationSubtitle(model.navigationSubtitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarItems }
             .sheet(isPresented: $isShowingMedications) {
@@ -142,6 +150,10 @@ struct ChatView: View {
                 openedCheckIn = nil
             }
             .task {
+                // 家人成员这儿不请求授权。这台设备的健康数据不属于他,请他去授权一份读不到
+                // 的数据是一句说不通的话——而那张面板一旦被按了「不允许」,机主那边也再弹
+                // 不出来了。
+                guard model.hasHealthData else { return }
                 do {
                     try await HealthStore.shared.requestAuthorizationIfNeeded()
                 } catch {
@@ -180,8 +192,9 @@ struct ChatView: View {
             .accessibilityLabel("用药与补剂")
         }
 
-        // 「新对话 / 临时对话」只留输入区那颗 `+`:两个入口做同一件事,而且 toolbar 这颗在
-        // 空会话时是 disabled 的,首屏永远挂着一个灰按钮。
+        // 「新对话 / 隐私对话」在会话列表那颗「新建」里,不在这儿也不在输入区:输入区那颗
+        // `+` 现在管「给这句话加张照片」,而开一条新的和切换会话本来就是同一类事。
+        // toolbar 也不另开一颗——空会话时它是 disabled 的,首屏会永远挂着一个灰按钮。
         ToolbarItem(placement: .topBarTrailing) {
             NavigationLink {
                 SettingsView(
@@ -452,21 +465,30 @@ private struct MessageBubble: View, Equatable {
     /// 而它可能一直排到这一轮结束。
     private var userMessage: some View {
         VStack(alignment: .trailing, spacing: 4) {
-            HStack(alignment: .bottom, spacing: 0) {
-                Spacer(minLength: 52)
+            // 拍进来的那几张排在他打的字**上面**:先有图,才有那句「这个怎么看」。
+            if !message.attachments.isEmpty {
+                MessageAttachmentsView(attachments: message.attachments)
+            }
 
-                Text(displayText)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-                    .accessibilityLabel(message.text)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        message.isQueued ? Color.accentColor.opacity(0.45) : Color.accentColor,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
-                    .layoutPriority(1)
+            // 只拍了图、一个字没打时不画那颗气泡:里面会是一个孤零零的省略号,读起来像
+            // 他说了句什么没看清。
+            if !message.text.isEmpty || message.attachments.isEmpty {
+                HStack(alignment: .bottom, spacing: 0) {
+                    Spacer(minLength: 52)
+
+                    Text(displayText)
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                        .accessibilityLabel(message.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            message.isQueued ? Color.accentColor.opacity(0.45) : Color.accentColor,
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                        .layoutPriority(1)
+                }
             }
 
             if message.isQueued {
@@ -706,9 +728,49 @@ private struct TopicPicker: View {
     }
 }
 
+/// 打开 app 的第一句话:**发生了什么、要不要在意**。
+///
+/// 首屏原来只有三个问句——而问题的答案 app 本地早就算出来了(`HealthSituation`),用户却要
+/// 点一下、再等模型联网查一遍 HealthKit,才听到和本地那句同一个意思的第一段话。
+///
+/// **它不是按钮。** 下面「试着问」那几条问题取的是同一个触发点序列,这句话说结论、那几颗
+/// 给去处;做成可点的就是同一屏里两个控件干同一件事,而这个 app 已经在别处踩过一次了。
+private struct QuickSummaryCard: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.pink)
+                .accessibilityHidden(true)
+
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // 本地那句先出,模型润色好了原地换掉。淡入淡出而不是硬跳:两句说的是同一
+                // 件事,跳一下会让人以为数据在这一秒变了。
+                .contentTransition(.opacity)
+        }
+        .padding(16)
+        .background(
+            Color(.secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        // 挂在这个视图上,不用 `withAnimation`:全局 transaction 会把这一帧的整个更新扫一遍,
+        // 而这一屏底下还挂着话题格子和几颗按钮。
+        .animation(.smooth(duration: 0.2), value: text)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 private struct WelcomeCard: View {
     let setupGuidance: String?
     let questions: [SuggestedQuestion]
+    /// 这一屏是谁的。家人那边整张卡换一套说法,**话题格子整个不出现**。
+    let tenant: Tenant
     let selectedTopic: ChatTopic?
     let onSelectTopic: (ChatTopic?) -> Void
     let onSelectQuestion: (String) -> Void
@@ -716,25 +778,36 @@ private struct WelcomeCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: "heart.text.square.fill")
+                Image(systemName: tenant.isOwner ? "heart.text.square.fill" : "doc.text.viewfinder")
                     .font(.system(size: 34, weight: .semibold))
                     .foregroundStyle(.pink)
                     .accessibilityHidden(true)
 
-                Text("从你的健康数据开始")
+                Text(tenant.isOwner ? "从你的健康数据开始" : "从\(tenant.displayName)的化验单和用药开始")
                     .font(.title2.weight(.semibold))
 
-                Text("你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。Vana 只读取你授权的数据，不会修改健康记录。")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // 这两段是同一个位置上的两种承诺,写错一个字就是许一个做不到的诺。家人这边
+                // 不能说"直接问步数睡眠心率"——那几个工具根本没挂出去,他问了只会拿到一句
+                // 「我读不到」,而这是他见到的第一屏。
+                Text(
+                    tenant.isOwner
+                        ? "你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。Vana 只读取你授权的数据，不会修改健康记录。"
+                        : "拍一张\(tenant.displayName)的化验单、报告或药盒，Vana 在本机识别成文字再帮你看。\(tenant.displayName)的步数、睡眠、心率这些读不到——Apple 健康数据只有本人有。"
+                )
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("想聊什么")
-                    .font(.headline)
+            // 话题格子(跑步、睡眠、心率与 HRV…)每一颗都指着一个健康工具。家人这边它们
+            // 一个都点不出结果,摆在那儿只是十几个坏掉的按钮。
+            if tenant.isOwner {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("想聊什么")
+                        .font(.headline)
 
-                TopicPicker(selected: selectedTopic, onSelect: onSelectTopic)
+                    TopicPicker(selected: selectedTopic, onSelect: onSelectTopic)
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {

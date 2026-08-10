@@ -146,7 +146,17 @@ extension CapabilityRegistry {
     ///   开关,在界面上是两种说法、一个结果)。**隐私会话照挂**:它读的是外部世界,不往盘上
     ///   写用户的任何东西,而问题本来就要发给云端模型才有人回答。工具描述里另有一句挡着,
     ///   不许把用户的个人情况写进查询词。
+    /// - Parameter includesHealthTools: 这一位成员有没有 Apple 健康数据。**只有机主有**。
+    ///
+    ///   这是整个多成员功能里最要紧的一处判断。挂出去的话,模型会去查,而查回来的是**机主的**
+    ///   数字——它会一本正经地拿爸爸的静息心率解释妈妈的化验单。这是这个功能能出的最严重的
+    ///   一种故障,而且**它不报错**:屏幕上看起来一切正常。
+    ///
+    ///   所以不是"挂了但让它返回空",是**根本不挂出去**——同没配 key 时不挂 `web_search`、
+    ///   关掉记忆时不挂 `remember`。给一个只会给错答案的工具,比不给糟得多。
+    ///   对应的 system 段那一块在 `Tenant.instructionBlock`。
     static func healthChat(
+        includesHealthTools: Bool = true,
         allowsMemoryWrites: Bool = true,
         allowsRecall: Bool = false,
         allowsMedicationWrites: Bool = true,
@@ -156,7 +166,10 @@ extension CapabilityRegistry {
         currentSessionId: UUID? = nil,
         webSearch: WebSearchClient? = .storedKey()
     ) -> CapabilityRegistry {
-        var registries = [HealthTools.registry]
+        var registries: [CapabilityRegistry] = []
+        if includesHealthTools {
+            registries.append(HealthTools.registry)
+        }
         if let webSearch {
             registries.append(WebSearchTools.registry(client: webSearch))
         }

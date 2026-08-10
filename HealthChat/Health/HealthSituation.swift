@@ -144,6 +144,33 @@ struct HealthSituation: Sendable {
         return picked
     }
 
+    /// 首屏那句话:打开 app 先说**发生了什么、要不要在意**,而不是先问用户一个问题。
+    ///
+    /// 只取排在最前面的两条。`triggers` 已经按"最可能是打开原因"排过序了,再往下就是把首屏
+    /// 写成一份日报——而剩下那几条本来就会以问题的形式出现在下面那三颗 chip 上
+    /// (`questions` 取的是同一个序列)。一句话说结论,几颗 chip 给去处,两边不重复。
+    ///
+    /// `.weeklyReview` 不进这里:它说的是"今天是周一",不是数据里发生的事。它排最后一名,
+    /// 只有别的什么都没有时才轮得到第一——而那时候该说的正是"没什么特别的"。
+    var quickSummary: String {
+        let facts = notableTriggers.prefix(2).map(\.brief)
+        guard !facts.isEmpty else { return Self.calmSummary }
+        return facts.joined(separator: "；") + "。"
+    }
+
+    /// 值得写进那句话的触发点。空的话连模型都不用叫——让它为"没什么可说"写一句,
+    /// 它会为了有话说而把常态写成异常。
+    var notableTriggers: [HealthTrigger] {
+        triggers.filter { $0 != .weeklyReview }
+    }
+
+    /// 什么都没读到值得说的时候那一句。
+    ///
+    /// 收在「没读到值得留意的波动」,不写成「一切正常」:睡眠和锻炼缺数据本身会变成触发点
+    /// (`.missingLastNight` / `.noWorkouts`),但步数、心率、体重那几项样本不够时是**静默
+    /// 跳过**的。也就是说走到这里只说明查过的那些没冒出异常,不足以替用户宣布他一切都好。
+    static let calmSummary = "最近几天没有读到值得特别留意的波动。"
+
     /// 给模型的场景说明。没有触发点时只有时段,让它写通用的三条。
     var brief: String {
         var text = period.context
@@ -169,7 +196,7 @@ extension HealthSituation {
         interests: InterestProfile = .empty
     ) async -> HealthSituation {
         let period = DayPeriod(at: now, calendar: calendar)
-        let store = HealthStore.shared
+        let store = HealthStore.owner
 
         async let steps = try? store.dailySteps(days: 14)
         async let nights = try? store.sleepSummary(days: 14)

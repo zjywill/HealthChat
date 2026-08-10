@@ -21,6 +21,18 @@ enum DayPeriod: Sendable, Equatable {
         }
     }
 
+    /// 就是"早上/下午/晚上"这三个词。
+    ///
+    /// 和 `context` 分开:那一段是在告诉模型"用户这会儿最可能关心什么",专为写问题准备的;
+    /// 首屏那句话是陈述句,把那段喂进去只会把它往"要不要问问……"上带。
+    var label: String {
+        switch self {
+        case .morning: return "早上"
+        case .afternoon: return "下午"
+        case .evening: return "晚上"
+        }
+    }
+
     /// 给模型的场景说明,让生成的问题贴着当下这一刻。
     var context: String {
         switch self {
