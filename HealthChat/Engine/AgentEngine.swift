@@ -138,6 +138,14 @@ extension TranscriptCompactor {
 protocol AgentEngine: Sendable {
     var name: String { get }
 
+    /// 这个引擎背后的模型看得了图吗。
+    ///
+    /// 问引擎而不是问 `EngineSettings`:决定要不要带上原图的那一步,必须和**真正要跑这一轮
+    /// 的那个模型**对上。设置里写的是下一次新建引擎会用哪个模型,而这一轮手上的可能是别的
+    /// (注入的、后台派生的)。两者一旦分叉,带出去的图就会发给一个收不了图的 endpoint,
+    /// 那是一个 400,而这条对话从此发不出去。
+    var supportsVision: Bool { get }
+
     /// 发送一轮对话,流式返回事件。工具调用在引擎内部完成。
     ///
     /// - Parameter pendingInput: 用户在这一轮跑的过程中补的话从哪儿取。给 nil 就是
@@ -152,4 +160,8 @@ extension AgentEngine {
     func reply(to history: [ChatMessage]) -> AsyncThrowingStream<AgentEvent, Error> {
         reply(to: history, pendingInput: nil)
     }
+
+    /// 默认按**看不了**算。多带一张图给一个收不了图的模型是一个 400;少带一张,用户最多
+    /// 接着用文字描述,而那本来就是这个 app 一直以来的样子。
+    var supportsVision: Bool { false }
 }

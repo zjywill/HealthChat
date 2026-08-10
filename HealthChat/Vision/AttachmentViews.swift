@@ -67,7 +67,9 @@ struct AttachmentThumbnail: View {
     let onRemove: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
+        // 还在路上的那一格点不开:核对面板里会是一张空图加一个空编辑框,而他要核对的东西
+        // 一秒之后才到。转圈本身已经说清了「等一下」。
+        Button(action: { if !draft.isLoading { onOpen() } }) {
             VStack(alignment: .leading, spacing: 4) {
                 thumbnail
                     .frame(width: 68, height: 68)
@@ -75,8 +77,14 @@ struct AttachmentThumbnail: View {
                     .overlay {
                         if draft.isRecognizing {
                             ZStack {
-                                Color.black.opacity(0.35)
-                                ProgressView().tint(.white)
+                                // 有图的时候压一层暗底,白圈才看得清;占位格底下本来就是空的,
+                                // 再压一层只会变成一块黑。
+                                if draft.preview != nil {
+                                    Color.black.opacity(0.35)
+                                    ProgressView().tint(.white)
+                                } else {
+                                    ProgressView()
+                                }
                             }
                             .clipShape(.rect(cornerRadius: 12, style: .continuous))
                         }
@@ -115,12 +123,19 @@ struct AttachmentThumbnail: View {
             Image(uiImage: preview)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
+        } else if draft.isLoading {
+            // 还不知道是照片还是文件,所以这一格什么都不说,只留一个空底给上面那个圈。
+            Rectangle().fill(.fill.tertiary)
         } else {
             AttachmentDocumentTile(name: draft.documentName ?? "文件")
         }
     }
 
     private var caption: String {
+        // 「载入中」和「识别中」是两件事:前者是这张图还没读进来(相册在递、PDF 在渲染),
+        // 后者是图已经在了、正在认字。合成一句的话,一份二十页的 PDF 会在「识别中」上停很久,
+        // 而那时候根本还没开始识别。
+        if draft.isLoading { return "载入中…" }
         if draft.isRecognizing { return "识别中…" }
         if draft.failure != nil { return "读不出来" }
         guard draft.hasText else { return draft.isDocument ? "没有正文" : "没有文字" }
@@ -136,6 +151,9 @@ struct AttachmentThumbnail: View {
 struct AttachmentReviewView: View {
     let draft: DraftAttachment
     let onChangeText: (String) -> Void
+    /// 这一张单独翻。整排一起翻的那颗在输入框上方(`ComposerBar.imageSendOffer`)——
+    /// 一次拍三张菜让他点三下,是把一个决定拆成三份同样的劳动。
+    var onChangeSendsImage: ((Bool) -> Void)?
     let onRemove: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -161,9 +179,22 @@ struct AttachmentReviewView: View {
                             .lineLimit(2)
                     }
                 } footer: {
-                    Text(draft.isDocument
-                        ? "文件留在这台手机上，发给模型的只有下面这段文字。"
-                        : "图片留在这台手机上，发给模型的只有下面这段文字。")
+                    // 这句话说的是**这一次到底会发生什么**,所以它跟着开关走。原来那句
+                    // 「只发下面这段文字」在开了发图之后是假的,而这一屏的全部意义正是
+                    // 让他在按发送之前看清发出去的是什么。
+                    Text(footprint)
+                }
+
+                if let onChangeSendsImage, draft.suggestsImage {
+                    Section {
+                        Toggle("让 Vana 直接看这张图", isOn: Binding(
+                            get: { draft.sendsImage },
+                            set: onChangeSendsImage
+                        ))
+                    } footer: {
+                        Text("本机一个字都没认出来。一顿饭、一处皮疹这类照片的信息本来就不是字，"
+                            + "让模型直接看图才答得上——但那意味着这张照片本身会发到你配置的模型服务上。")
+                    }
                 }
 
                 Section {
@@ -223,12 +254,23 @@ struct AttachmentReviewView: View {
         }
     }
 
+    /// 这一件到底有什么会离开这台手机。
+    private var footprint: String {
+        if draft.isDocument { return "文件留在这台手机上，发给模型的只有下面这段文字。" }
+        return draft.sendsImage
+            ? "这张照片本身会发到你配置的模型服务上。关掉下面那个开关，就只发识别出来的文字。"
+            : "图片留在这台手机上，发给模型的只有下面这段文字。"
+    }
+
     private var footer: String {
         if let failure = draft.failure { return failure }
         guard draft.hasText else {
+            if draft.sendsImage {
+                return "这张图里没认出文字，原图会随这句话一起发出去，让模型直接看。"
+            }
             return draft.isDocument
                 ? "这份文件里没取到正文。里面如果是扫描件（整页都是图），先导出成 PDF 或者直接拍一张。"
-                : "这张图里没认出文字。Vana 现在只能读照片里的字，看不了图像本身——一顿饭、一处皮疹这类还得用文字描述。"
+                : "这张图里没认出文字。Vana 现在只能读照片里的字——一顿饭、一处皮疹这类，可以打开上面那个开关让它直接看图。"
         }
         if draft.droppedLines > 0 {
             return "太长了，后面 \(draft.droppedLines) 行没有带进来。删掉用不上的几段，再把要问的那几项留下。"
@@ -310,17 +352,34 @@ struct MessageAttachmentsView: View {
                             AttachmentImageView(attachment: attachment)
                                 .frame(width: 76, height: 76)
                                 .clipShape(.rect(cornerRadius: 12, style: .continuous))
+                                // 原图真的发出去了的那几张要留下一个记号。发之前那一行提示
+                                // 只在输入框上方存在几秒钟,而「这张照片交出去过」是他几个月
+                                // 之后翻回来还该看得见的一件事。
+                                .overlay(alignment: .bottomTrailing) {
+                                    if attachment.sendsImage {
+                                        Image(systemName: "eye.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.white)
+                                            .padding(4)
+                                            .background(.black.opacity(0.5), in: .circle)
+                                            .padding(4)
+                                    }
+                                }
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(attachment.documentName ?? "照片")，点开看发出去的文字")
+                    .accessibilityLabel(attachment.sendsImage
+                        ? "照片，原图已发给模型，点开看随附的文字"
+                        : "\(attachment.documentName ?? "照片")，点开看发出去的文字")
                 }
             }
 
             if let attachment = attachments.first(where: { $0.id == expanded }) {
                 Text(attachment.hasText
                     ? attachment.text
-                    : (attachment.isDocument ? "这份文件里没有取到文字。" : "这张图里没有识别到文字。"))
+                    : attachment.isDocument ? "这份文件里没有取到文字。"
+                    : attachment.sendsImage ? "这张图里没有识别到文字，原图发给了模型。"
+                    : "这张图里没有识别到文字。")
                     .font(.caption)
                     .monospaced()
                     .foregroundStyle(.secondary)

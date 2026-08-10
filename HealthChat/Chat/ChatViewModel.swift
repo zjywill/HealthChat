@@ -48,8 +48,10 @@ final class ChatViewModel {
     /// 排在这儿而不是直接变成气泡:识别要花几百毫秒,而识别错一个小数点在健康场景里不是
     /// 「有点脏数据」——他得先看见发出去的是什么,才谈得上核对。
     private(set) var draftAttachments: [DraftAttachment] = []
-    /// 还有图在认。这时候发送要等一下:发出去的是空文本的话,模型只能说"没看到"。
-    var isRecognizingAttachments: Bool { draftAttachments.contains(where: \.isRecognizing) }
+    /// 还有图在读或者在认。这时候发送要等一下:发出去的是空文本的话,模型只能说"没看到"。
+    var isRecognizingAttachments: Bool {
+        draftAttachments.contains { $0.isRecognizing || $0.isLoading }
+    }
     /// 一句话最多带几张照片。
     static let maxAttachments = 6
     var canAttachMore: Bool { draftAttachments.count < Self.maxAttachments }
@@ -225,6 +227,9 @@ final class ChatViewModel {
             draft.text = attachment.text
             draft.droppedLines = attachment.droppedLines
             draft.isRecognizing = false
+            // 「要发原图」也跟着退回来。丢掉的话他收回这条改两个字再发,那张图就悄悄不发了,
+            // 而屏幕上没有一个字说过它被关掉。
+            draft.sendsImage = attachment.sendsImage
             draftAttachments.append(draft)
         }
     }
@@ -251,39 +256,76 @@ final class ChatViewModel {
 
     // MARK: - 照片
 
-    /// 拍完/选完,先占位再识别。
+    /// 他刚选完,先把格子摆上。返回的这几个编号就是屏幕上那几个转圈的位子。
     ///
-    /// 识别在本机跑,图片不出设备——发给模型的只有文本。这不是"因为模型没视觉"的权宜之计:
-    /// 一张化验单上有姓名、就诊号、医院和条码,而这次对话要的只是那几行数值。
-    func attach(_ images: [UIImage]) {
-        attach(images.map(ImportedAttachment.photo))
+    /// 拍的、选的、从「文件」里挑的都走这儿进来,而「摆格子」和「把东西读进来」是分开的两步
+    /// ——读要几秒钟,摆是当场的。见 `AttachmentIntake`。
+    @discardableResult
+    func reserveAttachments(_ count: Int) -> [UUID] {
+        // 一句话最多带这么多件。每件能带四千字,六件已经是一次请求里最大的一块了——
+        // 而 `ContextPolicy` 那四档降级只管工具输出,拦不住用户消息。
+        let room = Self.maxAttachments - draftAttachments.count
+        guard count > 0, room > 0 else { return [] }
+        let ids = (0..<min(count, room)).map { _ in UUID() }
+        draftAttachments.append(contentsOf: ids.map(DraftAttachment.init(loading:)))
+        return ids
     }
 
-    /// 拍的、选的、从「文件」里挑的,都从这儿进来。
+    /// 某一格的东西到齐了。
+    ///
+    /// 填进来的是**一组**:一份 PDF 渲染出好几页,第一页顶掉那个格子,剩下的紧跟着插在它
+    /// 后面——追加到整排末尾的话,同时选两份文件时第一份的第二页会排到第二份后面去。
+    ///
+    /// 格子已经不在了(他等不及,按了那颗叉;或者这句话已经发出去了)就整组扔掉:那正是
+    /// 他的意思,而这条也顺带挡住了「发送之后才落地的那一份」。
     ///
     /// 照片要识别,文件已经是文字了(`AttachmentImporter` 那边直接取的原文)——两条路在这里
     /// 合流,后面的排队、核对、发送、存盘就只有一套。
-    func attach(_ items: [ImportedAttachment]) {
-        for item in items {
-            // 一句话最多带这么多件。每件能带四千字,六件已经是一次请求里最大的一块了——
-            // 而 `ContextPolicy` 那四档降级只管工具输出,拦不住用户消息。
+    func fill(_ id: UUID, with items: [PreparedAttachment]) {
+        guard let index = draftAttachments.firstIndex(where: { $0.id == id }) else { return }
+        guard let first = items.first else {
+            draftAttachments.remove(at: index)
+            return
+        }
+
+        draftAttachments[index] = draft(id: id, from: first)
+        if case .photo(_, let original) = first { recognize(original, for: id) }
+
+        var insertion = index + 1
+        for extra in items.dropFirst() {
             guard draftAttachments.count < Self.maxAttachments else { break }
-            switch item {
-            case .photo(let image):
-                let id = UUID()
-                let preview = AttachmentImage.downscaled(image)
-                // 气泡和这一排都从这里取图。落盘要等到真的发出去(隐私会话则永远不落)。
-                AttachmentImageCache.shared.set(preview, for: id)
-                draftAttachments.append(DraftAttachment(id: id, preview: preview))
-                recognize(image, for: id)
-            case .document(let name, let text, let droppedLines, let failure):
-                draftAttachments.append(DraftAttachment(
-                    documentName: name,
-                    text: text,
-                    droppedLines: droppedLines,
-                    failure: failure
-                ))
-            }
+            let extraID = UUID()
+            draftAttachments.insert(draft(id: extraID, from: extra), at: insertion)
+            insertion += 1
+            if case .photo(_, let original) = extra { recognize(original, for: extraID) }
+        }
+    }
+
+    /// 这一件根本读不出来。
+    ///
+    /// 格子必须停下来说句话:一直转下去和真的卡死在屏幕上是一模一样的,而且 `isRecognizing`
+    /// 还压着发送键——他会连这句话都发不出去。
+    func failAttachment(_ id: UUID, message: String) {
+        guard let index = draftAttachments.firstIndex(where: { $0.id == id }) else { return }
+        draftAttachments[index].isLoading = false
+        draftAttachments[index].isRecognizing = false
+        draftAttachments[index].failure = message
+    }
+
+    private func draft(id: UUID, from item: PreparedAttachment) -> DraftAttachment {
+        switch item {
+        case .photo(let preview, _):
+            // 气泡和输入框上方那一排都从这里取图。落盘要等到真的发出去(隐私会话则永远不落)。
+            AttachmentImageCache.shared.set(preview, for: id)
+            return DraftAttachment(id: id, preview: preview)
+        case .document(let name, let text, let droppedLines, let failure):
+            return DraftAttachment(
+                id: id,
+                documentName: name,
+                text: text,
+                droppedLines: droppedLines,
+                failure: failure
+            )
         }
     }
 
@@ -328,8 +370,16 @@ final class ChatViewModel {
         // 隐私会话不落盘,图片跟着不落——那条会话的全部意义就是不留本机痕迹。屏幕上照常
         // 看得见:内存里那份还在,关掉就没了。
         let persists = !session.isPrivate
+        // JPEG 只压一次:落盘那份和发给模型那份是同一批字节,压两遍是白花几十毫秒,
+        // 而这一下发生在他刚按下发送键的时候。
+        let encoded = drafts.reduce(into: [UUID: Data]()) { data, draft in
+            guard let preview = draft.preview else { return }
+            // 没人要的那几张不压:多数照片认出了字,压出来的这份除了写盘没有第二个用处。
+            guard persists || draft.sendsImage else { return }
+            data[draft.id] = AttachmentImage.jpegData(from: preview)
+        }
         if persists {
-            persistImages(of: drafts)
+            persistImages(encoded)
         }
         return drafts.map { draft in
             ChatAttachment(
@@ -340,19 +390,21 @@ final class ChatViewModel {
                 imageFileName: persists && !draft.isDocument
                     ? ChatAttachment.fileName(for: draft.id)
                     : nil,
-                documentName: draft.documentName
+                documentName: draft.documentName,
+                sendsImage: draft.sendsImage,
+                // 隐私会话里这就是那张图**唯一**的一份:盘上不会有,重开 app 之后也补不回来
+                // ——而那条会话本来就不会被重开。
+                imagePayload: draft.sendsImage
+                    ? encoded[draft.id]?.base64EncodedString()
+                    : nil
             )
         }
     }
 
     /// 写盘和这句话的发送互不相干:写失败最多是重开会话时少一张缩略图,而真正要紧的那段
     /// 识别文本存在消息里,一个字都不会丢。所以它不该挡住提问。
-    private func persistImages(of drafts: [DraftAttachment]) {
-        for draft in drafts {
-            let id = draft.id
-            guard let preview = draft.preview,
-                  let data = AttachmentImage.jpegData(from: preview)
-            else { continue }
+    private func persistImages(_ encoded: [UUID: Data]) {
+        for (id, data) in encoded {
             Task {
                 do {
                     try await AttachmentStore.shared.store(data, id: id)
@@ -361,6 +413,84 @@ final class ChatViewModel {
                 }
             }
         }
+    }
+
+    /// 发请求之前对一遍要发的那几张图。
+    ///
+    /// 两件事,而且必须在同一个地方做——`carriesImage` 认的是 `imagePayload` 在不在,
+    /// 正文里那句「随附的第 N 张图」和真的发出去的 file part 都从它来。在别处单独关掉其中
+    /// 一边,就会出现「说了有图、其实没发」。
+    ///
+    /// **一、冷启动之后补回来。** `imagePayload` 故意不进会话文件(那是几十上百 KB 的
+    /// base64,会把 `SessionIndexEntry` 那套增量索引的收益整个吃掉),所以每次重开都是空的。
+    /// 补的时机是**发请求之前**,不是打开会话的时候:多数会话里一张图都没有,为一件多半不会
+    /// 发生的事在打开时读盘,是让每一次切会话都多等一下。
+    /// 补不回来(图被删了、写盘当时就失败了)不报错,只是这一轮退回纯文字。
+    ///
+    /// **二、模型换成看不了图的就把图摘掉。** 他可以在聊到一半时换模型,而这几张图是跟着
+    /// 历史每一轮重发的——原样发过去是一个 400,而这条对话从此发不出去。摘掉之后正文自动
+    /// 退回那句「看不了图像本身」,那正是这个模型此刻的实情。
+    private func loadImagePayloads(supportsVision: Bool) async {
+        // 一张说好要发的图都没有(绝大多数会话)就整段不跑:下面那两层循环要走遍全部历史,
+        // 而这里跑在用户已经在等回复的时候。
+        guard session.messages.contains(where: { $0.attachments.contains(where: \.sendsImage) })
+        else { return }
+        for index in session.messages.indices {
+            for attachmentIndex in session.messages[index].attachments.indices {
+                let attachment = session.messages[index].attachments[attachmentIndex]
+                guard attachment.sendsImage else { continue }
+                guard supportsVision else {
+                    session.messages[index].attachments[attachmentIndex].imagePayload = nil
+                    continue
+                }
+                guard attachment.imagePayload == nil,
+                      let name = attachment.imageFileName,
+                      let data = await AttachmentStore.shared.data(named: name)
+                else { continue }
+                session.messages[index].attachments[attachmentIndex].imagePayload =
+                    data.base64EncodedString()
+            }
+        }
+    }
+
+    // MARK: - 直接发图
+
+    /// 界面上要不要出那行「让 Vana 直接看图」。
+    ///
+    /// 查的是设置(`EngineSettings.modelSupportsVision`),不是 `resolveEngine()`:这个属性
+    /// 跑在界面刷新的路径上,而 `resolveEngine` 每问一次就现造一个引擎。真正决定带不带图的
+    /// 那一步在 `runTurn` 里问**这一轮手上的那个引擎**——两处在线上问的是同一个 provider
+    /// 和同一个 model,而带出去的图必须和真的要跑这一轮的那个对上。
+    var modelSupportsVision: Bool { EngineSettings.modelSupportsVision }
+
+    /// 这一排里有几张是 OCR 够不着的照片(一顿饭、一处皮疹),而当前这个模型看得了图。
+    ///
+    /// 两个条件都不满足就一句话都不说:模型看不了图的时候提这一嘴,等于摆一个按不动的按钮。
+    var imageSendCandidates: [DraftAttachment] {
+        let candidates = draftAttachments.filter(\.suggestsImage)
+        guard !candidates.isEmpty, modelSupportsVision else { return [] }
+        return candidates
+    }
+
+    /// 这一排里已经说好要发原图的有几张。
+    var sendingImageCount: Int { draftAttachments.count { $0.sendsImage } }
+
+    /// 整排一起翻。
+    ///
+    /// 一次拍三张菜、三张都没有字,让他一张一张点三下是把一个决定拆成三份同样的劳动;
+    /// 真要单独控制某一张的,核对面板里那颗开关还在原位。
+    func setSendsImage(_ sends: Bool) {
+        for index in draftAttachments.indices where draftAttachments[index].suggestsImage {
+            draftAttachments[index].sendsImage = sends
+        }
+    }
+
+    /// 单独一张。核对面板里那颗开关走这条。
+    func setSendsImage(_ sends: Bool, for id: UUID) {
+        guard let index = draftAttachments.firstIndex(where: { $0.id == id }),
+              draftAttachments[index].suggestsImage
+        else { return }
+        draftAttachments[index].sendsImage = sends
     }
 
     func stopReply() {
@@ -989,6 +1119,9 @@ final class ChatViewModel {
     private func runTurn() async {
         do {
             let engine = try resolveEngine()
+            // 说好要发的那几张原图,冷启动之后只剩一个文件名。补在这儿——**拿到引擎之后、
+            // 发请求之前**:能不能带图是这一轮手上这个引擎的属性,而它每轮现造。
+            await loadImagePayloads(supportsVision: engine.supportsVision)
             let stream = engine.reply(to: session.messages, pendingInput: pendingInputProvider())
             for try await event in stream {
                 apply(event)

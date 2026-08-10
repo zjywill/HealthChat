@@ -1,4 +1,5 @@
 import Foundation
+import AIKit
 
 /// 云端引擎的设置项。provider / model 不是秘密,走 UserDefaults;API key 只进 Keychain。
 enum EngineSettings {
@@ -44,5 +45,24 @@ enum EngineSettings {
     /// 「先别用」,不是「看不见」。
     static var medicationsEnabled: Bool {
         UserDefaults.standard.object(forKey: medicationsEnabledKey) as? Bool ?? true
+    }
+
+    /// 这台设备上配的那个模型看得了图吗。
+    ///
+    /// **不做成设置项**,和「没配 key 就不挂 `web_search`」、「没授权位置就不注入那一段」
+    /// 同一条:模型有没有视觉是它自己的属性,给一个填了却不生效的开关只会让用户猜该改哪个。
+    ///
+    /// 这一份只给界面用(要不要出那行「让 Vana 直接看图」)——纯查表,没有副作用,
+    /// 而 `resolveEngine()` 每问一次就现造一个引擎。真正决定带不带图的那一步在 `runTurn`
+    /// 里问**这一轮手上的那个引擎**(`AgentEngine.supportsVision`):设置说的是下一次会用
+    /// 哪个模型,而带出去的图必须和真的要跑这一轮的那个对上。
+    ///
+    /// 目录里没有的模型(自建 endpoint、比目录新)按**没有**算:多问一句「要不要发图」而它
+    /// 其实收不了图,换来的是一次白花的往返;少问一句最多是他接着用文字描述,而那本来就是
+    /// 这个 app 一直以来的样子。
+    static var modelSupportsVision: Bool {
+        let provider = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
+        let model = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel
+        return ProviderCatalog.model(model, provider: provider)?.1.supportsVision ?? false
     }
 }

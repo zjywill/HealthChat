@@ -329,6 +329,21 @@ extension ChatMessage {
             && zip(toolCalls, other.toolCalls).allSatisfy { $0.rendersIdentically(to: $1) }
     }
 
+    /// 真的要发出去的那几张原图。
+    ///
+    /// 只有 OCR 一个字都没认出来、用户又自己点了「让 Vana 看这张图」的那几张在这儿
+    /// (`ChatAttachment.sendsImage`),而且**顺序必须和 `modelText` 里那几句「随附的第 N 张图」
+    /// 一致**——`carriesImage` 是两边共同的判据,别在其中一边另写一套条件。
+    ///
+    /// 图还没从盘上读回来时这里是空的,那时候 `modelText` 也不会说「原图在下面」:两句话
+    /// 同源,不会出现「说了有图、其实没发」。
+    var modelFiles: [AgentTranscript.FilePart] {
+        attachments.compactMap { attachment in
+            guard attachment.carriesImage, let payload = attachment.imagePayload else { return nil }
+            return AgentTranscript.FilePart(mediaType: "image/jpeg", data: .base64(payload))
+        }
+    }
+
     /// 交给 runtime 的形态。落盘和回放走的是同一份,不会出现"存的和发的不一样"。
     var agentDTO: AgentChatMessageDTO {
         var dto = rawDTO
@@ -344,6 +359,7 @@ extension ChatMessage {
             // 交给 runtime 的是拼好的那一份:照片识别出来的文字要跟着这句话一起进上下文,
             // 而 runtime 那边不认识附件(会话文件里也不该出现只有界面看得懂的类型)。
             text: modelText,
+            files: modelFiles,
             textIsPlaceholder: textIsPlaceholder,
             reasoning: reasoning,
             toolCalls: toolCalls.map(\.dto),

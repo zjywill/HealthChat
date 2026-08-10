@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import UIKit
+import AgentRuntime
 
 @testable import HealthChat
 
@@ -233,7 +234,7 @@ struct VisionTests {
             loadsPersistedSession: false
         )
 
-        viewModel.attach([Self.blankImage()])
+        AttachmentIntake.scanned([Self.blankImage()], into: viewModel)
         try await waitUntil("识别跑完") { !viewModel.isRecognizingAttachments }
         viewModel.send("这是什么")
         try await waitUntil("这轮结束") { !viewModel.isReplying }
@@ -244,6 +245,211 @@ struct VisionTests {
         // 发出去的仍然是文本:图不出本机,而这句话照样有人回答。
         #expect(client.lastPromptText.contains("【照片 1】"))
         #expect(client.lastPromptText.contains("这是什么"))
+    }
+
+    /// 选完到摆上之间原来是几秒钟的空白:选择器已经关掉了,输入框上方还是空的,而他刚做完
+    /// 一个动作——那读起来不是「慢」,是「没反应」,他会再点一次加号。所以这一排必须在他选完
+    /// 的**那一刻**就多出几个格子来,东西还在路上也照样占位。
+    @MainActor
+    @Test("选完那一刻格子就在，东西还在路上")
+    func selectionShowsPlaceholdersImmediately() async throws {
+        let viewModel = ChatViewModel(loadsPersistedSession: false)
+
+        AttachmentIntake.scanned([Self.blankImage(), Self.blankImage()], into: viewModel)
+
+        // 这几句之间一个 await 都没有:格子是同步摆上去的。
+        #expect(viewModel.draftAttachments.count == 2)
+        #expect(viewModel.draftAttachments.allSatisfy { $0.isLoading })
+        // 还没读进来的东西发不出去——发出去的会是一条空附件。
+        #expect(viewModel.isRecognizingAttachments)
+
+        try await waitUntil("两张都读进来了") {
+            viewModel.draftAttachments.allSatisfy { !$0.isLoading }
+        }
+        // 占位翻面之后是同一格,不是又追加了两张。
+        #expect(viewModel.draftAttachments.count == 2)
+        #expect(viewModel.draftAttachments.count { $0.preview != nil } == 2)
+    }
+
+    /// 六件是上限,占位也要守着它——占位不算数的话,他一次选十张,前六张读进来之后
+    /// 后面四个格子会一直转下去,而那时候发送键正被 `isRecognizingAttachments` 压着。
+    @MainActor
+    @Test("占位也守着一句话最多六件")
+    func placeholdersRespectTheAttachmentLimit() throws {
+        let viewModel = ChatViewModel(loadsPersistedSession: false)
+
+        let ids = viewModel.reserveAttachments(10)
+
+        #expect(ids.count == ChatViewModel.maxAttachments)
+        #expect(viewModel.draftAttachments.count == ChatViewModel.maxAttachments)
+        #expect(viewModel.reserveAttachments(1).isEmpty)
+    }
+
+    // MARK: - OCR 认不出字才问要不要发图
+
+    /// **这一条是这颗开关的全部分寸所在。** 认出了字的那些是化验单、药盒、成分表——本机
+    /// 那份文本已经把要的都给了,再把带着姓名和就诊号的原图发出去是净亏。所以有字就不问,
+    /// 「模型有没有视觉」在这一步根本不参与判断。
+    @Test("认出了字就不问要不要发原图")
+    func recognizedTextNeverOffersTheImage() {
+        var draft = DraftAttachment(preview: UIImage())
+        draft.isRecognizing = false
+        draft.text = "血红蛋白 | 132"
+        #expect(!draft.suggestsImage)
+
+        draft.text = ""
+        #expect(draft.suggestsImage)
+
+        // 还在读、还在认、读不出来的那几格也不问:那时候还不知道认没认出字。
+        draft.isRecognizing = true
+        #expect(!draft.suggestsImage)
+        draft.isRecognizing = false
+        draft.failure = "这张图读不出来。"
+        #expect(!draft.suggestsImage)
+    }
+
+    /// 文件里的字是原样取出来的,没有「图」这回事——一份 Word 不存在「让模型直接看图」。
+    @Test("文件从来不问要不要发原图")
+    func documentsNeverOfferTheImage() {
+        let draft = DraftAttachment(
+            documentName: "体检报告.docx",
+            text: "",
+            droppedLines: 0,
+            failure: nil
+        )
+        #expect(!draft.suggestsImage)
+    }
+
+    /// 开了开关,发出去的那条消息里就真的有一张图,而正文里那句「第 N 张」要和它对上。
+    @MainActor
+    @Test("同意之后原图真的跟着这句话发出去")
+    func agreedImageTravelsWithTheMessage() async throws {
+        let client = ScriptedModelClient(
+            profile: .init(
+                providerId: "anthropic",
+                modelId: "claude-sonnet-5",
+                contextWindow: 200_000,
+                maxOutputTokens: 4_000
+            ),
+            turns: [.init(text: "这看着像一份炒饭。")]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in LoopEngine(client: client, capabilities: stubRegistry([:])) },
+            loadsPersistedSession: false
+        )
+
+        AttachmentIntake.scanned([Self.blankImage()], into: viewModel)
+        try await waitUntil("识别跑完") { !viewModel.isRecognizingAttachments }
+        // 白纸认不出字,所以这一格是问得出口的那一类。
+        #expect(viewModel.draftAttachments.allSatisfy { $0.suggestsImage })
+        viewModel.setSendsImage(true)
+        #expect(viewModel.sendingImageCount == 1)
+
+        viewModel.send("这是什么")
+        try await waitUntil("这轮结束") { !viewModel.isReplying }
+
+        let request = try #require(client.requests.last)
+        let files = request.prompt.messages.flatMap { message in
+            message.parts.compactMap { part -> AgentTranscript.FilePart? in
+                if case .file(let file) = part { return file }
+                return nil
+            }
+        }
+        #expect(files.count == 1)
+        #expect(files.first?.mediaType == "image/jpeg")
+
+        // 正文换了一句话说。老那句「看不了图像本身」在这一次是假的,而模型会照着它说自己
+        // 看不见——那正是这颗开关要消掉的那句回答。
+        #expect(client.lastPromptText.contains("随附的第 1 张图"))
+        #expect(!client.lastPromptText.contains("看不了图像本身"))
+    }
+
+    /// 没点同意就一张图都不发,正文也照旧说「看不了图像本身」。
+    @MainActor
+    @Test("没点同意就还是只发文字")
+    func withoutConsentOnlyTextIsSent() async throws {
+        let client = ScriptedModelClient(
+            profile: .init(
+                providerId: "anthropic",
+                modelId: "claude-sonnet-5",
+                contextWindow: 200_000,
+                maxOutputTokens: 4_000
+            ),
+            turns: [.init(text: "我看不了图像本身。")]
+        )
+        let viewModel = ChatViewModel(
+            engineFactory: { _ in LoopEngine(client: client, capabilities: stubRegistry([:])) },
+            loadsPersistedSession: false
+        )
+
+        AttachmentIntake.scanned([Self.blankImage()], into: viewModel)
+        try await waitUntil("识别跑完") { !viewModel.isRecognizingAttachments }
+        viewModel.send("这是什么")
+        try await waitUntil("这轮结束") { !viewModel.isReplying }
+
+        let request = try #require(client.requests.last)
+        let hasFile = request.prompt.messages.contains { message in
+            message.parts.contains { if case .file = $0 { return true } else { return false } }
+        }
+        #expect(!hasFile)
+        #expect(client.lastPromptText.contains("看不了图像本身"))
+    }
+
+    /// 开了开关但图还没从盘上补回来时,正文里那句「原图在下面」不能写。
+    ///
+    /// 两句话同源(`carriesImage`):说了有图、其实没发,模型会去找一张不存在的图然后
+    /// 自己编一个描述出来,而这是用户最没法察觉的一种错。
+    @Test("图还没补回来时正文不许说原图在下面")
+    func promisedImageNeverOutrunsThePayload() {
+        let pending = ChatAttachment(text: "", sendsImage: true, imagePayload: nil)
+        let text = ChatAttachment.modelText(typed: "这是什么", attachments: [pending])
+        #expect(!text.contains("随附的第"))
+        #expect(text.contains("看不了图像本身"))
+
+        let ready = ChatAttachment(text: "", sendsImage: true, imagePayload: "AAAA")
+        let readyText = ChatAttachment.modelText(typed: "这是什么", attachments: [ready])
+        #expect(readyText.contains("随附的第 1 张图"))
+    }
+
+    /// 「第几件」和「随附的第几张图」不是一回事:三件里只有第 3 件带了图,它就是第 1 张。
+    /// 对不上的话,模型会去看它上面那张图然后解释错东西。
+    @Test("随附图片的编号只数带图的那几件")
+    func attachedImagesAreNumberedAmongThemselves() {
+        let text = ChatAttachment.modelText(typed: "看看", attachments: [
+            ChatAttachment(text: "血红蛋白 | 132"),
+            ChatAttachment(text: "白细胞 | 6.1"),
+            ChatAttachment(text: "", sendsImage: true, imagePayload: "AAAA"),
+        ])
+        #expect(text.contains("【照片 3】"))
+        #expect(text.contains("随附的第 1 张图"))
+        #expect(text.contains("其中 1 张本机一个字都没认出来"))
+    }
+
+    /// `sendsImage` 是后加的字段。合成的 decoder 碰到一份老会话会直接抛 `keyNotFound`,
+    /// 而那意味着这条会话再也打不开了。
+    @Test("老会话里没有这个字段也读得开")
+    func olderSessionsDecodeWithoutTheFlag() throws {
+        let legacy = #"{"id":"\#(UUID().uuidString)","text":"血红蛋白 | 132","droppedLines":0}"#
+        let attachment = try JSONDecoder().decode(ChatAttachment.self, from: Data(legacy.utf8))
+        #expect(attachment.text == "血红蛋白 | 132")
+        #expect(!attachment.sendsImage)
+    }
+
+    /// base64 是几十上百 KB,而会话文件是这个 app 里最大的一类数据——`SessionIndexEntry`
+    /// 那套增量索引的收益全部来自「只解用得上的键」。图归 `AttachmentStore`,这里只留文件名。
+    @Test("图片内容不进会话文件")
+    func imagePayloadStaysOutOfTheSessionFile() throws {
+        let attachment = ChatAttachment(
+            text: "",
+            imageFileName: "a.jpg",
+            sendsImage: true,
+            imagePayload: "VEhJU0lTVEhFSU1BR0U="
+        )
+        let encoded = try JSONEncoder().encode(attachment)
+        let json = String(decoding: encoded, as: UTF8.self)
+        #expect(!json.contains("VEhJU0lTVEhFSU1BR0U="))
+        #expect(json.contains("sendsImage"))
+        #expect(json.contains("a.jpg"))
     }
 
     /// 一张白纸。识别不出文字是**确定**的结果,所以这条用例不会因为 Vision 认得准不准而飘。

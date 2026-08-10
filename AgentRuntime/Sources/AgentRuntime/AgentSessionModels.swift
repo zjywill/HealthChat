@@ -342,6 +342,14 @@ public struct AgentChatMessageDTO: Identifiable, Equatable, Codable, Sendable {
     public var id: UUID
     public var role: Role
     public var text: String
+    /// 随这条用户消息一起发给模型的东西(图片、文档)。assistant 那边永远是空的。
+    ///
+    /// **和 `text` 并列,不是它的替代**:一张图配一句「这是什么」,两样都要到模型手里。
+    /// 顺序上 file 排在 text 后面,让那句话先把图的来历说清楚。
+    ///
+    /// 摘要那条路上不带它(`SummarizationPlan` 只取 `text`):压缩的产物是文字,再把原图
+    /// 附一遍等于压了个寂寞,而这几张图的钱是每一轮都要重付的。
+    public var files: [AgentTranscript.FilePart]
     /// `text` 是 app 写给用户的占位("已停止回复"之类),不是模型说的话。
     ///
     /// 有这个标记,runtime 就不用靠比对某句中文来判断该不该回放——那句话属于 app,
@@ -361,6 +369,7 @@ public struct AgentChatMessageDTO: Identifiable, Equatable, Codable, Sendable {
         id: UUID = UUID(),
         role: Role,
         text: String,
+        files: [AgentTranscript.FilePart] = [],
         textIsPlaceholder: Bool = false,
         reasoning: String = "",
         toolCalls: [ToolCallRecordDTO] = [],
@@ -371,6 +380,7 @@ public struct AgentChatMessageDTO: Identifiable, Equatable, Codable, Sendable {
         self.id = id
         self.role = role
         self.text = text
+        self.files = files
         self.textIsPlaceholder = textIsPlaceholder
         self.reasoning = reasoning
         self.toolCalls = toolCalls

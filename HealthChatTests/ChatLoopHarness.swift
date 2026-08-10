@@ -128,6 +128,8 @@ final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
 /// 迁移、事件归约全都是线上那一套。
 struct LoopEngine: AgentEngine {
     let name = "测试引擎"
+    /// 假引擎默认认得图:带不带图由用例自己在 draft 上决定,不该再被一个全局设置挡一道。
+    var supportsVision = true
 
     let client: ScriptedModelClient
     var capabilities: CapabilityRegistry

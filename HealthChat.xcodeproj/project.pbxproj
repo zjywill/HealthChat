@@ -88,6 +88,7 @@
 		82B1FA60F7E159439BA0585C /* MarkdownBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5894426AFC5013EDB47E5E0D /* MarkdownBlocks.swift */; };
 		83D5C10AD650E148183493BA /* SessionThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC1089E95803546C1E9E043 /* SessionThread.swift */; };
 		8726B8F27396FACF0F71ED44 /* AIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 10AD1DA4C2AB6A5E98DD8996 /* AIKit */; };
+		883F305FADDD56E2083D5673 /* AttachmentIntake.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEA83113F2D2720AA7CF5E4 /* AttachmentIntake.swift */; };
 		8978A6AB2759B24CE035DFE8 /* PrivacyPolicy.html in Resources */ = {isa = PBXBuildFile; fileRef = 585014FEF7E152F2B6296439 /* PrivacyPolicy.html */; };
 		89FC0556B9B998D9A32DFC83 /* SessionRecallTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55294A1A06EA89CF4FB93B1E /* SessionRecallTools.swift */; };
 		8DFB52ABF07AD9E07C9395D6 /* MedicationEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D50C2E16ED93D22BEC27C4 /* MedicationEditView.swift */; };
@@ -281,6 +282,7 @@
 		E9DB2613BC060C6B4EB2914C /* FollowUpSuggestionHook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowUpSuggestionHook.swift; sourceTree = "<group>"; };
 		EA83184F12D385AEF552BB6A /* MemoryExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryExtractor.swift; sourceTree = "<group>"; };
 		EAB10040609C44E0B1F464E2 /* exercises.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = exercises.json; sourceTree = "<group>"; };
+		EBEA83113F2D2720AA7CF5E4 /* AttachmentIntake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentIntake.swift; sourceTree = "<group>"; };
 		EC14AB734D7CF26266564DBC /* SessionThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionThreadTests.swift; sourceTree = "<group>"; };
 		ED248EC62741A14FCF72E632 /* SpokenBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenBrief.swift; sourceTree = "<group>"; };
 		EFA71281E40CE8E14E10ADD9 /* MemoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryItem.swift; sourceTree = "<group>"; };
@@ -480,6 +482,7 @@
 			isa = PBXGroup;
 			children = (
 				04960C14CFC19B595E93391C /* AttachmentImporter.swift */,
+				EBEA83113F2D2720AA7CF5E4 /* AttachmentIntake.swift */,
 				5918BAA59B931A47C8543D26 /* AttachmentStore.swift */,
 				EFDC911B83D864FA864110D3 /* AttachmentViews.swift */,
 				D7129BDB67EE77B0B2DCFA8F /* DocumentScannerView.swift */,
@@ -743,6 +746,7 @@
 				55409E4AE2A5ED0F55E11719 /* AskUserTools.swift in Sources */,
 				36793F81A9C1F64F6CD1C1ED /* AssistantPersona.swift in Sources */,
 				B0E4D16660ABB8045B558A04 /* AttachmentImporter.swift in Sources */,
+				883F305FADDD56E2083D5673 /* AttachmentIntake.swift in Sources */,
 				4B6CA9B13B62EABC2EBD7A8F /* AttachmentStore.swift in Sources */,
 				BEBBBD6A6779CA0402ABCAE9 /* AttachmentViews.swift in Sources */,
 				3706656D35EA51CF1E99EF58 /* BackgroundDigest.swift in Sources */,

@@ -69,6 +69,7 @@ struct ComposerBar: View {
             // 塞进去会把输入框顶成两层,而多数时候这一排根本不存在。
             if !model.draftAttachments.isEmpty {
                 attachmentStrip
+                imageSendOffer
             }
             // 正在听的时候波形顶掉那句提示:两条一起摞在输入框上方,把对话又往上推一截,
             // 而它们说的是同一件事的两半。
@@ -83,6 +84,10 @@ struct ComposerBar: View {
         .padding(.bottom, 6)
         .background(alignment: .bottom) { scrim }
         .animation(.smooth(duration: 0.2), value: model.draftAttachments.count)
+        // 那一行是识别跑完之后才冒出来的(在那之前不知道认没认出字),所以它自己要有
+        // 一次淡入,不能跟着上面那条按件数走的动画。
+        .animation(.smooth(duration: 0.2), value: model.imageSendCandidates.count)
+        .animation(.smooth(duration: 0.2), value: model.sendingImageCount)
         .animation(.smooth(duration: 0.2), value: dictation.isListening)
         .animation(.smooth(duration: 0.2), value: dictation.notice)
         // 查一遍这台设备上能不能用。查不到中文时那颗按钮整个不出现——一颗按下去只会说
@@ -97,7 +102,7 @@ struct ComposerBar: View {
         .fullScreenCover(isPresented: $isScanning) {
             DocumentScannerView { pages in
                 isScanning = false
-                model.attach(pages)
+                AttachmentIntake.scanned(pages, into: model)
             }
             .ignoresSafeArea()
         }
@@ -113,17 +118,22 @@ struct ComposerBar: View {
             allowsMultipleSelection: true
         ) { result in
             guard case .success(let urls) = result else { return }
-            model.attach(urls.flatMap(AttachmentImporter.load(at:)))
+            AttachmentIntake.files(urls, into: model)
         }
         .onChange(of: pickedPhotos) { _, items in
             guard !items.isEmpty else { return }
             pickedPhotos = []
-            loadPickedPhotos(items)
+            AttachmentIntake.photos(items, into: model)
         }
         .sheet(item: reviewingBinding) { draft in
             AttachmentReviewView(
                 draft: draft,
                 onChangeText: { model.updateAttachmentText(draft.id, to: $0) },
+                // 模型看不了图的时候这颗开关整个不出现:一颗按下去什么都不会改变的开关,
+                // 比没有这颗开关更糟(同没配 key 时不挂 `web_search`)。
+                onChangeSendsImage: model.modelSupportsVision
+                    ? { model.setSendsImage($0, for: draft.id) }
+                    : nil,
                 onRemove: { model.removeAttachment(draft.id) }
             )
         }
@@ -136,19 +146,6 @@ struct ComposerBar: View {
             get: { model.draftAttachments.first { $0.id == reviewing } },
             set: { reviewing = $0?.id }
         )
-    }
-
-    private func loadPickedPhotos(_ items: [PhotosPickerItem]) {
-        Task {
-            var images: [UIImage] = []
-            for item in items {
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data)
-                else { continue }
-                images.append(image)
-            }
-            model.attach(images)
-        }
     }
 
     // MARK: - 待发的照片
@@ -172,6 +169,47 @@ struct ComposerBar: View {
         }
         .scrollIndicators(.hidden)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    /// 「这张图里没有字，要让 Vana 直接看图吗？」
+    ///
+    /// **必须摆在这儿,不能只藏在核对面板里。** 他拍了一顿饭、一处皮疹,那一格显示「没有
+    /// 文字」,按发送之后听到的是「我看不了图像本身」——而那正是这颗开关要消掉的那句话。
+    /// 藏起来的开关等于没有:他不会为了一件他还不知道存在的事去点开缩略图。
+    ///
+    /// 反过来,**认出字的照片这一行根本不出现**。化验单、药盒、成分表的信息就是字,本机
+    /// 那份文本已经把要的都给了;再问一句「要不要发原图」,是主动请他把一张带着姓名和就诊号
+    /// 的照片交出去,而这次对话根本不需要它。
+    @ViewBuilder
+    private var imageSendOffer: some View {
+        let candidates = model.imageSendCandidates
+        if !candidates.isEmpty {
+            let sending = candidates.count { $0.sendsImage }
+            Button {
+                model.setSendsImage(sending == 0)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: sending > 0 ? "eye.fill" : "eye")
+                        .foregroundStyle(sending > 0 ? Color.accentColor : .secondary)
+                    // 开关翻过去之后这句话说的是**已经发生的事**,不是又一次邀请:
+                    // 「原图会发出去」比「已开启」更像一句能被核对的话。
+                    Text(sending > 0
+                        ? (sending == 1 ? "原图会随这句话发出去" : "\(sending) 张原图会随这句话发出去")
+                        : (candidates.count == 1 ? "这张图没有文字，让 Vana 直接看图？" : "有 \(candidates.count) 张没有文字，让 Vana 直接看图？"))
+                        .font(.footnote)
+                        .foregroundStyle(sending > 0 ? .primary : .secondary)
+                    Text(sending > 0 ? "撤销" : "好")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
     }
 
     /// 玻璃底下的一层渐隐。
@@ -439,7 +477,7 @@ struct ComposerBar: View {
         Menu {
             // 标题说清这几件东西会怎么被处理。用户按下去之前就该知道图和文件不出这台手机——
             // 而这正是这个功能选择本机识别、不直传图片的全部理由。
-            Section("照片在本机识别成文字，文件直接取文字，只有文字发给模型") {
+            Section("照片在本机识别成文字，文件直接取文字，发给模型的只有文字；认不出字的图会问你要不要直接发") {
                 if DocumentScannerView.isSupported {
                     Button {
                         isScanning = true

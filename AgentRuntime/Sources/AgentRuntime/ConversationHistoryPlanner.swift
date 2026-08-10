@@ -294,7 +294,12 @@ private extension ConversationHistoryPlanner {
     }
 
     enum HistoryItem {
-        case user(String)
+        /// 用户说的一句话,外加随它发出去的图片或文档。
+        ///
+        /// 图不单独成为一条 `HistoryItem`:它和那句话是同一次发言,压缩时也必须一起走——
+        /// 分开的话会出现「图还在、说明它的那句话已经被压成一句摘要」,而模型手上就剩一张
+        /// 没有来历的图。
+        case user(text: String, files: [AgentTranscript.FilePart] = [])
         case assistant(AssistantItem)
         /// 一整段的摘要。已经是最紧的形态,不能再压。
         case summary(AgentTranscript.Message)
@@ -307,7 +312,11 @@ private extension ConversationHistoryPlanner {
         /// 这一条当前形态下真正会发出去的消息。
         var messages: [AgentTranscript.Message] {
             switch self {
-            case .user(let text): return [.user(text)]
+            case .user(let text, let files):
+                guard !files.isEmpty else { return [.user(text)] }
+                // 文字排在前面:那句话里写着「原图附在下面」和它是第几张,先读到它,
+                // 模型才知道后面这几张图是谁。
+                return [.init(role: .user, parts: [.text(text)] + files.map(AgentTranscript.Part.file))]
             case .assistant(let assistant): return assistant.active
             case .summary(let summary): return [summary]
             }
@@ -403,7 +412,7 @@ private extension ConversationHistoryPlanner {
             switch message.role {
             case .user:
                 guard !message.text.isEmpty, !message.textIsPlaceholder else { continue }
-                items.append(.user(message.text))
+                items.append(.user(text: message.text, files: message.files))
 
             case .assistant:
                 guard message.hasReplayableContent else { continue }

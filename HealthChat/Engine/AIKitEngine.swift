@@ -35,8 +35,30 @@ struct AIKitModelClient: AgentModelClient {
         )
     }
 
+    /// 一张随行原图按多少 token 算。
+    ///
+    /// AIKit 的估算器对 base64 的 file part 只记一点框架开销,而且**这是对的**——provider
+    /// 按尺寸或页数计价,base64 的长度说明不了任何事。但这个 app 的图不是任意尺寸:
+    /// `AttachmentImage.maxPixelSize` 把长边压到 1600,最坏是一张 1600×1600。按 Anthropic
+    /// 那个 `宽×高/750` 的口径,那就是 3413。
+    ///
+    /// 取整到 3400 并且**故意往大了算**:估小了的后果是一次撞墙(provider 直接拒收,
+    /// 然后走强制总结重跑那条路),估大了只是早一点开始压缩。何况一句话最多带六件,
+    /// 六张全带图也就两万——在这些看得了图的模型上都是小头。
+    static let tokensPerImage = 3_400
+
     func estimateTokens(for request: AgentModelRequest) -> Int {
-        reporter.report(callOptions(for: request), contextWindow: profile.contextWindow).used
+        let text = reporter.report(callOptions(for: request), contextWindow: profile.contextWindow).used
+        return text + Self.tokensPerImage * Self.imageCount(in: request.prompt)
+    }
+
+    private static func imageCount(in prompt: AgentTranscript) -> Int {
+        prompt.messages.reduce(0) { total, message in
+            total + message.parts.count { part in
+                if case .file(let file) = part { return file.mediaType.hasPrefix("image/") }
+                return false
+            }
+        }
     }
 
     func stream(_ request: AgentModelRequest) throws -> AsyncThrowingStream<AgentModelStreamEvent, any Error> {
@@ -83,6 +105,12 @@ struct AIKitModelClient: AgentModelClient {
 /// 工具循环、上下文预算、压缩、换模型迁移全在 `AgentLoop` 里,和健康数据没关系。
 struct AIKitEngine: AgentEngine {
     let name = "云端模型"
+
+    /// 这一轮真正要跑的那个模型收不收得了图。目录里查不到的(自建 endpoint、比目录新)
+    /// 按收不了算:多带一张图是一个 400,少带一张最多是用户接着用文字描述。
+    var supportsVision: Bool {
+        ProviderCatalog.model(model, provider: providerId)?.1.supportsVision ?? false
+    }
 
     private static let maxToolRounds = 6
 

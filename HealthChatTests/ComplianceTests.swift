@@ -129,6 +129,23 @@ struct ComplianceTests {
         #expect(staying.contains("录音"))
     }
 
+    /// 照片本身现在**真的会发出去**——本机认不出字、而且用户自己点了同意的那几张
+    /// (`ChatAttachment.sendsImage`)。这条告知里必须有它,否则这一屏说的就是一件
+    /// app 已经不再遵守的承诺,而那正是这一整块唯一的失败模式。
+    ///
+    /// 「不会离开」那一组里的照片那条同时要说清它现在是**默认**而不是绝对,并且要留下
+    /// 那道分界:认出了字的(化验单、药盒)连问都不会问。
+    @Test("同意之后会发出去的原图，两组里都说到了")
+    func noticeCoversTheConsentedImage() {
+        let leaving = DataUseNotice.leaves.points.joined()
+        #expect(leaving.contains("认不出文字"), "原图这条出站路径没有出现在「会发出去」里")
+        #expect(leaving.contains("直接看图"), "没说清这一步要用户自己点同意")
+
+        let staying = DataUseNotice.stays.points.joined()
+        #expect(staying.contains("默认"), "照片那条写成了绝对承诺，而它现在有一个例外")
+        #expect(staying.contains("连问都不会问"), "没说清认出了字的照片根本不会被问")
+    }
+
     /// 「保护你的隐私」这类话不可验证,写了等于没写。这条盯的是那一屏没有退化成一句套话。
     @Test("三组内容都不为空")
     func noticeGroupsAreComplete() {
