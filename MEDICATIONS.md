@@ -253,7 +253,7 @@ system 段加一段 focus:
 
 ## 十三、文件清单
 
-新增 `HealthChat/Medications/`:
+新增 `Vana/Medications/`:
 
 | 文件 | 内容 |
 | --- | --- |
@@ -275,7 +275,7 @@ system 段加一段 focus:
 - `EngineSettings` 加总开关;`SettingsView` 加那一行
 - `xcodegen` 重新生成
 
-## 十四、测试(`HealthChatTests/MedicationTests.swift`)
+## 十四、测试(`VanaTests/MedicationTests.swift`)
 
 - 快照真的进了 system 段,分组顺序对,**不能吃排第一**
 - **末尾那三句在**(不能吃 / 试过没用 / 剂量问医生)——这是这个功能的产出,必须有测试

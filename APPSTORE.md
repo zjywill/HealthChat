@@ -7,18 +7,18 @@ Connect 里要填的东西。填错的代价和代码里写错一样——审核
 ## 提交前在本机确认
 
 ```bash
-xcodegen && xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+xcodegen && xcodebuild -project Vana.xcodeproj -scheme Vana \
   -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-`HealthChatTests/ComplianceTests` 盯着下面这几件里能被自动检查的部分：权限用途字符串没有再许
+`VanaTests/ComplianceTests` 盯着下面这几件里能被自动检查的部分：权限用途字符串没有再许
 「数据不离开设备」、版本号两项都在、出口合规键在、隐私说明打进了包并且和代码里的备份行为对得上、
 急症规则排在系统提示第一条。**这一套过不了就别提交**，它挡住的每一条都是审核会看到的。
 
 Release 产物再手工看一眼（Debug 里多一个写权限的用途字符串，那是 `DebugSeeder` 用的）：
 
 ```bash
-plutil -p "$(xcodebuild -project HealthChat.xcodeproj -scheme HealthChat -configuration Release -destination 'generic/platform=iOS' -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR =/{d=$3} / FULL_PRODUCT_NAME =/{n=$3} END{print d"/"n}')/Info.plist"
+plutil -p "$(xcodebuild -project Vana.xcodeproj -scheme Vana -configuration Release -destination 'generic/platform=iOS' -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR =/{d=$3} / FULL_PRODUCT_NAME =/{n=$3} END{print d"/"n}')/Info.plist"
 ```
 
 要看到：`CFBundleShortVersionString`、`CFBundleVersion`、`ITSAppUsesNonExemptEncryption = false`、
@@ -26,7 +26,7 @@ plutil -p "$(xcodebuild -project HealthChat.xcodeproj -scheme HealthChat -config
 
 ## 隐私政策 URL
 
-内容是 [`HealthChat/Legal/PrivacyPolicy.html`](HealthChat/Legal/PrivacyPolicy.html)，同一个文件既
+内容是 [`Vana/Legal/PrivacyPolicy.html`](Vana/Legal/PrivacyPolicy.html)，同一个文件既
 打进 app 包（设置 > 关于 > 隐私说明），也直接发布。挂到任意静态站点即可（GitHub Pages 最省事），
 把地址填进 App Store Connect 的 Privacy Policy URL。
 

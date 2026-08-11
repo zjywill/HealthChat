@@ -1,4 +1,4 @@
-name: HealthChat
+name: Vana
 options:
   bundleIdPrefix: com.junyizhang
   deploymentTarget:
@@ -23,26 +23,26 @@ packages:
   AgentRuntime:
     path: AgentRuntime
 targets:
-  HealthChatTests:
+  VanaTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: HealthChatTests
+      - path: VanaTests
     dependencies:
-      - target: HealthChat
+      - target: Vana
       - package: AgentRuntime
         product: AgentRuntime
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-  HealthChat:
+  Vana:
     type: application
     platform: iOS
     scheme:
       testTargets:
-        - HealthChatTests
+        - VanaTests
     sources:
-      - path: HealthChat
+      - path: Vana
     dependencies:
       - package: AgentRuntime
         product: AgentRuntime
@@ -57,14 +57,14 @@ targets:
     # 实际拿到的数据由 `LocationProvider` 里的 `kCLLocationAccuracyReduced` 兜住,两处都要有:
     # 用户自己在系统设置里把精确位置打开了,那一行仍然把我们限制在粗定位上。
     info:
-      path: HealthChat/Info.plist
+      path: Vana/Info.plist
       properties:
         NSLocationDefaultAccuracyReduced: true
         # 出口合规。只用 HTTPS 和系统自带的加密(Keychain、文件保护),属于豁免范围。
         # 不写这个键的话每次往 App Store Connect 传 build 都会被拦下来问一遍同一个问题。
         ITSAppUsesNonExemptEncryption: false
     entitlements:
-      path: HealthChat/HealthChat.entitlements
+      path: Vana/Vana.entitlements
       properties:
         com.apple.developer.healthkit: true
         # 读体检报告和化验单要单独的 access 权限,只申请 health-records 这一项。
@@ -73,18 +73,20 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.junyizhang.HealthChat
-        PRODUCT_NAME: HealthChat
+        PRODUCT_NAME: Vana
         # `GENERATE_INFOPLIST_FILE` 开着时,版本号这两项由**构建设置**说了算——写在
-        # `HealthChat/Info.plist` 里的那两行会被生成器直接盖掉(试过:产物里这两个键
+        # `Vana/Info.plist` 里的那两行会被生成器直接盖掉(试过:产物里这两个键
         # 一个都不剩)。而没有 CFBundleShortVersionString 的 build 是传不上 App Store
         # Connect 的,界面上「关于」那行版本也只显示一个破折号。
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
-        # Icon Composer 的 HealthChat/AppIcon.icon,名字要和这里对上。
+        # Icon Composer 的 Vana/AppIcon.icon,名字要和这里对上。
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
-        # 用户看到的名字是 Vana;target、bundle id 和 Keychain service 仍叫 HealthChat,
-        # 换掉它们会让已存的 API key 和已授权的健康数据都对不上。
+        # 工程、target、scheme、PRODUCT_NAME 和显示名都叫 Vana。
+        # **唯独上面那行 bundle id 仍然是 com.junyizhang.HealthChat**,和
+        # `KeychainStore.service` 那串一样——这两串是已装设备上 API key 和已授权健康数据的
+        # 钥匙,改掉等于把它们全部作废。2026-08-11 那次改名就是特意把它们留下来的。
         INFOPLIST_KEY_CFBundleDisplayName: Vana
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         # 这两句是用户在系统授权面板上读到的字,**必须和 app 实际做的事逐字对上**。

@@ -1,6 +1,6 @@
 # 动作库 · 待评审清单
 
-issue [#7](https://github.com/zjywill/HealthChat/issues/7) 的 T1/T2 产物。**只是一份评审材料,
+issue [#7](https://github.com/zjywill/Vana-iOS/issues/7) 的 T1/T2 产物。**只是一份评审材料,
 app 里没有它的入口**,也没有进 `project.yml`。
 
 打开 `index.html` 看:46 个动作,每条有图、中文步骤、要领和「什么情况别做」。按场景可筛。
@@ -59,10 +59,10 @@ RepDB(禁止随仓库再分发,拉伸全是要弹力带的)、`asanakit` 火柴�
 
 ## app 里的实现
 
-`HealthChat/Exercises/`:`ExerciseLibrary`(载入打进包里的 `exercises.json`)、`ExerciseTools`
+`Vana/Exercises/`:`ExerciseLibrary`(载入打进包里的 `exercises.json`)、`ExerciseTools`
 (`suggest_exercises` 能力)、`ExerciseCards`(回复下面那排卡)。SVG 走
-`HealthChat/Exercises/Exercises.xcassets`,由 `tools/make_assets.py` 从 `assets/` 生成。
-`HealthChatTests/ExerciseTests` 盯着这一套。
+`Vana/Exercises/Exercises.xcassets`,由 `tools/make_assets.py` 从 `assets/` 生成。
+`VanaTests/ExerciseTests` 盯着这一套。
 
 ## 重新生成
 

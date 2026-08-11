@@ -1,4 +1,4 @@
-# HealthChat 计划与任务拆分
+# Vana 计划与任务拆分
 
 一句话:iOS SwiftUI 聊天 app,agent 自己决定去查 Apple Health 里的什么数据(步数/睡眠/心率…),用对话的形式给你分析。
 
@@ -20,14 +20,14 @@
 
 ```bash
 xcodegen   # 仅在增删文件后需要
-xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+xcodebuild -project Vana.xcodeproj -scheme Vana \
   -destination 'platform=iOS Simulator,name=iPhone 17' build -quiet
 ```
 
 装进模拟器手测:
 
 ```bash
-APP=$(xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+APP=$(xcodebuild -project Vana.xcodeproj -scheme Vana \
   -destination 'platform=iOS Simulator,name=iPhone 17' -showBuildSettings 2>/dev/null \
   | awk '/ BUILT_PRODUCTS_DIR =/{d=$3} / FULL_PRODUCT_NAME =/{n=$3} END{print d"/"n}')
 xcrun simctl install booted "$APP"
@@ -86,7 +86,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 ### M1 授权流
 
 **T1.1 HealthStore:类型集合与授权请求**
-- 文件:`HealthChat/Health/HealthStore.swift`
+- 文件:`Vana/Health/HealthStore.swift`
 - 读类型集合:`HKQuantityType(.stepCount)`、`.restingHeartRate`、`.heartRateVariabilitySDNN`、`.activeEnergyBurned`、`.bodyMass`、`.bodyFatPercentage`,`HKCategoryType(.sleepAnalysis)`,`HKObjectType.workoutType()`。
 - `requestAuthorization()`:先 `HKHealthStore.isHealthDataAvailable()`,再 `try await store.requestAuthorization(toShare: [], read: readTypes)`。
 - **坑**:HealthKit 隐私设计决定**读权限的拒绝状态不可查询**(`authorizationStatus` 只反映写权限)。不要试图判断"用户拒绝了读";统一用"查询结果为空 → 提示去 设置 > 隐私与安全性 > 健康 检查授权"。
@@ -101,7 +101,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 ### M2 查询层(先做种子数据,后面每个查询都能立即验证)
 
 **T2.1 DEBUG 种子数据 + 自检面板**
-- 文件:新建 `HealthChat/Health/DebugSeeder.swift`,`SettingsView.swift` 加入口
+- 文件:新建 `Vana/Health/DebugSeeder.swift`,`SettingsView.swift` 加入口
 - 整个文件 `#if DEBUG` 包裹。`seed()`:额外请求这些类型的**写**权限(仅种子用),写入最近 30 天合理假数据:步数(4k–15k/天)、睡眠(23:00±1h 入睡、7±1h 时长,拆 core/deep/REM 段)、静息心率(55–70)、HRV(30–80ms)、每周 3 次锻炼(跑步/骑行,30–60min,含 activeEnergyBurned 关联样本)、体重(70±0.5kg 缓慢下降)、体脂(20±1%)。
 - 设置页 DEBUG section:「写入种子数据」和「自检查询」按钮;自检跑通全部查询并把结果 `print` 到 console(T2.2 起逐个补)。
 - 验收:模拟器点种子 → iOS 健康 app 里能看到数据;重复点不崩(允许重复写入)。
@@ -130,7 +130,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 ### M3 端上引擎(FoundationModels)——**已实现后又暂时移除,等要用时按下面的描述从 `6dba4fe` 恢复**
 
 **T3.1 HealthToolSpec:中立工具定义**
-- 文件:重写 `HealthChat/Engine/HealthTools.swift`
+- 文件:重写 `Vana/Engine/HealthTools.swift`
 - ```swift
   struct HealthToolSpec: Sendable {
       let name: String          // "daily_steps"
@@ -163,7 +163,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 ### M4 云端引擎(AIKit)+ 设置页
 
 **T4.1 KeychainStore**
-- 新建 `HealthChat/Settings/KeychainStore.swift`:`kSecClassGenericPassword`,service `com.junyizhang.HealthChat`,`get/set/delete(account:)`,set 用先删后加实现 upsert。只存 API key;provider id / model 名不是秘密,走 `@AppStorage`。
+- 新建 `Vana/Settings/KeychainStore.swift`:`kSecClassGenericPassword`,service `com.junyizhang.HealthChat`,`get/set/delete(account:)`,set 用先删后加实现 upsert。只存 API key;provider id / model 名不是秘密,走 `@AppStorage`。
 - 验收:编译过;T4.4 一起手测。
 
 **T4.2 AIKitEngine:无工具流式跑通**
@@ -219,7 +219,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 前的睡眠时长当成本周的讲,那一瞬间信任掉得比从没记住过还快。宁可少想起来,不能想错。
 
 **T6.1 `SessionRecall`:索引与摘要**
-- 新建 `HealthChat/Recall/SessionRecall.swift`。短编号 `S1`、`S2`…**按 `createdAt` 升序**分配
+- 新建 `Vana/Recall/SessionRecall.swift`。短编号 `S1`、`S2`…**按 `createdAt` 升序**分配
   (创建时间永不变,所以编号稳定;按 `updatedAt` 排会在任意一次保存后错位,上一句说的 S3 就
   指到别处去了)。理由和记忆的 `M1`/`M2` 一样:省 token,且模型抄 UUID 容易抄错一位。
 - 检索纯本地:标题 + 用户说过的话 + 话题名 + 用过的工具标签,中文按 2-gram 打分。
@@ -230,7 +230,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 - 验收:编号在会话保存后不变;隐私会话(从不落盘)和已删会话都不在索引里。
 
 **T6.2 `search_sessions` / `read_session` 两个只读工具**
-- 新建 `HealthChat/Recall/SessionRecallTools.swift`,形状照 `MemoryTools`。
+- 新建 `Vana/Recall/SessionRecallTools.swift`,形状照 `MemoryTools`。
 - 挂在 `CapabilityRegistry.healthChat` 上,受 `memoryEnabled` 管——关掉记忆的人不会指望
   Vana 还在引用他上个月说过的话。关掉时**不挂出去**,不给一个只会报错的工具。
 - 排除**当前会话**:否则模型会把正在进行的这条读回来。

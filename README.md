@@ -21,8 +21,10 @@
 **它自带钥匙。** 所有模型调用都发给**你自己**配置的云端 provider——设置页里填一把 API key,
 没有中间服务器,没有注册,没有订阅。
 
-> 仓库名和工程名还叫 HealthChat,app 显示的名字是 **Vana**。换掉工程名会让已存的 API key 和
-> 已授权的健康数据全部对不上,不值得。
+> 仓库、工程和 app 显示名都叫 **Vana**(仓库 `Vana-iOS`,Android 版在
+> [Vana-Android](https://github.com/zjywill/Vana-Android))。**bundle id 仍然是
+> `com.junyizhang.HealthChat`**——那是这个项目早先的名字,改掉它会让已装设备上存的 API key
+> 和已授权的健康数据全部对不上。
 
 ## 大概是这样用的
 
@@ -108,12 +110,12 @@ Apple Health 归机主那个成员——切到家人时健康工具整个不出�
 
 ```bash
 git clone https://github.com/zjywill/aikitswift
-git clone https://github.com/zjywill/HealthChat
+git clone https://github.com/zjywill/Vana-iOS
 ```
 
 ```bash
 brew install xcodegen
-cd HealthChat && xcodegen && open HealthChat.xcodeproj
+cd Vana-iOS && xcodegen && open Vana.xcodeproj
 ```
 
 装好之后第一次打开:设置页里选 provider 和模型(默认 anthropic / claude-sonnet-5,目录里有
@@ -131,11 +133,11 @@ cd HealthChat && xcodegen && open HealthChat.xcodeproj
 ```
 
 ```bash
-xcodebuild -project HealthChat.xcodeproj -scheme HealthChat -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcodebuild -project Vana.xcodeproj -scheme Vana -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
 `AgentRuntime/` 是仓库内一个不认识 HealthKit、也不 import 任何模型 SDK 的通用 agent core;
-`HealthChat/` 是 app 本身。每一处「为什么是这样」写在 [CLAUDE.md](CLAUDE.md) 里,用药那块另见
+`Vana/` 是 app 本身。每一处「为什么是这样」写在 [CLAUDE.md](CLAUDE.md) 里,用药那块另见
 [MEDICATIONS.md](MEDICATIONS.md),上架相关的在 [APPSTORE.md](APPSTORE.md)。
 
 ## 故意不做的

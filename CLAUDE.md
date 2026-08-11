@@ -1,8 +1,17 @@
-# HealthChat
+# Vana
 
 iOS 26 SwiftUI 聊天 app:agent 通过工具调用读 Apple Health,对话式分析。整体计划见 PLAN.md(里程碑推进,一次一个可见改动)。
 
-用户看到的名字是 **Vana**(`CFBundleDisplayName`、界面文案、图标)。工程名、target、scheme、bundle id 和 Keychain service 仍然叫 HealthChat——换掉它们会让已存的 API key 和已授权的健康数据全部对不上,不值得。
+用户看到的名字是 **Vana**(`CFBundleDisplayName`、界面文案、图标),仓库、工程、target、scheme
+和源码目录也都叫 Vana(仓库是 `Vana-iOS`,和 Android 那份 `Vana-Android` 并排)。
+
+**唯独两串没跟着改,而且不要改**:bundle id `com.junyizhang.HealthChat` 和 `KeychainStore` 里那个
+同名的 Keychain service。它们是已装设备上 API key 和已授权健康数据的钥匙——换掉就是把用户存的 key
+和给过的健康授权一次性作废,而屏幕上不会有任何一句话解释为什么。名字上的整齐不值这个价。
+
+Android 版在 `../Vana-Android`(Compose),包名 `com.pinapia.vana`。**两边共用这一份设计决策文档**:
+那边的 `CLAUDE.md` 只记 Android 这一侧真正不一样的地方(Health Connect、minSdk、平台替换表),
+其余一律回来读这里。
 
 ## 构建
 
@@ -10,7 +19,7 @@ iOS 26 SwiftUI 聊天 app:agent 通过工具调用读 Apple Health,对话式分�
 
 ```bash
 xcodegen
-xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+xcodebuild -project Vana.xcodeproj -scheme Vana \
   -destination 'platform=iOS Simulator,name=iPhone 17' build
 ```
 
@@ -20,11 +29,11 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
 
 ```bash
 (cd AgentRuntime && swift test)   # agent core,秒级,不需要模拟器
-xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
+xcodebuild -project Vana.xcodeproj -scheme Vana \
   -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-`HealthChatTests` 是 app 侧的 loop 集成测试:脚本化的假模型 + 假能力,但 `ChatViewModel`、
+`VanaTests` 是 app 侧的 loop 集成测试:脚本化的假模型 + 假能力,但 `ChatViewModel`、
 事件归约、预算、压缩、换模型迁移都是线上那一套。改 agent 循环相关的东西先看这里。
 
 ## 运行
@@ -66,7 +75,7 @@ xcodebuild -project HealthChat.xcodeproj -scheme HealthChat \
 - 成本模型假设估算可加,这个假设**只用来挑压谁**。报给上层的 `estimatedPromptTokens` 和
   预算判断永远是估算器对整份 prompt 的结果;偏了就退回逐条重估兜底。
 
-`HealthChatTests/ContextBudgetPerformanceTests` 盯着耗时和 `phys_footprint` 峰值,改这块先看它。
+`VanaTests/ContextBudgetPerformanceTests` 盯着耗时和 `phys_footprint` 峰值,改这块先看它。
 
 ## 架构:hook(`AgentHook` / `AgentHookDispatcher`)
 
@@ -126,7 +135,7 @@ loop 生命周期上的旁观位,**第二条通道**,不是往事件流上加事
 - **hook 一条会话一个**,换会话时连宿主一起丢(它记着的是上一句问了什么)。上一条会话还在飞的
   那次生成由交付时的会话号挡住。
 
-注入假引擎的那条路不挂 hook:hook 的行为由 `HealthChatTests/FollowUpChipTests` 直接对着
+注入假引擎的那条路不挂 hook:hook 的行为由 `VanaTests/FollowUpChipTests` 直接对着
 `AgentLoop` 验,不必穿过 `ChatViewModel` 那个状态机。
 
 ## 架构:首屏那段话(`HealthSituation` / `HealthVitals` / `QuickSummaryWriter` / `HealthStatusView`)
@@ -209,7 +218,7 @@ loop 生命周期上的旁观位,**第二条通道**,不是往事件流上加事
   没用的那半段。作废这条路是静默的(界面上只表现为"本地那句一直没换掉"),所以留了一处 DEBUG
   日志打模型原文,同 `FollowUpSuggester`。
 
-`HealthChatTests/QuickSummaryTests` 和 `HealthVitalsTests` 盯着这一套。
+`VanaTests/QuickSummaryTests` 和 `HealthVitalsTests` 盯着这一套。
 
 ## 架构:失败处理
 
@@ -319,7 +328,7 @@ loop 生命周期上的旁观位,**第二条通道**,不是往事件流上加事
 user turn 的 provider,就是连着两条 user 消息。Anthropic 明确会合并,OpenAI、DeepSeek 也收。
 真碰到严格要求交替的 provider,该在 AIKit 的 prompt 转换那一层合并,不要退回「不许插话」。
 
-`HealthChatTests/QueuedMessageTests` 和 `AgentRuntimeTests/PendingInputTests` 盯着这一套。
+`VanaTests/QueuedMessageTests` 和 `AgentRuntimeTests/PendingInputTests` 盯着这一套。
 
 ## 架构:回答里的 markdown(`MarkdownBlocks` / `MarkdownTextView`)
 
@@ -348,9 +357,9 @@ user turn 的 provider,就是连着两条 user 消息。Anthropic 明确会合�
 - **用户那一侧原样显示,不解析。** 他打的字不是 markdown,把「1*2*3」当成斜体是在替他改写他
   自己说过的话。
 
-`HealthChatTests/MarkdownTests` 盯着这一套。
+`VanaTests/MarkdownTests` 盯着这一套。
 
-## 架构:记忆(`HealthChat/Memory`)
+## 架构:记忆(`Vana/Memory`)
 
 「关于这位用户」的长期记忆。`MemoryStore`(actor,`Documents/memory.json`)存,
 `MemoryExtractor`(后台抽)和 `MemoryTools`(对话里当场记)写,
@@ -422,7 +431,7 @@ user turn 的 provider,就是连着两条 user 消息。Anthropic 明确会合�
 里,首屏建议、check-in、Siri 三处一起受益——同一份数据在三个地方说出三种结论,用户只会觉得
 这 app 自己都没想清楚。
 
-## 架构:用药与补剂(`HealthChat/Medications`)
+## 架构:用药与补剂(`Vana/Medications`)
 
 一张回答**「我和这些东西是什么关系」**的表:在吃什么、需要时吃什么、试过什么没用、什么不能吃。
 设计与任务拆分见 `MEDICATIONS.md`。
@@ -505,9 +514,9 @@ HealthKit 也把它开放给第三方**只读**(`HKUserAnnotatedMedicationQuery`
 提醒的代价在这里是真的——空态那句话必须说清);不做本地交互作用数据库(那是给一个 Vana 兜不住
 的结论背书,模型按一般知识说注意点、把结论指向药师,是这里唯一诚实的形态)。
 
-`HealthChatTests/MedicationTests` 盯着这一套。
+`VanaTests/MedicationTests` 盯着这一套。
 
-## 架构:家庭成员(`HealthChat/Tenant`)
+## 架构:家庭成员(`Vana/Tenant`)
 
 一个成员一份完全隔离的数据。界面上叫「成员」,代码里叫 `Tenant`——用户不认识"租户"这个词,
 而 `Profile` 会和 `InterestProfile`、`AssistantPersona` 撞脸。
@@ -559,7 +568,7 @@ check-in 时间。判据是**这条设置属于「我和谁在聊」还是「我
 - **`TenantScope` 是全局同步状态,这是有意的。** 同一时刻只有一个成员是活的,而问「现在是谁」
   的地方遍布 nonisolated 代码(四个 store 的 `.shared`、工具装配、`HealthStore`)。做成要传进去
   的参数,等于在每条调用链上开一个可以传错的口子——而传错正是这个功能要防的那件事。
-- **名单必须在任何视图建起来之前就位**(`HealthChatApp.init` 里同步 `bootstrap()`)。
+- **名单必须在任何视图建起来之前就位**(`VanaApp.init` 里同步 `bootstrap()`)。
   `ChatViewModel` 一造出来就去问 `SessionStore.shared` 是哪个目录,等不了一个 async 的答案;
   等得起的话启动路径上就有一个"还不知道当前是谁"的窗口,而那个窗口里读到的是别人的数据。
 - **切成员是整个换掉 `ChatView`**(`.id(tenant.id)`),不是给 view model 发一条「现在换成妈妈」:
@@ -591,7 +600,7 @@ check-in 时间。判据是**这条设置属于「我和谁在聊」还是「我
 量级的承诺);接 HealthKit 的家人共享(没有 API);跨成员对比(那是隔离的反面);每个成员一把
 API key;自己造成员密码(要挡人就用设备级 Face ID,别在健康 app 里发明一套密码)。
 
-`HealthChatTests/TenantTests` 盯着这一套。
+`VanaTests/TenantTests` 盯着这一套。
 
 ## 隐私对话(`ChatSession.isPrivate`)
 
@@ -617,7 +626,7 @@ API key;自己造成员密码(要挡人就用设备级 Face ID,别在健康 app 
 开聊之后不留一条不可点的 chip——它和旁边的追问 chip 长得一样,点不动只会让人以为坏了;而
 隐私是整条会话的属性,本来就该一直挂在视线里,不是混在一排动作里。
 
-## 架构:跨会话召回(`HealthChat/Recall`)
+## 架构:跨会话召回(`Vana/Recall`)
 
 记忆存「关于这位用户」,召回找回「那次聊出来的结论」。**两件事,不要合并**。
 
@@ -677,7 +686,7 @@ API key;自己造成员密码(要挡人就用设备级 Face ID,别在健康 app 
 是 coding agent 里根本不存在的 UX 成本。也不做多 agent 互相 review——第二个 agent 没有独立
 信息源(同一份 HealthKit 数据、同一份记忆、同一个模型),产生的是更谨慎而不是更准的话。
 
-## 架构:反问用户(`HealthChat/Ask`)
+## 架构:反问用户(`Vana/Ask`)
 
 别的工具都是**去拿一样模型没有的东西**;`ask_user` 唯一的产出是一张卡片。所以判据也不一样:
 它值不值得占一个工具槽,取决于**「让他打字」和「让他点一下」的差距**。健康对话里那个差距很大
@@ -758,9 +767,9 @@ JSON Schema 那一层是免费的,条数、长度、有没有重复,在进屏幕
 - 选项少于两条**报错**,不是悄悄画一张只有一颗按钮的卡:一个选项的"选择"不是选择,那本来就
   该是正文里的一句话。错误里明写「直接用一句话问」,它下次就用一句话问了。
 
-`HealthChatTests/AskUserTests` 盯着这一套。
+`VanaTests/AskUserTests` 盯着这一套。
 
-## 架构:网页搜索(`HealthChat/Search`)
+## 架构:网页搜索(`Vana/Search`)
 
 记忆存「关于这位用户」,召回找回「那次聊出来的结论」,HealthKit 给「他的数字」。这一条补的是
 剩下那块:**模型权重之外的世界**。serper.dev(Google 的一层薄封装)一次查询一个 credit。
@@ -798,9 +807,9 @@ JSON Schema 那一层是免费的,条数、长度、有没有重复,在进屏幕
 - 地区和语言由 app 按系统语言定(`gl` / `hl`),**不做成工具参数**。模型猜不出用户在哪,
   那正是它不知道的那类事。简繁要分开:`hl=zh` 会被当成简体。
 
-`HealthChatTests/WebSearchTests` 盯着这一套。
+`VanaTests/WebSearchTests` 盯着这一套。
 
-## 架构:位置(`HealthChat/Location`)
+## 架构:位置(`Vana/Location`)
 
 记忆存「关于这位用户」,用药表存「他和这些东西的关系」,HealthKit 给「他的数字」,网页搜索补
 模型权重之外的世界。这一条补的是最后一样它看不见的东西:**他人在哪**。同一句「最近总睡不好」
@@ -854,9 +863,9 @@ JSON Schema 那一层是免费的,条数、长度、有没有重复,在进屏幕
 `project.yml` 里单给它一份基础 `info:` plist,`GENERATE_INFOPLIST_FILE` 仍然开着,Xcode 会把
 那些 `INFOPLIST_KEY_*` 合并进来,两条路并存。
 
-`HealthChatTests/LocationTests` 盯着这一套。
+`VanaTests/LocationTests` 盯着这一套。
 
-## 架构:拍照与选文件(`HealthChat/Vision`)
+## 架构:拍照与选文件(`Vana/Vision`)
 
 手机上最自然的健康输入是照片:一张纸质化验单、一个药瓶、一张营养成分表。`health_records`
 早就能读化验和体检记录,**前提是用户在「健康」App 里连过医疗机构**——大多数人手上是一张纸,
@@ -1100,10 +1109,10 @@ docx 得自己解:iOS 的 `NSAttributedString` 只认 plain / RTF / RTFD / HTML,
 - **`Text` 里的 markdown 只对字符串字面量生效**。拼出来的 `String` 里那两颗 `**` 会原样显示
   在屏幕上(踩过)。要强调就分句,别靠符号。
 
-`HealthChatTests/VisionTests` 盯着识别那条,`HealthChatTests/DocumentImportTests` 盯着
+`VanaTests/VisionTests` 盯着识别那条,`VanaTests/DocumentImportTests` 盯着
 zip / docx / 编码那条。
 
-## 架构:按住说话(`HealthChat/Voice`)
+## 架构:按住说话(`Vana/Voice`)
 
 **基线是键盘听写,它零代码就已经在用户手上了。** 系统键盘上那颗麦克风在 Vana 的输入框里
 直接可用,不需要一行代码、一个权限。所以这个功能要论证的从来不是「能不能说话」,而是
@@ -1200,7 +1209,7 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
 (`SFSpeechLanguageModel`)——`contextualStrings` 够不着的话,说明这条路本来就不成立,不值得再
 加一整套训练流程。
 
-`HealthChatTests/VoiceTests` 盯着词表那条(录音和识别那一半没法在模拟器上测)。
+`VanaTests/VoiceTests` 盯着词表那条(录音和识别那一半没法在模拟器上测)。
 
 ## 架构:延续线与后台派生(`SessionThread` / `FollowUpRunner`)
 
@@ -1295,9 +1304,9 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
 - 读某一条的全文走 `load(id:)`,那是一次一条,该解就解——通知正文要模型真写的那句话,
   索引里没有。
 
-`HealthChatTests/SessionStorePerformanceTests` 盯着耗时和 `phys_footprint` 峰值,改这块先看它。
+`VanaTests/SessionStorePerformanceTests` 盯着耗时和 `phys_footprint` 峰值,改这块先看它。
 
-## 架构:Siri(`HealthChat/Intents`)
+## 架构:Siri(`Vana/Intents`)
 
 四条 App Intent,分成两类,中间**没有第三种形态**:
 
@@ -1316,7 +1325,7 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
 - **短语按 app 的开发语言登记**。`project.yml` 里的 `developmentLanguage` 和
   `DEVELOPMENT_LANGUAGE` 都必须是 `zh-Hans`,留在 en 的话 `VanaShortcuts` 里写的中文在中文
   Siri 上一句都匹配不上。验证办法:clean build 的日志里应该有
-  `Training '...' for zh-Hans`,产物里应该有 `HealthChat.app/Metadata.appintents/nlu`。
+  `Training '...' for zh-Hans`,产物里应该有 `Vana.app/Metadata.appintents/nlu`。
 - **后台弹不出授权面板**,所以查之前先 `HealthStore.readAccess()` 问清楚,没授权就照实说
   "先打开 Vana"。锁屏时 HealthKit 整个库读不了(`isDatabaseLocked`),那是另一句话,不是
   "没有数据"。三种读不到的原因分开说,用户才知道下一步该干什么。
@@ -1325,11 +1334,11 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
 - 触发点识别复用 `HealthSituation.detect()`,和 check-in 通知、首屏建议同一套。同一份数据
   在三个地方说出三种结论,用户只会觉得这 app 自己都没想清楚。
 
-## 架构:合规(`HealthChat/Legal`)
+## 架构:合规(`Vana/Legal`)
 
 上架要的那几样东西。它们看起来是"贴几段文字",实际上每一条都在声明 app 的行为,而**声明和
 行为对不上就是这一整块的唯一失败模式**——而且是静默的:用户读不到 plist,那一页空白只有真的点
-进去才看得见。`HealthChatTests/ComplianceTests` 盯着能自动检查的那部分。ASC 那半边(年龄分级、
+进去才看得见。`VanaTests/ComplianceTests` 盯着能自动检查的那部分。ASC 那半边(年龄分级、
 隐私营养标签、审核备注)在 `APPSTORE.md`。
 
 - **权限用途字符串必须和 app 实际做的事逐字对上**。端上模型撤掉之后,健康授权面板上一度还写着
