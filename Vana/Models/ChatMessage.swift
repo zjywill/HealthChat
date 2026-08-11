@@ -28,6 +28,23 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
     /// 跟着会话落盘:不存的话,三天前答过的问题重开会话时会变回一张还能点的卡。
     var askAnswer: AskUserAnswer?
     var isError: Bool
+    /// 发起这次调用的那一刻,正文已经写到第几个字。
+    ///
+    /// 气泡按它把一轮摊回**发生顺序**(见 `ChatMessage.turnSegments`)。模型这一轮实际是
+    /// 交错的——说一句、查一次、再说一句——而 `text` 是一个一直往后接的字符串、`toolCalls`
+    /// 是一个数组,两边各存各的,交错关系除了这一个数字没有别的地方记着。
+    /// (`storedTurn.exactTranscript` 里有,但那份是给模型回放的,而且要等整轮结束才落下来。)
+    ///
+    /// 可空:这个字段是后加的,之前存下来的会话里没有——那些会话退回"chip 全排在正文前面"
+    /// 的老排法,不去猜一个位置。猜错的表现是一段话被切在莫名其妙的地方。
+    var textOffset: Int?
+    /// 同上,思考写到第几个字。
+    ///
+    /// 思考和正文是两条独立的流,同一轮里各长各的,所以要各记一个。少了这一个,一条回复里
+    /// 那四五轮思考会全被拼进顶上那**一颗** chip——而它们之间连个分隔都没有,上一轮的
+    /// 「I'll do them one at a time.」和下一轮的「Sleep data: 3 nights recorded」直接粘成
+    /// 一个病句。屏幕上还看不出哪一轮想过、哪一轮没想。
+    var reasoningOffset: Int?
 
     init(
         id: String,
@@ -38,7 +55,9 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         exerciseIDs: [String]? = nil,
         askQuestion: AskUserQuestion? = nil,
         askAnswer: AskUserAnswer? = nil,
-        isError: Bool = false
+        isError: Bool = false,
+        textOffset: Int? = nil,
+        reasoningOffset: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -49,6 +68,8 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
         self.askQuestion = askQuestion
         self.askAnswer = askAnswer
         self.isError = isError
+        self.textOffset = textOffset
+        self.reasoningOffset = reasoningOffset
     }
 
     /// 三种 metadata 并存在同一个字段上是安全的:必填键不一样,互相解不出来
@@ -76,6 +97,39 @@ struct ToolCallRecord: Identifiable, Equatable, Codable, Sendable {
             && askQuestion == other.askQuestion
             // 他点完那张卡,卡上的勾和底下那行字都要跟着变。漏掉这一项,表现就是点了没反应。
             && askAnswer == other.askAnswer
+            // 它决定这颗 chip 插在正文的哪儿。写进去之后就不会再变,但漏掉这一项的话,
+            // 那次改变永远刷不出来。
+            && textOffset == other.textOffset
+            && reasoningOffset == other.reasoningOffset
+    }
+}
+
+extension ToolCallRecord {
+    /// 这次调用在气泡上出不出胶囊。
+    ///
+    /// `ask_user` 成功的那次不出:它的结果就是下面那张卡,而一颗写着「问了你一个问题」的
+    /// chip 顶在一个问题上面是纯噪声。参数不合法的那次照出——那时候卡画不出来,不留一点
+    /// 痕迹的话屏幕上就是模型莫名其妙地卡了一下。
+    ///
+    /// 不出胶囊的那条**也不在正文里切一刀**(见 `ChatMessage.turnSegments`):屏幕上没有
+    /// 任何东西落在那个位置,切开只会让一段话在莫名其妙的地方断开。
+    var showsChip: Bool { askQuestion == nil }
+}
+
+/// 一条回复摊回发生顺序之后的一段。
+enum TurnSegment: Identifiable {
+    case reasoning(String, index: Int)
+    case text(String, index: Int)
+    case tool(ToolCallRecord)
+
+    /// 流式期间最后一段文本一直在长,所以按**序号**发 id,不按内容——按内容的话每来一个字
+    /// 都是一条新身份,SwiftUI 会把那段整个拆掉重建。
+    var id: String {
+        switch self {
+        case .reasoning(_, let index): "reasoning-\(index)"
+        case .text(_, let index): "text-\(index)"
+        case .tool(let call): call.id
+        }
     }
 }
 
@@ -278,6 +332,100 @@ extension ChatMessage {
         return compaction
     }
 
+    /// 这一轮按**发生顺序**摊平:说了一段、查了一次、又说了一段。
+    ///
+    /// 气泡原来是写死的三段——思考 chip、**所有**工具 chip、**整段**正文——而模型这一轮实际
+    /// 是交错的。两处代价:
+    ///
+    /// - **跳动**。每发起一次调用,一颗 chip 插进正文**上方**,底下已经写好的十几行整个往下
+    ///   挪一次;工具返回时 chip 里的转圈换成「N 行 ›」,再挪一次。三次查询就是六次位移,
+    ///   而滚动是贴着底的,眼里就是整段字在原地弹。
+    /// - **因果反了**。模型写完「现在查这三项：」才去查,而那三颗 chip 在这句话**上面**;
+    ///   查完之后的结论又直接接在同一段末尾,和查询前的话粘成一整段。
+    ///
+    /// 按顺序摊开之后,新东西永远追加在**末尾**,上面的一个像素都不动。
+    ///
+    /// 没有 `textOffset` 的那几条(旧会话)排在最前面,退回老排法:位置是真的不知道,
+    /// 而猜错的表现是一段话被切在莫名其妙的地方。
+    var turnSegments: [TurnSegment] {
+        let chips = toolCalls.filter(\.showsChip)
+        var segments: [TurnSegment] = []
+
+        var text = Splitter(source: self.text, kind: TurnSegment.text)
+        var think = Splitter(source: reasoning, kind: TurnSegment.reasoning)
+
+        // 旧会话里这两样都没有位置,退回原来的排法:思考一颗 chip 打头,工具 chip 跟在
+        // 后面,正文最后。**思考在前**——它原来就是气泡里的第一样东西。
+        let anchored = chips.contains { $0.reasoningOffset != nil }
+        if !anchored {
+            think.appendRest(to: &segments)
+        }
+        segments += chips.filter { $0.textOffset == nil }.map(TurnSegment.tool)
+
+        for call in chips where call.textOffset != nil {
+            // 思考排在这一轮的正文**前面**:模型先想、再说,最后才发起这次调用。
+            if anchored, let offset = call.reasoningOffset {
+                think.append(upTo: offset, to: &segments)
+            }
+            text.append(upTo: call.textOffset ?? 0, to: &segments)
+            segments.append(.tool(call))
+        }
+
+        // 收尾:最后一次调用之后的那一轮。它也是唯一可能还在写的那一轮。
+        if anchored {
+            think.appendRest(to: &segments)
+        }
+        text.appendRest(to: &segments)
+        return segments
+    }
+
+    /// 按字符位置把一条累积的流切成几段。思考和正文各走一份——它们是两条独立的流。
+    private struct Splitter {
+        let source: String
+        let kind: (String, Int) -> TurnSegment
+
+        private var cursor: String.Index
+        private var placed = 0
+        private var index = 0
+
+        init(source: String, kind: @escaping (String, Int) -> TurnSegment) {
+            self.source = source
+            self.kind = kind
+            cursor = source.startIndex
+        }
+
+        mutating func append(upTo offset: Int, to segments: inout [TurnSegment]) {
+            // 撤字(重试前那次 `.textRolledBack` / `.reasoningRolledBack`)之后 offset 会指到
+            // 末尾之外;夹住之后还要单调不减,否则一份被改过的会话文件能把正文切成乱序。
+            let clamped = min(max(offset, placed), source.count)
+            placed = clamped
+            emit(through: source.index(source.startIndex, offsetBy: clamped), to: &segments)
+        }
+
+        mutating func appendRest(to segments: inout [TurnSegment]) {
+            emit(through: source.endIndex, to: &segments)
+        }
+
+        /// 切点落在换行后面时这一段会以空行开头,那会在 chip 底下多撑出一截空白。
+        /// 只裁换行——前导空格在 markdown 里是有意义的(缩进代码块)。
+        private mutating func emit(through end: String.Index, to segments: inout [TurnSegment]) {
+            guard cursor < end else { return }
+            let chunk = String(source[cursor..<end]).trimmingCharacters(in: .newlines)
+            cursor = end
+            guard !chunk.isEmpty else { return }
+            segments.append(kind(chunk, index))
+            index += 1
+        }
+    }
+
+    /// 有一次调用还没回来。
+    ///
+    /// 摊平之后它就是最后一段,自己带着转圈排在整条回复的最底下——底部那个"还在进行"的
+    /// 指示器这时候不用再出一个(见 `MessageBubble.showsTrailingIndicator`)。
+    var hasRunningToolCall: Bool {
+        toolCalls.contains { $0.output == nil }
+    }
+
     /// 这条气泡上有没有东西给用户看。
     ///
     /// 用来判断一条被插话劈开的回复,前半段值不值得留下来——只吐了思考也算,那颗 chip
@@ -397,7 +545,12 @@ extension ChatMessage: AgentTurnSink {
     }
 
     mutating func startToolCall(_ record: ToolCallRecordDTO) {
-        toolCalls.append(ToolCallRecord(record))
+        var call = ToolCallRecord(record)
+        // 这两句就是整个交错顺序的全部来源:发起调用的这一刻,正文和思考各写到哪儿了。
+        // 只写一次,之后再也不动——它记的是"当时",不是"现在"。
+        call.textOffset = text.count
+        call.reasoningOffset = reasoning.count
+        toolCalls.append(call)
     }
 
     mutating func finishToolCall(id: String, output: AgentToolOutput, isError: Bool) {

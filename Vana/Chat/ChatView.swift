@@ -467,14 +467,17 @@ private struct ReasoningChip: View {
             isPresented = true
         } label: {
             HStack(spacing: 6) {
+                // 想的时候图标自己在动,**不挂 `ProgressView`**。那颗转圈是不定式的,转速和
+                // 进度没有任何关系,而旁边「正在思考…」五个字已经把同一件事说完了;它转的
+                // 又是一件用户此刻完全看不见的事(思考文字全收在这颗 chip 里)。
+                //
+                // 更实际的代价是它占着 chevron 的位置:「这里能点开」这个唯一有用的暗示,
+                // 恰好在最想点开的时候消失,想完那一刻换回来 chip 宽度还跳一下。
                 Image(systemName: "brain")
+                    .symbolEffect(.pulse, isActive: isThinking)
                 Text(isThinking ? "正在思考…" : "思考过程")
-                if isThinking {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                }
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
             }
             .inlineChipStyle()
         }
@@ -563,9 +566,14 @@ private struct MessageBubble: View, Equatable {
             && lhs.message.rendersIdentically(to: rhs.message)
     }
 
-    private var isWaiting: Bool {
-        isStreaming && message.text.isEmpty && message.reasoning.isEmpty
+    /// 「还在进行」的唯一出口,永远排在整条回复的最底下。
+    ///
+    /// 有工具在跑时交给那颗 chip:它自己带着转圈,而且摊平之后就是最后一段。两个都出的话,
+    /// 屏幕底下会有两样东西同时在转,而它们说的是同一件事。
+    private var showsTrailingIndicator: Bool {
+        isStreaming && !message.hasRunningToolCall
     }
+
 
     @ViewBuilder
     var body: some View {
@@ -631,33 +639,50 @@ private struct MessageBubble: View, Equatable {
     private var assistantMessage: some View {
         // 6 而不是 8:chip 自己带了撑到 44 的点击区,间距再按 8 算,几颗 chip 摞起来会散。
         VStack(alignment: .leading, spacing: 6) {
-            if !message.reasoning.isEmpty {
-                ReasoningChip(
-                    text: message.reasoning,
-                    isThinking: isStreaming && message.text.isEmpty
-                )
-            }
-
-            ForEach(message.toolCalls) { call in
-                // `ask_user` 那一条不出胶囊:它的结果就是下面那张卡,而一颗写着「问了你一个
-                // 问题」的 chip 顶在一个问题上面是纯噪声。参数不合法的那次照出——那时候卡
-                // 画不出来,不留一点痕迹的话屏幕上就是模型莫名其妙地卡了一下。
-                if call.askQuestion == nil {
+            // 按发生顺序摊开(见 `ChatMessage.turnSegments`):想一段、说一段、查一次,再来一轮。
+            // 全部 chip 堆在正文上面的老排法有三处代价——每插一颗 chip 底下写好的正文整个
+            // 往下挪一次(那阵跳动)、「现在查这三项：」被排到它引出的那三次查询下面,以及
+            // 四轮思考全被拼进顶上那**一颗** chip,屏幕上看不出哪一轮想过。
+            let segments = message.turnSegments
+            ForEach(segments) { segment in
+                switch segment {
+                case .reasoning(let chunk, _):
+                    ReasoningChip(
+                        // 「正在想」的只可能是最后一段:后面还有正文或 chip,就说明这一段
+                        // 早就想完了。
+                        text: chunk,
+                        isThinking: isStreaming && segment.id == segments.last?.id
+                    )
+                case .tool(let call):
                     ToolCallChip(call: call)
+                case .text(let chunk, _):
+                    // 助手这一侧走块级渲染:模型很爱用表格列每日数据,而气泡原来只认行内语法,
+                    // 那张表在屏幕上就是一堆竖线和横杠(见 `MarkdownBlocks`)。
+                    MarkdownTextView(text: chunk)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel(chunk)
                 }
             }
 
-            if isWaiting {
-                TypingIndicator()
             // 一个字都没说完就被插话劈开的前半段,留着思考和工具 chip 就够了——那儿再挂一个
             // "…" 会让人以为模型说了句什么没看清。真的整条空白才用它顶位。
-            } else if !message.text.isEmpty || (!isStreaming && !message.hasVisibleTurnContent) {
-                // 助手这一侧走块级渲染:模型很爱用表格列每日数据,而气泡原来只认行内语法,
-                // 那张表在屏幕上就是一堆竖线和横杠(见 `MarkdownBlocks`)。
-                MarkdownTextView(text: message.text.isEmpty ? "…" : message.text)
+            if !isStreaming, !message.hasVisibleTurnContent {
+                MarkdownTextView(text: "…")
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(message.text)
+            }
+
+            // 「还在进行」只由这一个指示器说,而且**永远在整条回复的最底下**。
+            //
+            // 原来它只在这一轮什么都还没有的那一小段出现(`isWaiting`),模型吐出第一个字就
+            // 消失、再也不回来。于是工具跑的那十几秒里正文停着不动,屏幕底部是一句写完的、
+            // 静止的话——「在查数据」和「已经答完了」长得一模一样,而唯一的线索(顶上那几颗
+            // chip 在转)常常已经滚出屏幕了。
+            //
+            // 有工具在跑时不出:那颗 chip 自己带着转圈,摊平之后它就是最后一段,本来就在底下。
+            if showsTrailingIndicator {
+                TypingIndicator()
             }
 
             // 动作卡排在正文**下面**:模型先说清为什么挑这几个,图跟在后面。反过来的话,
@@ -745,7 +770,8 @@ private struct MessageBubble: View, Equatable {
     /// 复制放在外面——它是最常用的那个,不值得多点一下。
     /// 重新回答、分支和这条的时间收进菜单:都是低频操作,平时不该占着屏幕。
     private var actions: some View {
-        HStack(spacing: 2) {
+        // 0 而不是 2:两颗都自带 44 的点击区(比画出来的圆宽 4),再加间距,两颗圆之间就散开了。
+        HStack(spacing: 0) {
             CopyButton(text: message.text)
 
             Menu {
@@ -758,10 +784,7 @@ private struct MessageBubble: View, Equatable {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(.rect)
+                    .iconChipStyle()
             }
             .accessibilityLabel("更多操作")
         }
@@ -804,10 +827,9 @@ private struct CopyButton: View {
             }
         } label: {
             Image(systemName: hasCopied ? "checkmark" : "doc.on.doc")
-                .font(.footnote)
-                .foregroundStyle(hasCopied ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
-                .frame(width: 44, height: 44)
-                .contentShape(.rect)
+                .iconChipStyle(
+                    tint: hasCopied ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(hasCopied ? "已复制" : "复制回复")

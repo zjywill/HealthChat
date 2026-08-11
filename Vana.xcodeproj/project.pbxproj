@@ -68,6 +68,7 @@
 		6C31A04025132ED57C92F2E1 /* SuggestedQuestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E957C5E1ECBBD2535B7591 /* SuggestedQuestions.swift */; };
 		6E45E0D37A8953C751E0C5CB /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4666DC500CE790945C889056 /* KeychainStore.swift */; };
 		705196FBEB809E78863ADB46 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF15991886D8C3841B441A70 /* ChatMessage.swift */; };
+		73D603D230AF090995E9D21F /* TurnSegmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD1501F5575704F8893E9977 /* TurnSegmentTests.swift */; };
 		758CAFC9CD3E866CBCA09A62 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F329C843BC24BC69B9C8B22 /* ChatView.swift */; };
 		76CA8D0A1B861F76C94DF847 /* TenantPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925B164E60F06AE5F04C34A1 /* TenantPaths.swift */; };
 		7A7387ABAE107E59675E80D4 /* HealthTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EF735A49053191B3A4DF699 /* HealthTools.swift */; };
@@ -274,6 +275,7 @@
 		C41098C7D0E6E19FAF5F20D0 /* SessionThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionThreadTests.swift; sourceTree = "<group>"; };
 		CA5E7B7233CD964DB6724941 /* ChatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSession.swift; sourceTree = "<group>"; };
 		CC1F4F24B552F837D120F815 /* MedicationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationDetailView.swift; sourceTree = "<group>"; };
+		CD1501F5575704F8893E9977 /* TurnSegmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnSegmentTests.swift; sourceTree = "<group>"; };
 		CF15991886D8C3841B441A70 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		CF64174477539B2673F7A5EB /* AskUserQuestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskUserQuestion.swift; sourceTree = "<group>"; };
 		D17B8127CD6759E1862FDE93 /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
@@ -536,6 +538,7 @@
 				10C6B567E291F33D2C51C2EA /* SessionTimeSectionTests.swift */,
 				B99812DEF2C1F215D896C7D9 /* SpokenBriefTests.swift */,
 				660FC621DEEA62F201ED71E4 /* TenantTests.swift */,
+				CD1501F5575704F8893E9977 /* TurnSegmentTests.swift */,
 				4D4335A797FF2231889742F5 /* VisionTests.swift */,
 				640A4C41211A4F1A1BBBDFA9 /* VoiceTests.swift */,
 				C0594F15A27CD7BCF8282B3C /* WebSearchTests.swift */,
@@ -768,6 +771,7 @@
 				39B306E87C1CB0A83ED5C972 /* SessionTimeSectionTests.swift in Sources */,
 				6800E031AF6CAA3A5A50200C /* SpokenBriefTests.swift in Sources */,
 				233A3A3C3EE4B6C9ABB12E04 /* TenantTests.swift in Sources */,
+				73D603D230AF090995E9D21F /* TurnSegmentTests.swift in Sources */,
 				FA7086F07984363EBFD8E125 /* VisionTests.swift in Sources */,
 				D6B50260FC11C5FDF6B7E901 /* VoiceTests.swift in Sources */,
 				18A0E12CB717535FE2A93516 /* WebSearchTests.swift in Sources */,
