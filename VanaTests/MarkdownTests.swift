@@ -112,3 +112,85 @@ struct MarkdownTests {
         #expect(rendered.contains("\n"))
     }
 }
+
+/// 中文标点后面紧接着汉字时的粗体。
+///
+/// 盯的还是**屏幕上出现原始符号**那一类失灵:「**小标题：**正文」是模型写中文时最爱用的
+/// 格式之一,而 CommonMark 的 flanking 规则认不出它的收尾——星号原样显示给用户看。
+@Suite("中文粗体")
+struct CJKEmphasisTests {
+
+    private static func bold(in text: String) -> [String] {
+        let attributed = MarkdownInline.attributed(text)
+        return attributed.runs.compactMap { run in
+            guard run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true else { return nil }
+            return String(attributed[run.range].characters)
+        }
+    }
+
+    private static func plain(_ text: String) -> String {
+        String(MarkdownInline.attributed(text).characters)
+    }
+
+    /// 复现:闭合的 `**` 前面是「：」、后面是汉字,强调不闭合,两对星号原样显示。
+    @Test("中文标点后接汉字的粗体要渲染出来")
+    func rendersBoldBeforeCJK() {
+        let text = "**睡眠结果先说重点：**最近 7 天只有 3 晚有记录"
+        #expect(Self.plain(text) == "睡眠结果先说重点：最近 7 天只有 3 晚有记录")
+        #expect(Self.bold(in: text) == ["睡眠结果先说重点"])
+    }
+
+    /// 冒号挪到粗体外面,**一个字符都不增不减、顺序也不变**——只是它不再是粗体。
+    @Test("挪的是位置，不是字")
+    func movesPunctuationWithoutChangingCharacters() {
+        #expect(CJKEmphasis.rebalanced("**重点：**最近") == "**重点**：最近")
+        #expect(CJKEmphasis.rebalanced("第一条**注意：**别空腹") == "第一条**注意**：别空腹")
+        // 开头那一侧同理:`**「睡眠」**很差` 里开合两边都不合规。
+        #expect(CJKEmphasis.rebalanced("最近**「睡眠」**很差") == "最近「**睡眠**」很差")
+    }
+
+    /// 系统本来就认得的不要动——不然「**睡眠**：」也会被翻一遍,而它本来就是对的。
+    @Test("系统认得的原样留着")
+    func leavesValidEmphasisAlone() {
+        #expect(CJKEmphasis.rebalanced("**睡眠**：最近 7 天") == "**睡眠**：最近 7 天")
+        #expect(CJKEmphasis.rebalanced("**bold** text") == "**bold** text")
+        #expect(Self.bold(in: "**睡眠**：最近 7 天") == ["睡眠"])
+    }
+
+    /// 落单的星号从头到尾不在这套东西的视野里:只认成对的 `**`。
+    @Test("普通星号一个都不碰")
+    func ignoresLoneAsterisks() {
+        #expect(CJKEmphasis.rebalanced("1*2*3 是这么算的") == "1*2*3 是这么算的")
+        #expect(CJKEmphasis.rebalanced("2**3 次方") == "2**3 次方")
+        #expect(CJKEmphasis.rebalanced("***又粗又斜：***正文") == "***又粗又斜：***正文")
+    }
+
+    /// 代码里的星号就是星号。
+    @Test("代码块和行内代码不碰")
+    func leavesCodeAlone() {
+        let fenced = """
+            ```
+            **重点：**这是代码
+            ```
+            """
+        #expect(CJKEmphasis.rebalanced(fenced) == fenced)
+        #expect(CJKEmphasis.rebalanced("行内 `**重点：**` 这样") == "行内 `**重点：**` 这样")
+        // 反引号没有收尾的时候它只是个反引号,外面那对粗体照修。
+        #expect(CJKEmphasis.rebalanced("`未闭合 **重点：**正文") == "`未闭合 **重点**：正文")
+    }
+
+    /// 挪完还是不合规就整个放弃:宁可留着那对星号,也不端出一段被改坏的话。
+    @Test("挪不动就原样留着")
+    func givesUpWhenRebalancingWouldNotHelp() {
+        // 里面全是标点,挪完就剩一对空定界符。
+        #expect(CJKEmphasis.rebalanced("**……**正文") == "**……**正文")
+        // markdown 自己要用的标点不挪:挪走 `]` 会拆掉一个链接。
+        #expect(CJKEmphasis.rebalanced("**[标题]**正文") == "**[标题]**正文")
+    }
+
+    /// 表格的格子和标题走的是同一条行内解析,这条盯着它们一起受益。
+    @Test("表格格子里的粗体也认")
+    func appliesInsideTableCells() {
+        #expect(Self.plain("**深睡：**77 分钟") == "深睡：77 分钟")
+    }
+}
