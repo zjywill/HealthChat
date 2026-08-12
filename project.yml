@@ -1,6 +1,6 @@
 name: Vana
 options:
-  bundleIdPrefix: com.junyizhang
+  bundleIdPrefix: com.pinapia
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -14,9 +14,14 @@ settings:
     DEVELOPMENT_LANGUAGE: zh-Hans
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_STYLE: Automatic
-    # 真机调试签名用的团队。只是开发签名——没有在 App Store Connect 建过 app 记录,
-    # 所以 bundle id 还没被这个团队占住,以后换个人账号不受影响。
-    DEVELOPMENT_TEAM: TBZQNF7555
+    # Vana 自己的团队,TestFlight 和上架都走它。
+    #
+    # 2026-08-12 之前这里是 `TBZQNF7555`(Ardent Core Limited),那是另一个项目的组织账号,
+    # 当时只用来做真机调试签名。**换团队会连着换掉 bundle id 能不能用**:第一次归档时
+    # Xcode 顺手把当时那串 `com.pinapia.vana` 注册到了老团队名下,ASC 里也建了记录,
+    # 于是它在新团队这边就再也注册不了了(全局唯一,而带记录的 App ID 删不掉)。
+    # 下面那串带 `.ios` 后缀就是这么来的,详见 CLAUDE.md 开头。
+    DEVELOPMENT_TEAM: NGM7GX8DGB
 packages:
   AIKitSwift:
     path: ../aikitswift
@@ -72,7 +77,7 @@ targets:
           - health-records
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.junyizhang.HealthChat
+        PRODUCT_BUNDLE_IDENTIFIER: com.pinapia.vana.ios
         PRODUCT_NAME: Vana
         # `GENERATE_INFOPLIST_FILE` 开着时,版本号这两项由**构建设置**说了算——写在
         # `Vana/Info.plist` 里的那两行会被生成器直接盖掉(试过:产物里这两个键
@@ -83,10 +88,19 @@ targets:
         # Icon Composer 的 Vana/AppIcon.icon,名字要和这里对上。
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
-        # 工程、target、scheme、PRODUCT_NAME 和显示名都叫 Vana。
-        # **唯独上面那行 bundle id 仍然是 com.junyizhang.HealthChat**,和
-        # `KeychainStore.service` 那串一样——这两串是已装设备上 API key 和已授权健康数据的
-        # 钥匙,改掉等于把它们全部作废。2026-08-11 那次改名就是特意把它们留下来的。
+        # 工程、target、scheme、PRODUCT_NAME、显示名和 bundle id 现在全都叫 Vana。
+        # Android 那份是 `com.pinapia.vana`,这边多一个 `.ios` 后缀——不是风格选择,
+        # 是没得选,原因见上面 `DEVELOPMENT_TEAM` 那段和 CLAUDE.md 开头。
+        #
+        # 2026-08-11 那次改名特意**没有**动 bundle id 和 `KeychainStore.service`:那时候改
+        # 等于把已装设备上存的 API key 和已授权的健康数据一次性作废。2026-08-12 发第一个
+        # TestFlight build 之前改掉了,理由是那条前提当时就已经不成立——
+        # 唯一装着这个 app 的是开发机,而换到新的付费团队之后 Keychain 的 access group
+        # (`TeamID.BundleID`)本来就变了,那把 key 无论如何都读不回来。
+        #
+        # **首次上传之后这一串就永久锁死了**(App Store 上的 app 改不了 bundle id),
+        # 所以那是最后一次能免费改的时刻。往后不要再动它,理由回到那条原来的:
+        # 它是已装设备上 API key 和已授权健康数据的钥匙。
         INFOPLIST_KEY_CFBundleDisplayName: Vana
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         # 这两句是用户在系统授权面板上读到的字,**必须和 app 实际做的事逐字对上**。
@@ -105,11 +119,24 @@ targets:
         # 不经过 `SFSpeechRecognizer`,也就没有那条语音识别的 TCC 授权。声明一个从不申请的
         # 权限用途,审核那边是白送的一个问号(同上面写权限只放在 Debug 配置里)。
         INFOPLIST_KEY_NSMicrophoneUsageDescription: 用于「按住说话」把你说的话识别成文字填进输入框。识别在本机完成，录音不会保存，也不会离开这台设备；只有识别出的文字在你按发送后才会发给你配置的模型。
+        # 写权限的用途字符串。**这一项必须在所有配置里都有,不要再改回 Debug-only。**
+        #
+        # 这个 app 一次都不请求写:唯一写健康数据的 `DebugSeeder` 整个文件是 `#if DEBUG`,
+        # 正式构建里只剩 `requestAuthorization(toShare: [], read: ...)`。按「声明一个从不
+        # 申请的权限是白送审核一个问号」那条,它本来只放在下面的 Debug 配置里。
+        #
+        # 但**上传时的静态检查认的是符号,不看你传了个空集合**:只要二进制里引用了
+        # `requestAuthorization(toShare:read:)`,ASC 就拒收,报
+        # "Missing purpose string in Info.plist ... should contain a
+        # NSHealthUpdateUsageDescription key"(2026-08-12 第一次传 build 时撞上)。
+        # HealthKit 没有只读的授权 API,所以这个符号躲不掉,只能声明。
+        #
+        # 于是这句话的读者不是用户(正式版永远不会弹这张面板),是审核员——所以它要写的是
+        # 「不写」这件事本身。Debug 那份在下面覆盖掉,那边是真的会写。
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: Vana 只读取健康数据，不会写入或修改任何健康记录。这一项是系统在检测到 HealthKit 授权接口时要求声明的，Vana 不会请求写入权限。
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_STRICT_CONCURRENCY: targeted
       configs:
-        # 写权限只有 `DebugSeeder` 用得着,而它整个文件是 `#if DEBUG`。正式构建里
-        # `requestAuthorization(toShare: [], ...)` 一次都不请求写——声明一个从不申请的
-        # 权限用途,审核那边是白送的一个问号。
+        # 开发版本里 `DebugSeeder` 真的会写模拟数据,所以这一句要说实话,盖掉上面那份。
         Debug:
           INFOPLIST_KEY_NSHealthUpdateUsageDescription: 仅在开发版本中写入模拟健康数据，用于验证查询和分析结果。

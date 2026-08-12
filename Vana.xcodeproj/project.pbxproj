@@ -694,11 +694,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					6FDAC064D3618A3C0D7671A7 = {
-						DevelopmentTeam = TBZQNF7555;
+						DevelopmentTeam = NGM7GX8DGB;
 						ProvisioningStyle = Automatic;
 					};
 					D3651E4931C6533973704B0F = {
-						DevelopmentTeam = TBZQNF7555;
+						DevelopmentTeam = NGM7GX8DGB;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -922,7 +922,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.HealthChat;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pinapia.vana.ios;
 				PRODUCT_NAME = Vana;
 				SDKROOT = iphoneos;
 				SWIFT_STRICT_CONCURRENCY = targeted;
@@ -967,7 +967,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_LANGUAGE = "zh-Hans";
-				DEVELOPMENT_TEAM = TBZQNF7555;
+				DEVELOPMENT_TEAM = NGM7GX8DGB;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -999,7 +999,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.VanaTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pinapia.VanaTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vana.app/Vana";
@@ -1016,7 +1016,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.VanaTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pinapia.VanaTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vana.app/Vana";
@@ -1060,7 +1060,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_LANGUAGE = "zh-Hans";
-				DEVELOPMENT_TEAM = TBZQNF7555;
+				DEVELOPMENT_TEAM = NGM7GX8DGB;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1102,6 +1102,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄化验单、药瓶或说明书；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
 				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "用于在对话中读取你已连接到「健康」的化验和体检记录。只在你提问时读取，相关内容会发送给你在设置里配置的云端模型来分析；Vana 不会修改这些记录，也不会把它们用于广告或数据挖掘。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Vana 只读取健康数据，不会写入或修改任何健康记录。这一项是系统在检测到 HealthKit 授权接口时要求声明的，Vana 不会请求写入权限。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于「按住说话」把你说的话识别成文字填进输入框。识别在本机完成，录音不会保存，也不会离开这台设备；只有识别出的文字在你按发送后才会发给你配置的模型。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。";
@@ -1111,7 +1112,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.junyizhang.HealthChat;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pinapia.vana.ios;
 				PRODUCT_NAME = Vana;
 				SDKROOT = iphoneos;
 				SWIFT_STRICT_CONCURRENCY = targeted;

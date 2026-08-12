@@ -7,7 +7,7 @@ enum KeychainStore {
     /// 换掉其中一把不该动到另一把。
     static let searchAPIKeyAccount = "serper-api-key"
 
-    private static let service = "com.junyizhang.HealthChat"
+    private static let service = "com.pinapia.vana.ios"
 
     static func get(account: String) throws -> String? {
         var query = baseQuery(account: account)
