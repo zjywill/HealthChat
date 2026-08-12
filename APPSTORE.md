@@ -4,6 +4,148 @@ app 里的合规部分已经做完（见 CLAUDE.md「架构:合规」）。这�
 Connect 里要填的东西。填错的代价和代码里写错一样——审核看到的是这两边**合起来**的样子，对不上
 就是一次被拒。
 
+下面「发一个 TestFlight build」是把 build 送上去的流程，其余各节是 ASC 里要填的内容。
+**内部测试用不到审核那几节**（备注、年龄分级、隐私标签），但发给别人之前每一节都要填完。
+
+## 发一个 TestFlight build
+
+### 0. 本机先过一遍
+
+```bash
+xcodegen && xcodebuild -project Vana.xcodeproj -scheme Vana \
+  -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+不过就别往下走——见下面「提交前在本机确认」。
+
+### 1. 团队 ID 要对上
+
+`project.yml` 里那行是 `DEVELOPMENT_TEAM: NGM7GX8DGB`。Xcode > Settings > Accounts 里登录
+zjywill@gmail.com，确认这个团队在列表里，而且你的角色是 Account Holder / Admin / App
+Manager——**Developer 角色建不了 app 记录**，而它报的错（`DistributionAppRecordProviderError`）
+看不出是权限问题。
+
+Team ID 在 developer.apple.com > Membership 那一页；ASC 里没有这一项（「用户和访问 > 集成」
+里那个是 Issuer ID，不是一回事）。本机也读得出来：
+
+```bash
+for f in ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/*.mobileprovision; do
+  security cms -D -i "$f" | plutil -p - | grep -E 'TeamName|application-identifier' | head -2; echo ---
+done
+```
+
+**必须是已付费的 Apple Developer Program 团队。** 免费的个人团队能真机调试，但传不了
+TestFlight，而它在 Xcode 里长得和付费团队一模一样（名字后面写着 Personal Team）。
+
+**换团队之前先想清楚 bundle id。** 归档时 Xcode 会顺手把 bundle id 注册成当前团队名下的
+App ID，而 **bundle id 在 Apple 那边全局唯一**：一旦 ASC 里为它建了记录，那个 App ID 就删不掉
+（`appears to be in use by the App Store`），别的团队再也注册不了同一串，而已删除 app 的
+bundle id Apple 又明写着不能重用。2026-08-12 就是这么把 `com.pinapia.vana` 丢在
+Ardent Core Limited 名下的，现在这串 `.ios` 后缀是那次踩出来的。**先定团队，再归档。**
+
+### 2. ASC 里建 app 记录
+
+上传时 ASC 要先有一条对得上的记录，否则 Distribute 那步报
+`DistributionAppRecordProviderError`（Xcode 找不到对得上的记录，就是这一句没头没尾的话）。
+
+1. developer.apple.com > Identifiers：确认 `com.pinapia.vana.ios` 在 **NGM7GX8DGB** 名下。
+   归档过一次的话 Xcode 已经自动注册好了，**勾上 HealthKit**（entitlement 里那条
+   `health-records` 是它的子项）。
+2. appstoreconnect.com > Apps > 新建：平台 iOS、主要语言简体中文、bundle id 选上面那个、
+   SKU 随便一个唯一串。
+3. 名称填 **Vana**，和主屏显示的名字一致。见下面「名称这一栏」。
+4. 新账号第一次用的话，先看 ASC > 业务里有没有待签的协议。没签完同样是那个错。
+
+#### 名称这一栏
+
+App Store 名称是 **Vana**，`INFOPLIST_KEY_CFBundleDisplayName` 也是 **Vana**。现在两边一致，
+但**它们本来就不必一致**——记住这一条，因为下次重名时它是最省事的出路。
+
+App Store 名称**全球唯一**，主屏那个名字不要求唯一。2026-08-12 第一次建记录时报了
+`The App Name you entered is already being used`——占着「Vana」的**正是自己**：更早在
+Ardent Core Limited 名下建的那条记录（就是把 bundle id `com.pinapia.vana` 卡死的同一条）
+用了这个名字。到那条记录的「App 信息」里改个名（从没提交过的 app 名称随便改），
+「Vana」就放出来了。
+
+所以这两件事的严重程度差很远：**名字是拿得回来的，bundle id 不是。**
+`com.pinapia.vana` 永久留在老团队那边，而「Vana」这个名字收回来了。
+
+再往下的两条：
+
+- **名称和 bundle id 不是一类东西**：前者上架前随便改，上架后跟着新版本提交也能改；后者首次
+  上传之后永久锁死。所以别为了名称这一栏拖住 build——真被别人占了，先加个后缀把 build 传上去。
+- 改名称时只有一条硬约束：**不能有医疗功效的暗示**（「诊断」「筛查」「检测」都不行），而且要
+  和 app 实际做的事对得上，否则是 Guideline 2.3。副标题和关键词同理。
+
+### 3. 归档
+
+第一次走 Xcode GUI 最省事（Product > Archive）：自动签名会自己去申请 Apple Distribution 证书
+和 profile，本机现在**只有开发证书**，一张分发证书都没有。
+
+命令行等价（`-allowProvisioningUpdates` 是让它去申请那张证书，少了会直接失败）：
+
+```bash
+xcodegen && xcodebuild -project Vana.xcodeproj -scheme Vana -configuration Release \
+  -destination 'generic/platform=iOS' -archivePath build/Vana.xcarchive \
+  -allowProvisioningUpdates archive
+```
+
+### 4. 上传
+
+Xcode > Window > Organizer > 选那个 archive > Distribute App > **TestFlight Internal Testing
+Only**（只自己测就够了；要发外部测试或上架就选 App Store Connect）。
+
+出口合规那一问不会再弹——`ITSAppUsesNonExemptEncryption = false` 已经在 Info.plist 里。
+
+### 5. 装到手机上
+
+ASC > TestFlight > 内部测试：把自己（zjywill@gmail.com，Account Holder）加进一个内部测试组。
+**内部测试不走 Beta App Review**，build 处理完（几分钟到半小时）就能装。手机上装 TestFlight
+app、用同一个 Apple ID 登录。
+
+**要在真机上测。** 模拟器里没有 Apple 健康数据，这个 app 的主线在模拟器上跑不起来。
+
+### 6. 下一次上传
+
+`CURRENT_PROJECT_VERSION`（`project.yml`）**每次 +1**，改完 `xcodegen`。同一个
+`MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` 的 build，ASC 直接拒收。
+`MARKETING_VERSION` 只在对外版本真的变了的时候动。
+
+TestFlight 的 build **90 天后过期**，到期就得重传一个。
+
+## 公开测试（外部测试 + 公开链接）
+
+内部测试是给自己的：**不过审、几分钟就能装、上限 100 人**。给外人用要换一条路——外部测试组
+加公开链接，任何人点开链接就能装，**上限 10000 人，不用收 UDID**。
+
+代价是**要过 Beta App Review**：第一个 build 约 1–2 天，之后的 build 一般自动放行，除非改动
+很大。所以「内部测试用不到的那几节」（下面的年龄分级、隐私营养标签、审核备注）到这一步全部
+到期，一节都跳不过去。
+
+### 步骤
+
+1. ASC > TestFlight > **外部测试** > 新建群组
+2. 把 build 分配给这个组
+3. 组设置里**启用公开链接**，设人数上限
+4. 填「测试信息」，提交审核
+
+### 提交前必须填完的
+
+- **审核备注**（见下面那一节）——**这一条最要紧**。必须给一把能用的 API key，没有它审核员打开
+  只看到「还没配置云端模型」，核心功能一步都跑不了，这是 2.1 拒绝里最常见的一种。
+- **隐私政策 URL**——先把 `Vana/Legal/PrivacyPolicy.html` 挂到静态站点（GitHub Pages 最省事）。
+  必须和 app 包里那份**逐字相同**，审核核对的正是这个。
+- **年龄分级问卷**、**隐私营养标签**——各见下面那一节。
+- Beta App Description、反馈邮箱、联系人信息。
+
+### 一件先想清楚的事
+
+**这个 app 要用户自己填 API key 才能回答问题。** 公开链接发出去，多数人装上、打开、看到
+「还没配置云端模型」，然后就走了——公开测试真正测到的是那批本来就有 key 的人。想要普通用户的
+反馈，得先想清楚首次进入那一屏怎么办，否则收回来的不是产品反馈，是流失。
+
+build **90 天过期**，公开链接上的人到期就装不了，得传新的。
+
 ## 提交前在本机确认
 
 ```bash
@@ -15,14 +157,20 @@ xcodegen && xcodebuild -project Vana.xcodeproj -scheme Vana \
 「数据不离开设备」、版本号两项都在、出口合规键在、隐私说明打进了包并且和代码里的备份行为对得上、
 急症规则排在系统提示第一条。**这一套过不了就别提交**，它挡住的每一条都是审核会看到的。
 
-Release 产物再手工看一眼（Debug 里多一个写权限的用途字符串，那是 `DebugSeeder` 用的）：
+Release 产物再手工看一眼（写权限那句 Debug 和 Release 是两份不同的话，见下）：
 
 ```bash
 plutil -p "$(xcodebuild -project Vana.xcodeproj -scheme Vana -configuration Release -destination 'generic/platform=iOS' -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR =/{d=$3} / FULL_PRODUCT_NAME =/{n=$3} END{print d"/"n}')/Info.plist"
 ```
 
 要看到：`CFBundleShortVersionString`、`CFBundleVersion`、`ITSAppUsesNonExemptEncryption = false`、
-三条健康/位置/相机用途字符串，以及**没有** `NSHealthUpdateUsageDescription`。
+三条健康/位置/相机用途字符串，以及 **`NSHealthUpdateUsageDescription` 存在、而且是「只读、
+不写」那一句**（不是 Debug 里「写入模拟健康数据」那句）。
+
+这一项**少了就传不上去**：上传时的静态检查只看二进制里有没有引用
+`requestAuthorization(toShare:read:)`，不管你传的是不是空集合，少了就报
+`Missing purpose string in Info.plist`。HealthKit 没有只读的授权 API，所以躲不掉——
+别照着「声明一个从不申请的权限是白送审核一个问号」把它删回 Debug-only，那条在这里让位。
 
 ## 隐私政策 URL
 

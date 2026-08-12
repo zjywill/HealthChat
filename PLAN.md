@@ -31,10 +31,10 @@ APP=$(xcodebuild -project Vana.xcodeproj -scheme Vana \
   -destination 'platform=iOS Simulator,name=iPhone 17' -showBuildSettings 2>/dev/null \
   | awk '/ BUILT_PRODUCTS_DIR =/{d=$3} / FULL_PRODUCT_NAME =/{n=$3} END{print d"/"n}')
 xcrun simctl install booted "$APP"
-xcrun simctl launch booted com.junyizhang.HealthChat
+xcrun simctl launch booted com.pinapia.vana.ios
 ```
 
-**已配好、不要重复配**:HealthKit read entitlement、`NSHealthShareUsageDescription`、bundle id `com.junyizhang.HealthChat`。
+**已配好、不要重复配**:HealthKit read entitlement、`NSHealthShareUsageDescription`、bundle id `com.pinapia.vana.ios`。
 
 ## 产品形态
 
@@ -96,7 +96,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 - 文件:`ChatView.swift`、`ChatViewModel.swift`
 - `ChatView` 出现时(`.task`)调 `HealthStore.shared.requestAuthorization()`,失败静默(console 打印即可)。
 - `messages` 为空时聊天区显示欢迎卡:app 是干嘛的、会读哪些数据、给 3 个示例问题(点击即填入输入框发送)。
-- 验收:删掉 app 重装(`xcrun simctl uninstall booted com.junyizhang.HealthChat`),首启弹 HealthKit 授权面板,全选允许;空态卡片显示,点示例问题能发出去(Echo 回显)。
+- 验收:删掉 app 重装(`xcrun simctl uninstall booted com.pinapia.vana.ios`),首启弹 HealthKit 授权面板,全选允许;空态卡片显示,点示例问题能发出去(Echo 回显)。
 
 ### M2 查询层(先做种子数据,后面每个查询都能立即验证)
 
@@ -163,7 +163,7 @@ HealthStore                     HealthKit 只读聚合查询(T1–T2)
 ### M4 云端引擎(AIKit)+ 设置页
 
 **T4.1 KeychainStore**
-- 新建 `Vana/Settings/KeychainStore.swift`:`kSecClassGenericPassword`,service `com.junyizhang.HealthChat`,`get/set/delete(account:)`,set 用先删后加实现 upsert。只存 API key;provider id / model 名不是秘密,走 `@AppStorage`。
+- 新建 `Vana/Settings/KeychainStore.swift`:`kSecClassGenericPassword`,service `com.pinapia.vana.ios`,`get/set/delete(account:)`,set 用先删后加实现 upsert。只存 API key;provider id / model 名不是秘密,走 `@AppStorage`。
 - 验收:编译过;T4.4 一起手测。
 
 **T4.2 AIKitEngine:无工具流式跑通**

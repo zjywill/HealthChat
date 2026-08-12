@@ -22,9 +22,8 @@
 没有中间服务器,没有注册,没有订阅。
 
 > 仓库、工程和 app 显示名都叫 **Vana**(仓库 `Vana-iOS`,Android 版在
-> [Vana-Android](https://github.com/zjywill/Vana-Android))。**bundle id 仍然是
-> `com.junyizhang.HealthChat`**——那是这个项目早先的名字,改掉它会让已装设备上存的 API key
-> 和已授权的健康数据全部对不上。
+> [Vana-Android](https://github.com/zjywill/Vana-Android)),bundle id 是
+> `com.pinapia.vana.ios`(Android 那边是 `com.pinapia.vana`)。
 
 ## 大概是这样用的
 

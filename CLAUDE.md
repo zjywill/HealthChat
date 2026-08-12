@@ -3,11 +3,23 @@
 iOS 26 SwiftUI 聊天 app:agent 通过工具调用读 Apple Health,对话式分析。整体计划见 PLAN.md(里程碑推进,一次一个可见改动)。
 
 用户看到的名字是 **Vana**(`CFBundleDisplayName`、界面文案、图标),仓库、工程、target、scheme
-和源码目录也都叫 Vana(仓库是 `Vana-iOS`,和 Android 那份 `Vana-Android` 并排)。
+和源码目录也都叫 Vana(仓库是 `Vana-iOS`,和 Android 那份 `Vana-Android` 并排)。bundle id 和
+`KeychainStore` 里那个 Keychain service 都是 `com.pinapia.vana.ios`——Android 那边是
+`com.pinapia.vana`,iOS 这一侧多一个 `.ios` 后缀,原因见下面那段。
 
-**唯独两串没跟着改,而且不要改**:bundle id `com.junyizhang.HealthChat` 和 `KeychainStore` 里那个
-同名的 Keychain service。它们是已装设备上 API key 和已授权健康数据的钥匙——换掉就是把用户存的 key
-和给过的健康授权一次性作废,而屏幕上不会有任何一句话解释为什么。名字上的整齐不值这个价。
+**这两串从现在起不要再改。** 它们是已装设备上 API key 和已授权健康数据的钥匙——换掉就是把
+用户存的 key 和给过的健康授权一次性作废,而屏幕上不会有任何一句话解释为什么。而且**首次上传
+到 App Store Connect 之后 bundle id 就永久锁死了**,想改也改不了。
+
+(2026-08-11 那次 HealthChat → Vana 的改名特意把这两串留在 `com.junyizhang.HealthChat`,
+理由就是上面那条。2026-08-12 发第一个 TestFlight build 之前才改过来:那时候唯一装着这个 app
+的是开发机,而换到新的付费团队之后 Keychain 的 access group 是 `TeamID.BundleID`,那把 key
+无论改不改都读不回来——代价已经在付了,而那是最后一次能免费改的时刻。
+后缀是那次改动踩出来的:先用了和 Android 一样的 `com.pinapia.vana`,归档时 Xcode 顺手把这个
+App ID 注册到了当时那个团队(`TBZQNF7555`,另一个项目的组织账号)名下,ASC 里也建了记录。
+**bundle id 在 Apple 那边全局唯一**,记录一旦存在 App ID 就删不掉——报的是
+"appears to be in use by the App Store"——而已删除 app 的 bundle id Apple 又明写着不能重用。
+所以换团队时连 bundle id 一起换了,不去赌 Apple 释不释放。)
 
 Android 版在 `../Vana-Android`(Compose),包名 `com.pinapia.vana`。**两边共用这一份设计决策文档**:
 那边的 `CLAUDE.md` 只记 Android 这一侧真正不一样的地方(Health Connect、minSdk、平台替换表),
@@ -38,7 +50,7 @@ xcodebuild -project Vana.xcodeproj -scheme Vana \
 
 ## 运行
 
-模拟器安装运行用 iOS Simulator MCP 的 build/launch(bundle id `com.junyizhang.HealthChat`),先 attach 让用户看到面板。
+模拟器安装运行用 iOS Simulator MCP 的 build/launch(bundle id `com.pinapia.vana.ios`),先 attach 让用户看到面板。
 
 ## 架构:通用 agent core
 
@@ -1364,8 +1376,13 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
   `GENERATE_INFOPLIST_FILE` 开着时,写在基础 plist 里的那两行会被生成器盖掉,而没有
   `CFBundleShortVersionString` 的 build 传不上 ASC——本地跑起来一切正常,「关于」那行版本显示成一个
   破折号是唯一的迹象。
-- 写权限的用途字符串**只在 Debug 配置里**:正式构建 `requestAuthorization(toShare: [])` 一次都不请求
-  写,声明一个从不申请的权限是白送审核一个问号。
+- **`NSHealthUpdateUsageDescription` 必须在所有配置里都有**,哪怕这个 app 一次都不请求写
+  (唯一写健康数据的 `DebugSeeder` 整个是 `#if DEBUG`,正式构建里只剩
+  `requestAuthorization(toShare: [], read:)`)。上传时的静态检查认的是**符号**,不看你传了个
+  空集合——少了这一项 ASC 直接拒收(`Missing purpose string in Info.plist`),而 HealthKit 没有
+  只读的授权 API,躲不掉。这一条和「声明一个从不申请的权限是白送审核一个问号」是冲突的,
+  冲突里传不上去的那一边输。所以正式构建那句话的读者是审核员不是用户(那张面板永远不会弹),
+  它要说的就是「只读、不写」这件事;Debug 那份单独覆盖,那边是真的会写。
 
 ## 依赖
 
