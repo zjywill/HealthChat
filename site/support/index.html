@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<!--
+  Vana 的支持页,填进 App Store Connect 的 Support URL。**这一栏是必填的,审核会真的点进来。**
+
+  所以这一页不能只有一个邮箱:它要能自己回答用户最可能卡住的那几件事。排第一的是
+  「打开之后不能用」——这个 app 要用户自己填 API key,不解释清楚,那会变成一星差评,
+  而那种差评收不回来。第二是「换手机之后数据没了」,那是「健康数据不进备份」这条设计的
+  代价,隐私说明里写了,这里也要写,否则用户会当成 bug 报过来。
+
+  样式抄的是 PrivacyPolicy.html,三个页面要看起来是同一个站。不引用任何外部资源。
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Vana 支持</title>
+<meta name="description" content="Vana 的常见问题与联系方式：如何配置模型 API key、健康数据授权、照片与化验单识别、换机数据迁移。">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1c1c1e;
+    --dim: #6c6c70;
+    --rule: #e5e5ea;
+    --card: #f2f2f7;
+    --accent: #d81b60;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --fg: #f2f2f7;
+      --dim: #98989f;
+      --rule: #2c2c2e;
+      --card: #1c1c1e;
+      --accent: #ff6090;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 20px 64px;
+    background: var(--bg);
+    color: var(--fg);
+    /* 字体不要写进 `font:` 简写里——见 PrivacyPolicy.html 里那段注释,踩过。 */
+    font-size: 17px;
+    line-height: 1.65;
+    font-family: "PingFang SC", "Heiti SC", -apple-system, system-ui, "Helvetica Neue", sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overflow-wrap: break-word;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; line-height: 1.3; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 1.16rem;
+    margin: 2.2rem 0 0.6rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--rule);
+    letter-spacing: -0.01em;
+  }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  h3 { font-size: 1rem; margin: 1.4rem 0 0.3rem; }
+  p { margin: 0.7rem 0; }
+  ul, ol { margin: 0.7rem 0; padding-left: 1.3rem; }
+  li { margin: 0.4rem 0; }
+  .meta { color: var(--dim); font-size: 0.92rem; margin-bottom: 1.6rem; }
+  .lede {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 1.2rem 0 0.4rem;
+  }
+  .lede p:first-child { margin-top: 0; }
+  .lede p:last-child { margin-bottom: 0; }
+  strong { font-weight: 600; }
+  em { font-style: normal; color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); }
+  code {
+    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--card);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+  footer {
+    margin-top: 2.8rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    color: var(--dim);
+    font-size: 0.92rem;
+  }
+  footer a { margin-right: 1.1rem; display: inline-block; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Vana 支持</h1>
+<p class="meta">有问题直接写信：<a href="mailto:zjywill@gmail.com">zjywill@gmail.com</a>
+　·　中文或英文都可以</p>
+
+<div class="lede">
+  <p><strong>装上之后第一件事：去「设置 › 云端模型」填一把 API key。</strong></p>
+  <p>Vana 没有服务器，回答问题要靠你自己选的那家模型服务。没填 key 的话，它读得到你的健康
+  数据、首屏那段状况也照常显示，但问不出任何问题。</p>
+</div>
+
+<h2>开始使用</h2>
+
+<h3>为什么要我自己填 API key？</h3>
+<p>因为 Vana 不代收费用，也不架服务器。你直接和你选的那家模型服务发生关系，账单是你和它之间的事，
+中间没有我们。代价是多一步配置；换来的是我们看不到你的任何数据——它不经过我们手上的任何一台机器。</p>
+
+<h3>怎么填</h3>
+<ol>
+  <li>去你选的服务商那里注册并生成一把 API key（Anthropic、OpenAI、DeepSeek 等都支持）</li>
+  <li>打开 Vana ›「设置」›「云端模型」</li>
+  <li>把 key 粘进「API key」，再选 Provider 和模型</li>
+</ol>
+<p>key 只保存在本机钥匙串，不进对话记录、不进备份、也不会发给除该服务商以外的任何一方。</p>
+
+<h3>选哪个模型？</h3>
+<p>模型下面那几颗小徽章会说清楚它<strong>能不能看图</strong>、<strong>能不能思考</strong>。
+标着「不支持工具」的模型在 Vana 里基本用不了——健康数据全靠工具去读。目录里查不到的模型
+（自己手填的 ID）不标徽章，那是因为猜一个能力标出去比不标更糟。</p>
+
+<h2>健康数据</h2>
+
+<h3>它说读不到我的数据</h3>
+<p>去「健康」App ›「共享」›「App」› Vana，逐项看看开没开。新增的数据类型（血压、血氧、
+呼吸频率、体温）需要重新授权一次才能读——已经做过选择的项 iOS 不会再问。</p>
+
+<h3>为什么家庭成员那边看不到健康数据？</h3>
+<p>不是权限不够，是<strong>那不是他的数据</strong>。iOS 的「健康」App 有家人共享，但苹果没有
+把它开放给第三方 App——Vana 读到的永远是这台设备主人的健康库。所以切到家人时，健康相关的
+功能整个不出现，而不是给你一份别人的数字。</p>
+<p>家人那边能用的是另外三样：拍化验单识别、用药与补剂表、以及聊过的内容。</p>
+
+<h3>Vana 会改我的健康记录吗？</h3>
+<p>不会。对 HealthKit <strong>只读</strong>，一次都不写。</p>
+
+<h2>照片与文件</h2>
+
+<h3>拍了化验单，原图会发出去吗？</h3>
+<p>默认不会。文字识别在本机完成，发出去的只有识别出来的文字——一张化验单上有姓名、就诊号、
+医院和签名，而回答问题只需要那几行数值。</p>
+<p>只有本机一个字都认不出来的照片（一顿饭、一处皮疹这类，它们的信息本来就不是字），Vana 才会
+问你一句，你点了才发。这个默认可以在「设置 › 照片」里改成一张都不问、或者每张都发；
+无论哪一档，发送之前点开任意一张都能单独决定这一张发不发。</p>
+
+<h3>识别出来的数字不对</h3>
+<p>发送之前每一张都点得开、<strong>也改得动</strong>，改完发出去的就是你改的那一份。
+气泡里也点得开。关键数值建议核对一遍再问——识别会错行错字，这一点在 app 里也写着。</p>
+
+<h3>支持哪些文件？</h3>
+<p>照片、PDF、docx、txt、rtf。PDF 走识别（体检报告导出来的多半是扫描件），
+docx / txt / rtf 直接取文字。老的 <code>.doc</code> 不支持。</p>
+
+<h2>按住说话</h2>
+<p>识别用 iOS 的本机模型完成，录音不联网、不写入磁盘。松开只把文字填进输入框，
+<strong>不会直接发送</strong>。</p>
+<p>如果那颗麦克风按钮不出现，说明这台设备的本机语音识别不支持中文——「设置 › 语音输入」
+那一段会列出它到底认得哪几种语言。本机模型是按需下载的，第一次用可能要等它准备好。</p>
+
+<h2>换手机</h2>
+<p><strong>这些数据不会跟着走，需要在新设备上重新开始。</strong>对话记录、长期记忆、用药与补剂表、
+以及你拍的化验单照片被明确排除在 iCloud 备份和电脑备份之外——健康数据不应该离开这台设备，
+备份也不例外。</p>
+<p>这是有意的取舍，不是 bug。要保留某一份内容的话，可以在换机之前自己截图或复制出来。</p>
+
+<h2>删除数据</h2>
+<ul>
+  <li>单条对话：在会话列表里左滑删除，附带的照片会一起删</li>
+  <li>全部对话：「设置 › 清空对话」</li>
+  <li>长期记忆：「设置 › Vana 记住的事」，可以逐条删，也可以整个关掉记忆</li>
+  <li>用药与补剂：在那一页里逐条删</li>
+  <li>全部：删除 App。所有数据都在 App 沙盒里，卸载即清空，我们手上没有任何副本</li>
+</ul>
+
+<h2>它不做什么</h2>
+<p>Vana <strong>不做诊断</strong>，不能替代医生、药师或任何专业医疗建议。它给的是对你自己那些
+数值的解读和一般性的说明。遇到急症相关的描述，它会先请你就医。</p>
+
+<footer>
+  <p>写信：<a href="mailto:zjywill@gmail.com">zjywill@gmail.com</a>　·
+  一般一到两个工作日内回复。报问题时带上 iOS 版本、Vana 版本（「设置 › 关于 Vana」）
+  和你选的 provider / 模型，会快很多。</p>
+  <a href="/">关于 Vana</a>
+  <a href="/privacy/">隐私说明</a>
+</footer>
+
+</main>
+</body>
+</html>

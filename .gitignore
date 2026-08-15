@@ -12,3 +12,4 @@ DerivedData/
 .env
 .env.*
 *.xcconfig
+/.wrangler/cache/
