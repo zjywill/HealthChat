@@ -23,6 +23,11 @@ struct ChatView: View {
     @AppStorage(DataUseNotice.acceptedKey) private var hasAcceptedDataUseNotice = false
     /// 「此刻在不在屏幕上」是另一件事,置位在 `.task` 里(第一帧之后)。
     @State private var isShowingDataUseNotice = false
+    /// 按了发送但还没配 key 时,把设置页推出来。
+    ///
+    /// 用 push 不用 sheet:它和 toolbar 上那颗齿轮通向的是同一页,两条路进去的样子该一样,
+    /// 而 push 自带一颗返回按钮——sheet 里那一页没有任何一处写着怎么退出去。
+    @State private var isShowingCloudSetup = false
 
     init(openedCheckIn: Binding<CheckInLaunch?> = .constant(nil)) {
         _openedCheckIn = openedCheckIn
@@ -72,7 +77,8 @@ struct ChatView: View {
                                     tenant: model.currentTenant,
                                     selectedTopic: model.session.topic,
                                     onSelectTopic: model.selectTopic,
-                                    onSelectQuestion: model.send
+                                    onSelectQuestion: model.send,
+                                    onOpenSetup: { isShowingCloudSetup = true }
                                 )
                             }
                             .padding(.top, 24)
@@ -200,6 +206,22 @@ struct ChatView: View {
             }
             .onAppear {
                 model.refreshEngineAvailability()
+            }
+            // 他按了发送而 key 还没配:直接把设置页推出来。
+            //
+            // 只弹一次——`needsCloudSetup` 当场置回 false,否则从设置页退回来的那一帧它还是
+            // true,这一页会立刻再推自己一次,表现为返回按钮按不动。
+            .onChange(of: model.needsCloudSetup) { _, needsSetup in
+                guard needsSetup else { return }
+                model.needsCloudSetup = false
+                isComposerFocused = false
+                isShowingCloudSetup = true
+            }
+            .navigationDestination(isPresented: $isShowingCloudSetup) {
+                SettingsView(
+                    canClearConversation: !model.messages.isEmpty && !model.isReplying,
+                    onClearConversation: model.clearConversation
+                )
             }
             // 多数会话是聊完直接切走的,不在这儿抽记忆,那段对话可能几天都轮不到抽一次。
             .onChange(of: scenePhase) { _, phase in
@@ -995,9 +1017,49 @@ private struct WelcomeCard: View {
     let selectedTopic: ChatTopic?
     let onSelectTopic: (ChatTopic?) -> Void
     let onSelectQuestion: (String) -> Void
+    let onOpenSetup: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            // 没配 key 时这是这一屏最要紧的一句话,所以它排在最前面、能点、点了直接到设置页。
+            //
+            // 原来它是整张卡**最底下**那行灰色小字,排在免责声明后面:屏幕上最不可能被读到
+            // 的位置,而它说的偏偏是「这个 app 现在一个问题都答不了」。2026-08-16 那次审核
+            // 员就是从它旁边走过去、直接在输入框里打字、然后收到一个 401 的
+            // (Guideline 2.1(a));真实用户第一次打开时走的是同一条路。
+            if let setupGuidance {
+                Button(action: onOpenSetup) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "key.horizontal.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 24)
+                            .accessibilityHidden(true)
+
+                        Text(setupGuidance)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 8)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(12)
+                    .background(
+                        Color.accentColor.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("去设置里配置云端模型")
+                .accessibilityHint("填写 API key 之后才能开始提问")
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Image(systemName: tenant.isOwner ? "heart.text.square.fill" : "doc.text.viewfinder")
                     .font(.system(size: 34, weight: .semibold))
@@ -1073,13 +1135,6 @@ private struct WelcomeCard: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if let setupGuidance {
-                Label(setupGuidance, systemImage: "gearshape")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(20)
         // 圆角分三档:大容器 20、卡片里的行 12、气泡 18,chip 和控件一律胶囊。

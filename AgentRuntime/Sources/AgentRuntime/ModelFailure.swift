@@ -49,16 +49,32 @@ public struct RetryPolicy: Equatable, Sendable {
 /// 2. **provider 侧看字符串**。那段话是 API 返回的原始 payload,不本地化,而且经过各家 SDK、
 ///    网关、代理转手之后,能稳定留下来的也只有它——错误码在这条链路上活不下来。
 public enum ModelFailure {
-    /// 明确不该重试的:重试也还是这个结果,而且每试一次都在拖延用户看到真正的原因。
-    private static let permanent = [
-        // 额度、账单、订阅上限。这些是账户状态,不是拥塞。
+    /// 额度、账单、订阅上限。这些是账户状态,不是拥塞。
+    private static let quota = [
         "insufficient quota", "quota exceeded", "out of budget", "billing",
-        "usage limit", "credit balance", "payment required",
-        // 鉴权和请求本身就是错的。
+        "usage limit", "credit balance", "payment required"
+    ]
+
+    /// 鉴权:key 不对、过期、没这个模型的权限。**这一类是用户改得动的**,所以它要和额度
+    /// 分开——两句话指向的下一步动作完全不同(去换一把 key vs 去充值)。
+    private static let authentication = [
         "invalid api key", "invalid x api key", "incorrect api key", "api key not valid",
-        "unauthorized", "authentication", "permission denied", "forbidden",
+        "unauthorized", "authentication", "permission denied", "forbidden"
+    ]
+
+    /// 请求本身就是错的:模型名写错、参数不对。
+    private static let malformed = [
         "invalid request error", "model not found", "does not exist"
     ]
+
+    /// 明确不该重试的:重试也还是这个结果,而且每试一次都在拖延用户看到真正的原因。
+    private static let permanent = quota + authentication + malformed
+
+    /// 光秃秃的 HTTP 码。**只用来分类,不参与重试判定**——它们是三位数字,拿去做子串匹配
+    /// 会命中请求 id、时间戳、token 计数里任何一段("413" 里的 "13" 已经是踩过的坑)。
+    /// 误判成 permanent 的代价是本该重试的一次不重试了;而在这里误判只是话说得不够准。
+    private static let authenticationCodes = ["401", "403"]
+    private static let quotaCodes = ["402", "429 quota"]
 
     /// 拥塞、限流、网络抖动、流被提前掐断——都是再试一次就可能好的。
     private static let transient = [
@@ -92,6 +108,41 @@ public enum ModelFailure {
             .lowercased()
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
+    }
+
+    /// 这次失败该对用户说哪一类话。
+    ///
+    /// **和重试判定是两个问题,别合并。** 重试问的是「再发一次会不会好」,这里问的是
+    /// 「屏幕上该写什么、他下一步能做什么」——`.authentication` 和 `.quota` 在重试那边
+    /// 是同一类(都别重试),在用户这边却是两件完全不同的事。
+    ///
+    /// 文案不在这里。runtime 不认识界面语言,也不该认识:同一个 `.authentication` 在
+    /// 聊天气泡、设置页、Siri 那三处要说三句不一样的话(同「不要让 runtime 去比对某句中文」)。
+    public enum Kind: Equatable, Sendable {
+        /// key 不对、过期、没权限。**用户改得动**,而且改的地方就在设置页。
+        case authentication
+        /// 额度用完、欠费。key 是对的,得去 provider 那边充值。
+        case quota
+        /// 上下文塞不下。
+        case contextOverflow
+        /// 再试一次可能就好了。
+        case transient
+        /// 剩下的:说不出所以然,只能把原文给用户。
+        case other
+    }
+
+    /// 顺序和 `isRetryable` 里那条一样:溢出先判,否则「request too large」会被
+    /// `authenticationCodes` 之外的某个词抢走。
+    public static func kind(of description: String) -> Kind {
+        let text = normalized(description)
+        if overflow.contains(where: { text.contains($0) }) { return .contextOverflow }
+        if authentication.contains(where: { text.contains($0) }) { return .authentication }
+        if quota.contains(where: { text.contains($0) }) { return .quota }
+        if quotaCodes.contains(where: { text.contains($0) }) { return .quota }
+        if authenticationCodes.contains(where: { text.contains($0) }) { return .authentication }
+        if malformed.contains(where: { text.contains($0) }) { return .other }
+        if transient.contains(where: { text.contains($0) }) { return .transient }
+        return .other
     }
 
     public static func isContextOverflow(_ description: String) -> Bool {

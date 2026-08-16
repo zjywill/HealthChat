@@ -17,6 +17,11 @@ final class ChatViewModel {
     private(set) var replyingMessageID: UUID?
     var isLoadingConversation = true
     var engineGuidance: String?
+    /// 他按了发送,但还没配 key。
+    ///
+    /// **是一次请求,不是一种状态**——界面接住它、把设置页推到他面前,然后立刻置回 false。
+    /// 做成常驻状态的话,从设置页退回来那一刻它还是 true,设置页会当场再推一次。
+    var needsCloudSetup = false
     /// 正在退避重试时给用户看的一句话。
     ///
     /// 退避期间界面上什么都不动的话,等十几秒和卡死是一模一样的观感——而这时候 app 其实
@@ -182,6 +187,25 @@ final class ChatViewModel {
     /// 那几句发出去」。
     func send(_ suggestedQuestion: String? = nil) {
         guard !isLoadingConversation else { return }
+
+        // 没配 key 就别把这句话发出去。
+        //
+        // 发出去的结果是 provider 回一个 401,而那句报错既不是他的错,也没告诉他下一步该做
+        // 什么——**2026-08-16 那次审核走的正是这条路**(Guideline 2.1(a))。原来只有
+        // `sendWhenReady`(Siri 那条)挡了,手动发送这条是敞开的;而欢迎卡上那句引导排在
+        // 免责声明底下、灰色小字、不可点,审核员翻都不会翻到。
+        //
+        // 这里**现查一次钥匙串**而不是信 `engineGuidance`:那个值只在 `onAppear` 和 init
+        // 时刷新,而"刚在设置里填完 key 回来"恰好是最需要它准的那一刻。
+        refreshEngineAvailability()
+        guard engineGuidance == nil else {
+            // 打的字留在输入框里。点 chip 进来的那句也放进去——他配完 key 回来按一下就
+            // 发得出去,不用重想一遍刚才要问什么。
+            if let suggestedQuestion { input = suggestedQuestion }
+            needsCloudSetup = true
+            return
+        }
+
         let text = (suggestedQuestion ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
         // 排在输入框上方的照片跟着下一句话一起走,不管这句话是打出来的还是点 chip 点出来的:
         // 规矩只有一条才记得住。
@@ -1068,11 +1092,16 @@ final class ChatViewModel {
         refreshMemory()
     }
 
+    /// 没配 key 时那句引导。**一处定义**:发送被挡下、欢迎卡上那条横幅、首屏那段话底下的
+    /// 小字说的都是它。三处各写一句的话,它们会慢慢漂成三种说法,而用户会以为是三件事。
+    static let cloudSetupGuidance = "还没配置云端模型。到设置里填一把 API key，再选 provider 和模型，就能开始问了。"
+
     func refreshEngineAvailability() {
-        let hasCloudKey = (try? cloudKeyAvailable()) ?? false
-        engineGuidance = hasCloudKey
-            ? nil
-            : "还没配置云端模型。请前往设置填写 API key，并选择 provider 和模型。"
+        // 问的是**「现在答不答得出来」**,不是「钥匙串里有没有东西」——注入了引擎的那条路
+        // (测试、预览)根本不走 `cloudSettings()`,拿 key 的有无去挡它,挡掉的是一个明明
+        // 跑得起来的引擎。判据必须和 `resolveEngine()` 里那个分支一致。
+        let canReply = engineFactory != nil || ((try? cloudKeyAvailable()) ?? false)
+        engineGuidance = canReply ? nil : Self.cloudSetupGuidance
     }
 
     // MARK: - 回复
@@ -1267,7 +1296,34 @@ final class ChatViewModel {
     private func markFailed(_ error: any Error) {
         flushReasoning()
         guard let index = replyingIndex() else { return }
-        session.messages[index].markFailed(error.localizedDescription)
+        session.messages[index].markFailed(Self.userFacingFailure(error))
+    }
+
+    /// provider 的原文不能直接上屏。
+    ///
+    /// 它是写给开发者看的——「Error code: 401 - {'error': {'message': 'Incorrect API key
+    /// provided'}}」。用户从这句话里得不到任何他能做的事,而这恰好是他最需要知道下一步该干
+    /// 什么的时刻。**2026-08-16 那次 App Store 拒的就是这个**:审核员没配 key、提了个问题,
+    /// 屏幕上回他一个 401(Guideline 2.1(a) - App Completeness)。
+    ///
+    /// 分类交给 `ModelFailure.kind`,这里只把每一类翻成一句「你现在能做什么」。分不出来的
+    /// 那一类**照旧给原文**:说不出所以然的时候,一句编出来的通用错误比原文更没用,而原文
+    /// 至少还是排查的线索。
+    static func userFacingFailure(_ error: any Error) -> String {
+        let raw = error.localizedDescription
+        switch ModelFailure.kind(of: raw) {
+        case .authentication:
+            return "API key 没通过验证。请到「设置 › 云端模型」确认 key 填对了、没有过期，"
+                + "并且和选中的 provider 对得上。"
+        case .quota:
+            return "这把 key 的额度用完了，或者账户欠着费。到 provider 那边确认额度之后再试一次。"
+        case .contextOverflow:
+            return "这条对话太长了，装不下。开一条新对话再问一次，刚才查到的数据都还在。"
+        case .transient:
+            return "网络或者模型服务暂时不通，重试几次都没成功。过一会儿再试一次。"
+        case .other:
+            return raw
+        }
     }
 
     // MARK: - 引擎

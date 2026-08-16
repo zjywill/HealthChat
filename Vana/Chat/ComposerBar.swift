@@ -30,6 +30,10 @@ struct ComposerBar: View {
     @State private var isCancellingVoice = false
     /// 按下去那一刻输入框里已经有的字。说出来的接在它后面,不覆盖。
     @State private var dictationBase = ""
+    /// 那张「要不要下本机语音模型」的确认卡。
+    @State private var isAskingVoiceDownload = false
+    /// 卡上写的那个体积,现问系统要来的。
+    @State private var downloadSizeText = VoiceDictation.fallbackSizeText
 
     /// 单行时正好是半高(`ComposerLayout.rowMinHeight` 的一半),画出来就是一颗胶囊;
     /// 长成多行之后才真的当成 27 的圆角用。
@@ -98,6 +102,30 @@ struct ComposerBar: View {
         .onChange(of: dictation.transcript) { _, spoken in
             guard dictation.isListening else { return }
             model.input = VoiceTranscript.merge(base: dictationBase, spoken: spoken)
+        }
+        // 按住说话而本机模型还没下:先把体积摆出来问一句,他点了才下(Guideline 4.2.3(ii))。
+        // 体积是现问系统的,问到之前不弹——一张写着「即将下载 …」的卡等于什么都没说。
+        .onChange(of: dictation.needsDownloadConsent) { _, needsConsent in
+            guard needsConsent else { return }
+            dictation.needsDownloadConsent = false
+            isFocused = true
+            Task {
+                downloadSizeText = await dictation.downloadSizeText()
+                isAskingVoiceDownload = true
+            }
+        }
+        .alert("下载本机语音模型？", isPresented: $isAskingVoiceDownload) {
+            Button("下载") { dictation.installAssets() }
+            Button("先不下", role: .cancel) {}
+        } message: {
+            Text(
+                """
+                「按住说话」要用一个约 \(downloadSizeText) 的本机识别模型。\
+                下载完成后录音在本机识别，音频不出这台设备。
+
+                不下也不影响使用：键盘上那颗麦克风照样能听写，打字更是一直都在。
+                """
+            )
         }
         .fullScreenCover(isPresented: $isScanning) {
             DocumentScannerView { pages in

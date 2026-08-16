@@ -80,6 +80,12 @@ final class VoiceDictation {
     private(set) var level: Float = 0
     /// 按了但没能开始录音时给用户看的一句话。几秒后自己消失——它是一次提示,不是一种状态。
     private(set) var notice: String?
+    /// 他按住说话,而本机模型还没下。
+    ///
+    /// **是一次请求,不是一种状态**(同 `ChatViewModel.needsCloudSetup`):界面接住它、弹一张
+    /// 写明体积的确认卡,然后立刻置回 false。常驻的话,他点了「先不下」之后下一帧那张卡
+    /// 会自己再弹一次。
+    var needsDownloadConsent = false
     /// 最终真正用上的那个 locale。设置页显示它:「这台设备上认的是 zh_CN」。
     private(set) var resolvedLocale: Locale?
     /// 这台设备到底认得哪几种语言。
@@ -194,7 +200,55 @@ final class VoiceDictation {
         return nil
     }
 
-    /// 把本机模型下下来。用户第一次按住说话时触发,不在启动时偷偷下。
+    /// 这次下载大概多大。**下载之前必须先把这个数说给用户听。**
+    ///
+    /// App Store Guideline 4.2.3(ii):要下额外资源的话,体积要披露、下不下要用户自己选。
+    /// 2026-08-16 那次被拒就是因为按住说话时**自动**开下了——用户既不知道要下多少,也没有
+    /// 一个「先不下」的选项。
+    ///
+    /// 数字优先问系统要:`assetInstallationRequest` 只是把请求建出来,**不会开始下载**,而
+    /// 它的 `progress.totalUnitCount` 这时候可能已经是字节数了。可能而已——框架没有承诺过
+    /// 这件事(`AssetInstallationRequest` 公开的只有 `progress` 和 `downloadAndInstall()`,
+    /// `AssetInventory` 一处报体积的地方都没有)。所以拿不到就退回下面那个约数,
+    /// **绝不显示「0 MB」**:一个假的小数字比不说还糟。
+    func downloadSize() async -> Measurement<UnitInformationStorage> {
+        guard let locale = resolvedLocale else { return Self.fallbackAssetSize }
+        let module = Self.makeTranscriber(locale: locale)
+        guard let request = try? await AssetInventory.assetInstallationRequest(supporting: [module]),
+              case let bytes = request.progress.totalUnitCount,
+              bytes > 0
+        else {
+            return Self.fallbackAssetSize
+        }
+        return Measurement(value: Double(bytes), unit: .bytes)
+    }
+
+    /// 系统不肯报体积时说的那个数。**宁可往大了写**:用户按「下载」之后发现比说好的小,
+    /// 是惊喜;反过来是失信,而在计费流量上是真金白银。
+    static let fallbackAssetSize = Measurement(value: 500, unit: UnitInformationStorage.megabytes)
+
+    /// 体积按用户看得懂的单位写(「498 MB」而不是「522190848 字节」),跟着系统语言走。
+    ///
+    /// **一处定义**:确认卡上那句和设置页那颗按钮上写的必须是同一个数、同一种写法,
+    /// 两边各格式化一遍的话,同一个下载会在两处显示成「0.5 GB」和「500 MB」。
+    private static let sizeFormatter: MeasurementFormatter = {
+        let formatter = MeasurementFormatter()
+        formatter.unitOptions = .naturalScale
+        formatter.numberFormatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
+    static var fallbackSizeText: String { sizeFormatter.string(from: fallbackAssetSize) }
+
+    /// 写在卡上和按钮上的那句体积。
+    func downloadSizeText() async -> String {
+        Self.sizeFormatter.string(from: await downloadSize())
+    }
+
+    /// 把本机模型下下来。
+    ///
+    /// **只由用户在那张确认卡上点「下载」触发**,不在启动时下,也不在他按住说话时顺手开下
+    /// ——那一按表达的是「我想说话」,不是「我同意下 500MB」。
     func installAssets() {
         guard availability == .needsDownload, installTask == nil, let locale = resolvedLocale else {
             return
@@ -241,8 +295,11 @@ final class VoiceDictation {
         case .ready:
             break
         case .needsDownload:
-            installAssets()
-            return abort(token: token, notice: "语音识别还在准备中（第一次要下载本机模型），先用键盘吧。")
+            // **不在这儿开下。** 他按住的意思是「我想说这句话」,不是「我同意下几百兆」。
+            // 这里只把「要不要下」这个问题交给界面,由他自己在那张卡上决定(Guideline
+            // 4.2.3(ii))。同时照旧把键盘调出来——这一按不能表现成没反应。
+            needsDownloadConsent = true
+            return abort(token: token, notice: nil)
         case .downloading:
             return abort(token: token, notice: "语音识别模型正在下载，先用键盘吧。")
         case .unsupportedLocale, .unavailable, .unknown:

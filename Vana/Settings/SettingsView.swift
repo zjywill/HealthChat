@@ -28,6 +28,9 @@ struct SettingsView: View {
     @State private var healthStatus: HealthAuthStatus?
     @State private var location = LocationProvider.shared
     @State private var dictation = VoiceDictation.shared
+    /// 本机语音模型的体积,现问系统要来的(问不到就是那个约数)。查回来之前先显示约数——
+    /// 这一行不该为了一个更准的数字先空着。
+    @State private var voiceDownloadSizeText = VoiceDictation.fallbackSizeText
     @FocusState private var focusedField: Field?
     @Environment(\.openURL) private var openURL
 
@@ -395,7 +398,13 @@ struct SettingsView: View {
                     Button {
                         dictation.installAssets()
                     } label: {
-                        Label("下载本机语音模型", systemImage: "arrow.down.circle")
+                        // 体积写在按钮上,不写在按完之后。这一颗是用户主动按的,但「主动按」
+                        // 不等于「知道要下多少」——Guideline 4.2.3(ii) 要的是**按之前**就
+                        // 看得见那个数。问不到就退回约数,绝不显示「0 MB」。
+                        Label(
+                            "下载本机语音模型（约 \(voiceDownloadSizeText)）",
+                            systemImage: "arrow.down.circle"
+                        )
                     }
                 }
             } header: {
@@ -455,7 +464,12 @@ struct SettingsView: View {
         .onAppear { location.refresh() }
         // 语音那一段是这个功能在这台设备上成不成立的唯一显示口,进设置页就重查一遍
         // (刚下载完模型、刚换了系统语言都会改变它)。
-        .task { await dictation.refresh() }
+        .task {
+            await dictation.refresh()
+            // 体积要等 `refresh()` 定下 locale 之后才问得到(问的就是这个 locale 那份资产)。
+            // 顺序反了拿到的永远是约数。
+            voiceDownloadSizeText = await dictation.downloadSizeText()
+        }
         .onChange(of: apiKey) { _, newValue in
             guard hasLoadedAPIKey else { return }
             if newValue == persistedAPIKey {

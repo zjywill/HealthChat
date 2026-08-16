@@ -139,7 +139,33 @@ struct ChatLoopTests {
         #expect(client.requests.count == 1)
         let assistant = try #require(viewModel.messages.last)
         #expect(assistant.turnState == .failed)
-        #expect(assistant.errorDescription?.contains("invalid_api_key") == true)
+
+        // 屏幕上是一句他能照着做的话,**不是 provider 的原文**。
+        //
+        // 这条以前断言的正是「原文要出现在错误里」——而那正是 2026-08-16 被 App Store 拒的
+        // 东西:审核员没配 key、提了个问题,气泡里回他一个 401(Guideline 2.1(a))。
+        // 「invalid_api_key」对写这行代码的人有意义,对拿着手机的人没有。
+        let shown = try #require(assistant.errorDescription)
+        #expect(!shown.contains("invalid_api_key"))
+        #expect(shown.contains("API key"))
+        #expect(shown.contains("设置"))
+    }
+
+    @Test("每一类失败都翻成一句能照着做的话，认不出来的那一类才给原文")
+    func failuresAreTranslatedForTheReader() {
+        struct Failure: LocalizedError {
+            let text: String
+            var errorDescription: String? { text }
+        }
+
+        // 光秃秃的 HTTP 401 也要认出来:有的 provider body 里一个英文单词都没有。
+        #expect(ChatViewModel.userFacingFailure(Failure(text: "Error code: 401")).contains("API key"))
+        #expect(ChatViewModel.userFacingFailure(Failure(text: "insufficient quota")).contains("额度"))
+        #expect(ChatViewModel.userFacingFailure(Failure(text: "prompt is too long")).contains("新对话"))
+
+        // 分不出来的照旧给原文:一句编出来的通用错误比原文更没用。
+        let odd = "something nobody has seen before"
+        #expect(ChatViewModel.userFacingFailure(Failure(text: odd)) == odd)
     }
 
     // MARK: - 工具跑完之后用户手动停止
