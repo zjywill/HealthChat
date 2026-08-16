@@ -84,7 +84,9 @@ targets:
         # 一个都不剩)。而没有 CFBundleShortVersionString 的 build 是传不上 App Store
         # Connect 的,界面上「关于」那行版本也只显示一个破折号。
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        # 被拒的那个 build 是 1.0 (1)。ASC 不收重复的 build 号,重传必须先加这一位——
+        # 版本号还是 1.0(仍然是首发),动的只有它。
+        CURRENT_PROJECT_VERSION: "2"
         # Icon Composer 的 Vana/AppIcon.icon,名字要和这里对上。
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
@@ -134,7 +136,7 @@ targets:
         # 于是这句话的读者不是用户(正式版永远不会弹这张面板),是审核员——所以它要写的是
         # 「不写」这件事本身。Debug 那份在下面覆盖掉,那边是真的会写。
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: Vana 只读取健康数据，不会写入或修改任何健康记录。这一项是系统在检测到 HealthKit 授权接口时要求声明的，Vana 不会请求写入权限。
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_STRICT_CONCURRENCY: targeted
       configs:
         # 开发版本里 `DebugSeeder` 真的会写模拟数据,所以这一句要说实话,盖掉上面那份。
