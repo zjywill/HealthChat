@@ -137,6 +137,20 @@ targets:
         # 「不写」这件事本身。Debug 那份在下面覆盖掉,那边是真的会写。
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: Vana 只读取健康数据，不会写入或修改任何健康记录。这一项是系统在检测到 HealthKit 授权接口时要求声明的，Vana 不会请求写入权限。
         TARGETED_DEVICE_FAMILY: "1,2"
+        # **iPad 那四个方向一个都不能少。** 声明了 iPad(device family 2)就等于加入 iPad
+        # 多任务,而多任务要求 app 在任意尺寸下都立得住——ASC 把这条做成了上传时的硬校验:
+        # 一个方向都不写,传上去直接被打回(error 90474,2026-08-16 撞过)。
+        #
+        # iPhone-only 的时候不需要这两行,所以这个坑正是"改成原生 iPad"带出来的。
+        #
+        # 上下颠倒只给 iPad:手机上倒过来拿基本只会是误触,而 iPad 没有"正着拿"这回事。
+        #
+        # **三个键都要写。** 带 `~iphone` / `~ipad` 后缀的那两个运行时优先级更高,真正决定
+        # 行为的是它们;而 ASC 那条校验点名的是**不带后缀**的基础键,不写就赌它认不认后缀。
+        # 赌输的代价是再传一次(归档 + 上传十几分钟),赌赢也省不下什么,所以三个都写。
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         SWIFT_STRICT_CONCURRENCY: targeted
       configs:
         # 开发版本里 `DebugSeeder` 真的会写模拟数据,所以这一句要说实话,盖掉上面那份。
