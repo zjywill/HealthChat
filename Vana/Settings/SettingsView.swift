@@ -23,6 +23,10 @@ struct SettingsView: View {
     @State private var searchKey = ""
     @State private var persistedSearchKey = ""
     @State private var searchKeyStatus = KeyStatus.notSet
+    @State private var isTestingConnection = false
+    /// 上一次测试的结果。**换了 key / provider / 模型就作废**——一句绿色的「连接正常」
+    /// 指着一套已经不存在的配置,比不显示更糟。
+    @State private var connectionResult: ConnectionTest.Result?
     @State private var isShowingClearConfirmation = false
     @State private var isRequestingHealth = false
     @State private var healthStatus: HealthAuthStatus?
@@ -84,21 +88,6 @@ struct SettingsView: View {
                 .privacySensitive()
                 .accessibilityElement(children: .combine)
 
-                // key 和 provider 对不上时当场说一句。**排在 provider 那两行上面**——
-                // 这句话要用户去改的正是下面那一行,让他先读到再看到那个控件。
-                //
-                // 读的是**正在输入的那份**(`apiKey`),不是存下来的那份:粘进去的那一刻
-                // 就该看见,而不是等他按了保存、退出去、问了一句、收到 401 之后。
-                if let mismatch = APIKeyShape.mismatch(
-                    key: apiKey,
-                    providerId: providerId,
-                    providerName: CloudCatalog.providerName(for: providerId)
-                ) {
-                    Label(mismatch, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .accessibilityElement(children: .combine)
-                }
 
                 if CloudCatalog.isLoaded {
                     NavigationLink {
@@ -159,6 +148,26 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.orange)
                         .accessibilityElement(children: .combine)
+                }
+
+                // 真发一次请求,看这套配置通不通。
+                //
+                // **这一颗回答的是「我现在能用吗」**,而那正是 key 和 provider 分成两个
+                // 字段之后,屏幕上一直没人回答的问题(2026-08-16 审核员就卡在这儿:两个
+                // 字段各自填得好好的,合起来必然失败)。判 key 长什么样是猜,这一下是问。
+                Button(action: runConnectionTest) {
+                    HStack {
+                        Label("测试连接", systemImage: "bolt.horizontal.circle")
+                        if isTestingConnection {
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isTestingConnection || !canTestConnection)
+
+                if let connectionResult {
+                    connectionResultRow(connectionResult)
                 }
 
                 if hasStoredAPIKey {
@@ -401,24 +410,31 @@ struct SettingsView: View {
                     + "只取到城市，不取街道地址，也不会保存在本机；不给就完全不带位置，其余功能照常。")
             }
 
-            Section {
-                Label(voiceStatus.message, systemImage: voiceStatus.icon)
-                    .font(.footnote)
-                    .foregroundStyle(voiceStatus.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                    .accessibilityElement(children: .combine)
+            // **用不了的时候整节不出现。**
+            //
+            // 这一节以前一直在,靠里面那行文案说「为什么用不了」。但绝大多数人打开设置页
+            // 并不是来查语音识别的,而这台设备装没装那份模型是他改不动的事——留在这儿,
+            // 它就是一条永远说着坏消息的橙色横杠,而下面还跟着三行介绍一个他按不到的按钮。
+            //
+            // 能用的时候它才有话可说:识别语言是哪个、录音去了哪、和键盘听写差在哪。
+            //
+            // 代价是 `.unsupportedLocale` 那行列出的「这台设备支持哪几种语言」也跟着不
+            // 显示了——那是排查时唯一的线索(`supportedLocales` 只有真机答得了)。接受:
+            // 它服务的是开发期,而开发期有「设置 › 开发」那一页。
+            if dictation.availability.isReady {
+                Section {
+                    Label(voiceStatus.message, systemImage: voiceStatus.icon)
+                        .font(.footnote)
+                        .foregroundStyle(voiceStatus.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                        .accessibilityElement(children: .combine)
 
-                // 这里**没有下载按钮**,是有意的:Vana 一个字节都不下,那份模型归系统管
-                // (见 `VoiceDictation` 头上那段)。上面那行状态负责把「没装的话去哪装」
-                // 说清楚,给一颗按钮反而是许一件我们不做的事。
-            } header: {
-                Text("语音输入")
-            } footer: {
-                // 这一段要说清「自己做的这颗和键盘上那颗差在哪」——差别全在词表上,而那是
-                // 用户唯一能验证的东西(说一次「甘氨酸镁」)。
-                //
-                // **用不了的时候整段不说。** 上面那行已经说了这台设备没有这个功能,底下
-                // 再铺三行讲它有多好,是在介绍一个他按不到的按钮。
-                if dictation.availability.isReady {
+                    // 这里**没有下载按钮**,是有意的:Vana 一个字节都不下,那份模型归系统管
+                    // (见 `VoiceDictation` 头上那段)。
+                } header: {
+                    Text("语音输入")
+                } footer: {
+                    // 说清「自己做的这颗和键盘上那颗差在哪」——差别全在词表上,而那是用户
+                    // 唯一能验证的东西(说一次「甘氨酸镁」)。
                     Text(Self.voiceFooter)
                 }
             }
@@ -470,6 +486,11 @@ struct SettingsView: View {
         // 语音那一段是这个功能在这台设备上成不成立的唯一显示口,进设置页就重查一遍
         // (刚下载完模型、刚换了系统语言都会改变它)。
         .task { await dictation.refresh() }
+        // 测的是「这一套」通不通,三个字段动了任何一个,上一次的结论就不再指着屏幕上这套了。
+        // 尤其是那句绿色的「连接正常」——留着它,用户会拿一个旧结论去信一套新配置。
+        .onChange(of: providerId) { _, _ in connectionResult = nil }
+        .onChange(of: model) { _, _ in connectionResult = nil }
+        .onChange(of: apiKey) { _, _ in connectionResult = nil }
         .onChange(of: apiKey) { _, newValue in
             guard hasLoadedAPIKey else { return }
             if newValue == persistedAPIKey {
@@ -559,6 +580,43 @@ struct SettingsView: View {
     private static let voiceFooter = "输入框里按住麦克风说话，识别在本机完成，录音不保存也不联网。"
         + "你记在用药表里的药名和常问的指标名会作为提示交给识别器，"
         + "这是键盘听写做不到的一件事。松开只把文字填进输入框，不会直接发送。"
+
+    private var canTestConnection: Bool {
+        !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !model.isEmpty
+    }
+
+    @ViewBuilder
+    private func connectionResultRow(_ result: ConnectionTest.Result) -> some View {
+        switch result {
+        case .ok:
+            Label("连接正常，可以开始问了。", systemImage: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .accessibilityElement(children: .combine)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// 测之前先把 key 存下来:他多半是刚粘完就按这一颗,没按过回车。不存的话测的是上一把,
+    /// 而"测试通过了但聊天还是不行"是这颗按钮唯一不能有的结果。
+    private func runConnectionTest() {
+        saveAPIKey()
+        connectionResult = nil
+        isTestingConnection = true
+        Task {
+            let result = await ConnectionTest.run(
+                providerId: providerId,
+                model: model,
+                apiKey: apiKey
+            )
+            isTestingConnection = false
+            connectionResult = result
+        }
+    }
 
     private var voiceStatus: HealthAuthStatus {
         switch dictation.availability {
