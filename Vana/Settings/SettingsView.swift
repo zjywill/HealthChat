@@ -28,9 +28,6 @@ struct SettingsView: View {
     @State private var healthStatus: HealthAuthStatus?
     @State private var location = LocationProvider.shared
     @State private var dictation = VoiceDictation.shared
-    /// 本机语音模型的体积,现问系统要来的(问不到就是那个约数)。查回来之前先显示约数——
-    /// 这一行不该为了一个更准的数字先空着。
-    @State private var voiceDownloadSizeText = VoiceDictation.fallbackSizeText
     @FocusState private var focusedField: Field?
     @Environment(\.openURL) private var openURL
 
@@ -394,19 +391,9 @@ struct SettingsView: View {
                     .foregroundStyle(voiceStatus.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                     .accessibilityElement(children: .combine)
 
-                if dictation.availability == .needsDownload {
-                    Button {
-                        dictation.installAssets()
-                    } label: {
-                        // 体积写在按钮上,不写在按完之后。这一颗是用户主动按的,但「主动按」
-                        // 不等于「知道要下多少」——Guideline 4.2.3(ii) 要的是**按之前**就
-                        // 看得见那个数。问不到就退回约数,绝不显示「0 MB」。
-                        Label(
-                            "下载本机语音模型（约 \(voiceDownloadSizeText)）",
-                            systemImage: "arrow.down.circle"
-                        )
-                    }
-                }
+                // 这里**没有下载按钮**,是有意的:Vana 一个字节都不下,那份模型归系统管
+                // (见 `VoiceDictation` 头上那段)。上面那行状态负责把「没装的话去哪装」
+                // 说清楚,给一颗按钮反而是许一件我们不做的事。
             } header: {
                 Text("语音输入")
             } footer: {
@@ -464,12 +451,7 @@ struct SettingsView: View {
         .onAppear { location.refresh() }
         // 语音那一段是这个功能在这台设备上成不成立的唯一显示口,进设置页就重查一遍
         // (刚下载完模型、刚换了系统语言都会改变它)。
-        .task {
-            await dictation.refresh()
-            // 体积要等 `refresh()` 定下 locale 之后才问得到(问的就是这个 locale 那份资产)。
-            // 顺序反了拿到的永远是约数。
-            voiceDownloadSizeText = await dictation.downloadSizeText()
-        }
+        .task { await dictation.refresh() }
         .onChange(of: apiKey) { _, newValue in
             guard hasLoadedAPIKey else { return }
             if newValue == persistedAPIKey {
@@ -564,13 +546,22 @@ struct SettingsView: View {
                 isError: false
             )
         case .needsDownload:
+            // **不说「Vana 会帮你下」**——它不会。这一行唯一的用处就是把「去哪装」说清楚,
+            // 否则用户只知道用不了、不知道能怎么办(同那句「没有可用的中文语音识别」要
+            // 一并列出这台设备支持什么)。
             return HealthAuthStatus(
-                message: "本机语音模型还没下载。第一次按住说话时会自动开始下载。",
-                icon: "arrow.down.circle",
+                message: "这台设备还没装中文的本机语音模型，按住说话不会出现。"
+                    + "到「设置 › 通用 › 键盘 › 启用听写」用一次系统听写，系统会把它装上；"
+                    + "键盘上那颗麦克风一直都能用。",
+                icon: "mic.slash",
                 isError: false
             )
         case .downloading:
-            return HealthAuthStatus(message: "本机语音模型正在下载。", icon: "arrow.down.circle", isError: false)
+            return HealthAuthStatus(
+                message: "系统正在装中文的本机语音模型，装完按住说话就会出现。",
+                icon: "arrow.down.circle",
+                isError: false
+            )
         case .unsupportedLocale:
             // 把这台设备到底认得哪几种语言一并说出来。`supportedLocales` 只有真机答得了,
             // 而「不支持」三个字说不清缺的是什么——这一行是这个功能能不能成立的唯一证据。

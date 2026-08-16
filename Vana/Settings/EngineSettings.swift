@@ -14,8 +14,24 @@ enum EngineSettings {
     static let morningCheckInHourKey = "morningCheckInHour"
     static let eveningCheckInHourKey = "eveningCheckInHour"
 
-    static let defaultProvider = "anthropic"
-    static let defaultModel = "claude-sonnet-5"
+    /// 默认 provider 和模型。**只对全新安装生效**——存过的那份在 UserDefaults 里,
+    /// 这两个常量只是 `?? defaultProvider` 那一侧的兜底,老用户一个字都不会被改动。
+    ///
+    /// 2026-08-16 从 anthropic / claude-sonnet-5 换成 deepseek / deepseek-chat,两个理由:
+    ///
+    /// - **界面整个是中文的,主力用户在国内**,而 DeepSeek 是这几家里 key 最容易拿到的
+    ///   (国内支付、不用绕路)。让第一屏的默认值指向一个多数人拿不到 key 的 provider,
+    ///   等于给每个新用户先设一道坎。
+    /// - 那次 App Store 审核就栽在这上面:审核员按备注粘了一把 DeepSeek 的 key,
+    ///   **provider 停在默认的 Anthropic 没动**,于是拿着这把钥匙去敲了另一家的门——
+    ///   Anthropic 回 401 "API key is invalid",被判 Guideline 2.1(a)。
+    ///
+    /// 模型是 `deepseek-v4-flash`。**它看不了图**——DeepSeek 这几个里只有 `deepseek-chat`
+    /// 和 `deepseek-reasoner` 能收图,所以默认状态下「照片原图」那一项不起作用(设置页那句
+    /// 「当前模型看不了图」会照实说出来,不是静默的)。代价可控:化验单的文字识别本来就在
+    /// 本机做,发出去的默认只有文字;要发原图的人换个能看图的模型即可。
+    static let defaultProvider = "deepseek"
+    static let defaultModel = "deepseek-v4-flash"
     static let defaultPersona = AssistantPersona.balanced.rawValue
     static let defaultMorningHour = 8
     static let defaultEveningHour = 21

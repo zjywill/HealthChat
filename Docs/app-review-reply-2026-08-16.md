@@ -29,14 +29,24 @@ instructions, a troubleshooting FAQ, and instructions for deleting all app data.
 
 Fixed, and thank you — this was a real defect and your reproduction steps identified it exactly.
 
-**Root cause.** Vana requires the user to supply their own API key for a third-party AI service
-(see item 5 below). When no key had been configured, the send action still issued the network
-request. The provider correctly rejected it with HTTP 401, and the app displayed the provider's
-raw error text — including the literal string "401" — in the conversation. The only on-screen
-hint that setup was required was a small gray footnote at the very bottom of the welcome card,
-which was easy to miss.
+**Root cause.** Your screenshots identified it precisely, and it was our design that misled the
+reviewer. Vana asks the user for their own API key for a third-party AI service (see item 5),
+and the provider is a *separate* setting. Your screenshot shows a key beginning `sk-d13…`
+saved while the Provider selector still read "Anthropic" — that key belongs to a different
+service, so Anthropic correctly answered `401 authentication_error: API key is invalid`.
+
+Two things were wrong on our side:
+
+1. The Provider defaulted to Anthropic, while the test key we supplied in our review notes was
+   for a different service. Pasting the key without also changing the Provider — the natural
+   thing to do — could not work.
+2. The app then displayed the provider's raw error payload, including the literal string "401",
+   instead of explaining what to change.
 
 **Fix**, in the accompanying build:
+
+0. The default Provider and model now match the credentials we supply, so pasting the key is
+   sufficient and no second step is required.
 
 1. The send action now checks for a configured key before issuing any request. If none is
    present, no request is made, so the 401 can no longer occur. The app navigates directly to
@@ -54,17 +64,22 @@ We reproduced your exact steps on an iPad Air 11-inch (M3) running iPadOS 26 and
 
 Fixed.
 
-The additional resource is Apple's on-device speech recognition model, downloaded through
-`AssetInventory` in the Speech framework. It is used only by the optional press-and-hold voice
-input button, so that dictation runs entirely on device. Previously the app started this
-download automatically the first time the user pressed that button, without disclosing the size
-or offering a choice.
+The resource in question was Apple's own on-device speech recognition model, requested through
+`AssetInventory` in the Speech framework. It was used only by the optional press-and-hold voice
+input button. The previous build started that download automatically the first time the user
+pressed that button, without disclosing the size or offering a choice. That was our mistake.
 
-In the accompanying build, pressing that button now presents a confirmation dialog that states
-the download size and offers "Download" and "Not now". Nothing is downloaded unless the user
-chooses "Download". The corresponding button in Settings also displays the size on the button
-itself. The app remains fully usable if the user declines: the system keyboard's dictation key
-and normal typing are unaffected.
+**In the accompanying build, the app no longer downloads anything at all.** We removed the
+download entirely rather than adding a size prompt around it. The app now only reads whether the
+system already has that model installed:
+
+- If it is installed, the press-and-hold button appears and dictation runs on device.
+- If it is not installed, the button does not appear, and the Settings screen explains that iOS
+  installs the model when the user enables system dictation.
+
+Vana never initiates a download, never prompts for one, and adds nothing to the user's storage.
+Typing and the system keyboard's own dictation key are unaffected either way, so no
+functionality is gated behind any download.
 
 ### Guideline 2.1 — Information Needed: Clinical Health Records API
 
@@ -169,9 +184,8 @@ Thank you for your time.
 
 ## 粘之前先确认
 
-1. **语音模型那个体积数。** 代码会先向系统要真实字节数，问不到才退回 500 MB 的约数。
-   在真机上打开设置页看一眼那颗按钮上写的是什么——如果就是「500 MB」，说明系统没给数，
-   得实测一遍真实体积再改常量。**跟 Apple 报错体积本身就是 4.2.3 的问题。**
+1. ~~语音模型那个体积数~~ —— **不用查了**。改成「Vana 一个字节都不下」之后，体积这件事
+   整个不存在了：没有下载就没有要披露的数字，4.2.3(ii) 不是被满足，是不适用。
 
 2. **审核备注要补一把可用的测试 key。** Apple 第一封信第 4 条明确要
    "any required login credentials"。审核员读不懂中文界面，401 虽然修好了，但他仍然要

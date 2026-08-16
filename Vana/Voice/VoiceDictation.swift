@@ -30,9 +30,15 @@ enum VoiceTranscript {
 ///
 /// - **松手只填输入框,不自动发送。** 识别错一个药名就直接发出去,比多点一下糟得多;而这个
 ///   app 的发送按钮语义已经定过一次(「只看输入框里有没有字」),填进去正好落进那套。
-/// - **资产没下载好不是错误。** 本机模型是按需下载的(`AssetInventory`),没有就照实说
-///   「还在准备」并把键盘调出来——绝不能表现成按了没反应(同「没有数据不是错误」)。
-///   下载只在用户第一次按住说话时才开始:那是他表达了意图的那一刻,而不是打开 app 的时候。
+/// - **Vana 自己不下载任何东西。** 本机模型是系统级的共享资产(`AssetInventory`),装没装
+///   由系统和用户决定——用过 iOS 的听写就会有,没有的话在「设置 › 通用 › 键盘 › 启用听写」
+///   那边装。这里只**读**状态:没装就当这台设备没有这个功能,那颗按钮整个不出现(同
+///   「这台设备不支持中文」那一档)。
+///
+///   这条以前是反的:第一次按住说话时自动开下几百兆,既没报体积也没问一句。
+///   2026-08-16 被 App Store 判了 Guideline 4.2.3(ii)。加一张写明体积的确认卡也能过,
+///   但**不下载**这条更干净——不是"满足了那条规矩",是那条规矩不适用了,而且省掉了
+///   下载失败、下到一半、计费流量这一整类要处理的事。
 /// - **中文不可用要说得出口。** `supportedLocales` 是运行时的,SDK 里查不出来。这台设备上
 ///   没有中文就明说,并指一条还走得通的路(键盘上那颗麦克风)。设置页里那一段显示的就是
 ///   这里的状态——这个功能是否成立,靠它验。
@@ -54,9 +60,10 @@ final class VoiceDictation {
         case unknown
         /// 模型装好了,按住就能说。
         case ready
-        /// 支持,但模型还没下载。
+        /// 这台设备支持中文,但系统还没装那份模型。**Vana 不会去下它**,所以对用户来说
+        /// 这和「用不了」是同一件事,只是说法不同:那句话要指向 iOS 的听写设置。
         case needsDownload
-        /// 正在下载。
+        /// 系统正在装(别处触发的,不是 Vana)。等它装完就好,所以和 `needsDownload` 分开。
         case downloading
         /// 这台设备上没有可用的中文(或当前语言)识别。**这是 T0 那个问题的答案。**
         case unsupportedLocale
@@ -80,12 +87,6 @@ final class VoiceDictation {
     private(set) var level: Float = 0
     /// 按了但没能开始录音时给用户看的一句话。几秒后自己消失——它是一次提示,不是一种状态。
     private(set) var notice: String?
-    /// 他按住说话,而本机模型还没下。
-    ///
-    /// **是一次请求,不是一种状态**(同 `ChatViewModel.needsCloudSetup`):界面接住它、弹一张
-    /// 写明体积的确认卡,然后立刻置回 false。常驻的话,他点了「先不下」之后下一帧那张卡
-    /// 会自己再弹一次。
-    var needsDownloadConsent = false
     /// 最终真正用上的那个 locale。设置页显示它:「这台设备上认的是 zh_CN」。
     private(set) var resolvedLocale: Locale?
     /// 这台设备到底认得哪几种语言。
@@ -100,7 +101,22 @@ final class VoiceDictation {
 
     /// 按住说话按钮亮不亮。**没授权的时候仍然亮**——按下去才是请求麦克风权限的时机,
     /// 而灰着的按钮说不出「为什么灰」。
-    var isEnabled: Bool { availability != .unsupportedLocale && availability != .unavailable }
+    ///
+    /// 模型没装的时候整颗不出现,和「这台设备不支持中文」同一档:Vana **自己不下载任何
+    /// 东西**(见 `Availability.needsDownload`),所以那一按注定做不成事,而一颗按下去
+    /// 只会说「还不能用」的按钮,比没有这颗按钮更糟。
+    var isEnabled: Bool {
+        switch availability {
+        case .ready:
+            return true
+        case .unknown:
+            // 还没查过就先亮着:`start()` 里会先 `refresh()` 一次,那时候才知道结果。
+            // 灰着起步的话,设置页进来之前那几帧按钮会闪一下。
+            return true
+        case .needsDownload, .downloading, .unsupportedLocale, .unavailable:
+            return false
+        }
+    }
 
     @ObservationIgnored private var engine: AVAudioEngine?
     @ObservationIgnored private var analyzer: SpeechAnalyzer?
@@ -110,7 +126,6 @@ final class VoiceDictation {
     @ObservationIgnored private var recognizerTask: Task<Void, Never>?
     @ObservationIgnored private var levelTask: Task<Void, Never>?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
-    @ObservationIgnored private var installTask: Task<Void, Never>?
     /// 已经定稿的那几段。volatile 的那一小段单独放,它会被后来的结果整段替换掉。
     @ObservationIgnored private var finalized = ""
     @ObservationIgnored private var volatileText = ""
@@ -200,75 +215,6 @@ final class VoiceDictation {
         return nil
     }
 
-    /// 这次下载大概多大。**下载之前必须先把这个数说给用户听。**
-    ///
-    /// App Store Guideline 4.2.3(ii):要下额外资源的话,体积要披露、下不下要用户自己选。
-    /// 2026-08-16 那次被拒就是因为按住说话时**自动**开下了——用户既不知道要下多少,也没有
-    /// 一个「先不下」的选项。
-    ///
-    /// 数字优先问系统要:`assetInstallationRequest` 只是把请求建出来,**不会开始下载**,而
-    /// 它的 `progress.totalUnitCount` 这时候可能已经是字节数了。可能而已——框架没有承诺过
-    /// 这件事(`AssetInstallationRequest` 公开的只有 `progress` 和 `downloadAndInstall()`,
-    /// `AssetInventory` 一处报体积的地方都没有)。所以拿不到就退回下面那个约数,
-    /// **绝不显示「0 MB」**:一个假的小数字比不说还糟。
-    func downloadSize() async -> Measurement<UnitInformationStorage> {
-        guard let locale = resolvedLocale else { return Self.fallbackAssetSize }
-        let module = Self.makeTranscriber(locale: locale)
-        guard let request = try? await AssetInventory.assetInstallationRequest(supporting: [module]),
-              case let bytes = request.progress.totalUnitCount,
-              bytes > 0
-        else {
-            return Self.fallbackAssetSize
-        }
-        return Measurement(value: Double(bytes), unit: .bytes)
-    }
-
-    /// 系统不肯报体积时说的那个数。**宁可往大了写**:用户按「下载」之后发现比说好的小,
-    /// 是惊喜;反过来是失信,而在计费流量上是真金白银。
-    static let fallbackAssetSize = Measurement(value: 500, unit: UnitInformationStorage.megabytes)
-
-    /// 体积按用户看得懂的单位写(「498 MB」而不是「522190848 字节」),跟着系统语言走。
-    ///
-    /// **一处定义**:确认卡上那句和设置页那颗按钮上写的必须是同一个数、同一种写法,
-    /// 两边各格式化一遍的话,同一个下载会在两处显示成「0.5 GB」和「500 MB」。
-    private static let sizeFormatter: MeasurementFormatter = {
-        let formatter = MeasurementFormatter()
-        formatter.unitOptions = .naturalScale
-        formatter.numberFormatter.maximumFractionDigits = 0
-        return formatter
-    }()
-
-    static var fallbackSizeText: String { sizeFormatter.string(from: fallbackAssetSize) }
-
-    /// 写在卡上和按钮上的那句体积。
-    func downloadSizeText() async -> String {
-        Self.sizeFormatter.string(from: await downloadSize())
-    }
-
-    /// 把本机模型下下来。
-    ///
-    /// **只由用户在那张确认卡上点「下载」触发**,不在启动时下,也不在他按住说话时顺手开下
-    /// ——那一按表达的是「我想说话」,不是「我同意下 500MB」。
-    func installAssets() {
-        guard availability == .needsDownload, installTask == nil, let locale = resolvedLocale else {
-            return
-        }
-        availability = .downloading
-        installTask = Task { [weak self] in
-            defer { self?.installTask = nil }
-            do {
-                let module = Self.makeTranscriber(locale: locale)
-                if let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-                    try await request.downloadAndInstall()
-                }
-                await self?.refresh()
-            } catch {
-                await self?.refresh()
-                self?.show("语音识别模型没下载成功，键盘上的听写照样能用。")
-            }
-        }
-    }
-
     // MARK: - 录一段
 
     /// 开始听。**返回 false 表示这一按没有录起来**——调用方该把键盘调出来,并且屏幕上会有
@@ -295,11 +241,9 @@ final class VoiceDictation {
         case .ready:
             break
         case .needsDownload:
-            // **不在这儿开下。** 他按住的意思是「我想说这句话」,不是「我同意下几百兆」。
-            // 这里只把「要不要下」这个问题交给界面,由他自己在那张卡上决定(Guideline
-            // 4.2.3(ii))。同时照旧把键盘调出来——这一按不能表现成没反应。
-            needsDownloadConsent = true
-            return abort(token: token, notice: nil)
+            // 走不到这儿(`isEnabled` 已经把按钮收起来了),留着是因为可用性是异步查的:
+            // 这一按和那次查询可能撞在一起。照实说一句,不去下载。
+            return abort(token: token, notice: "这台设备还没装本机语音识别模型，键盘上那颗麦克风可以用。")
         case .downloading:
             return abort(token: token, notice: "语音识别模型正在下载，先用键盘吧。")
         case .unsupportedLocale, .unavailable, .unknown:
