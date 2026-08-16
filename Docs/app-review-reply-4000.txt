@@ -1,0 +1,25 @@
+Hello,
+
+Thank you for the review and screenshots — they pinpointed the 401. Items 1-3 are fixed in the attached build; 4 and 5 answer your questions.
+
+1.5 SUPPORT URL — Fixed. The host had not been configured to serve that hostname (HTTP 522). https://vana.pinapia.com/support/ now returns 200, with contact details, setup steps, an FAQ and deletion instructions. The privacy URL is live too.
+
+2.1(a) 401 IN THE CHATBOT — Fixed. Your screenshot shows a key beginning "sk-d13..." saved while Provider still read "Anthropic". That key belongs to another service, so Anthropic correctly returned 401. Two faults were ours: Provider defaulted to Anthropic while our test key was for another service, and the app printed the raw error instead of explaining what to change. In this build: the default Provider and model match the credentials in our notes, so pasting the key is enough; Settings has a "Test connection" button that verifies key, provider and model before any question is asked; no request is sent when no key is configured; and provider errors are shown in plain language.
+
+4.2.3(ii) ADDITIONAL DOWNLOAD — Fixed. The resource was Apple's own on-device speech model (AssetInventory), used only by the optional press-and-hold voice button, and the previous build started that download automatically without disclosing size or offering a choice — our mistake. This build downloads nothing at all: it only reads whether the system already has the model; if not, the voice button does not appear. Nothing is gated behind a download.
+
+2.1 CLINICAL HEALTH RECORDS
+
+Integration, upload, frequency: read-only, two types only — labResultRecord and vitalSignRecord. No diagnoses, medications, allergies or procedures; we never write to HealthKit. Records are read only on demand: when the user asks about lab results, one tool requests authorization and runs a single query. No read at launch, no background read, no sync. We extract only display name, date and numeric value with unit (FHIR valueQuantity); the raw resource is never retained or transmitted. Vana has no server; nothing is uploaded to us, ever. They go only to the AI provider the user configured with their own key, only for that request. Disclosed in NSHealthClinicalHealthRecordsShareUsageDescription and on a mandatory first-launch screen.
+
+Features, enable, disable: only the conversation, only for lab-result questions. Enabling takes three user actions: connect an institution in Health, grant Clinical Records access, ask such a question. Revoke any time in Health > Sharing > Apps > Vana; nothing else changes. Deleting the app removes all data.
+
+Other uses: none — no advertising, marketing, data mining, analytics, model training, or sharing with any third party but the provider the user chose. The app has no analytics or telemetry SDK.
+
+Storage and access: the app sandbox only, excluded from iCloud and device backups per HealthKit rules, with file protection. Only the user has access; we hold no copy. Source is public at github.com/zjywill/Vana-iOS.
+
+3.1.1 IN-APP PURCHASE — We respectfully suggest the premise may not match how Vana works. Vana is free: no In-App Purchases, no subscriptions, no paid tier, no StoreKit code, no IAP entitlement. We receive no payment from users, through any channel. Nothing is locked, so there is nothing to unlock. We neither sell nor earn commission on API keys, and link to no purchase flow.
+
+The key is not a purchase in or for Vana. It is a connection credential for an account the user already holds elsewhere, as an email client needs the user's own mail account. To be direct: without a key the conversation cannot run, just as an email client cannot fetch mail without an account. Everything else does — on-device health readings, lab-report OCR, the medication list, health detail views.
+
+If you still consider this non-compliant, please tell us which functionality counts as paid functionality unlocked by a mechanism other than In-App Purchase, and we will change it.
