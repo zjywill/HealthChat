@@ -84,6 +84,22 @@ struct SettingsView: View {
                 .privacySensitive()
                 .accessibilityElement(children: .combine)
 
+                // key 和 provider 对不上时当场说一句。**排在 provider 那两行上面**——
+                // 这句话要用户去改的正是下面那一行,让他先读到再看到那个控件。
+                //
+                // 读的是**正在输入的那份**(`apiKey`),不是存下来的那份:粘进去的那一刻
+                // 就该看见,而不是等他按了保存、退出去、问了一句、收到 401 之后。
+                if let mismatch = APIKeyShape.mismatch(
+                    key: apiKey,
+                    providerId: providerId,
+                    providerName: CloudCatalog.providerName(for: providerId)
+                ) {
+                    Label(mismatch, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .accessibilityElement(children: .combine)
+                }
+
                 if CloudCatalog.isLoaded {
                     NavigationLink {
                         ProviderPickerView(selectedId: providerId, onSelect: selectProvider)
@@ -398,11 +414,13 @@ struct SettingsView: View {
                 Text("语音输入")
             } footer: {
                 // 这一段要说清「自己做的这颗和键盘上那颗差在哪」——差别全在词表上,而那是
-                // 用户唯一能验证的东西(说一次「甘氨酸镁」)。也要说清中文不可用时还有路走:
-                // 键盘听写一直都在,不需要这个 app 做任何事。
-                Text("输入框里按住麦克风说话，识别在本机完成，录音不保存也不联网。"
-                    + "你记在用药表里的药名和常问的指标名会作为提示交给识别器，"
-                    + "这是键盘听写做不到的一件事。松开只把文字填进输入框，不会直接发送。")
+                // 用户唯一能验证的东西(说一次「甘氨酸镁」)。
+                //
+                // **用不了的时候整段不说。** 上面那行已经说了这台设备没有这个功能,底下
+                // 再铺三行讲它有多好,是在介绍一个他按不到的按钮。
+                if dictation.availability.isReady {
+                    Text(Self.voiceFooter)
+                }
             }
 
             Section {
@@ -536,6 +554,12 @@ struct SettingsView: View {
     /// **这一行同时是这个功能成不成立的验证口**:`SpeechTranscriber.supportedLocales` 是运行时
     /// 的,SDK 里查不出来,模拟器上更是一个都没有。中文不在名单里的话,「按住说话」那颗按钮
     /// 整个不出现,而这里要说清为什么——并指一条还走得通的路(键盘上那颗麦克风)。
+    /// 拼在常量里而不是 ViewBuilder 里:`Form` 那一大坨本来就在类型检查的边缘,
+    /// 往里再塞一个三段 `+` 的字符串,编译器直接报 "unable to type-check in reasonable time"。
+    private static let voiceFooter = "输入框里按住麦克风说话，识别在本机完成，录音不保存也不联网。"
+        + "你记在用药表里的药名和常问的指标名会作为提示交给识别器，"
+        + "这是键盘听写做不到的一件事。松开只把文字填进输入框，不会直接发送。"
+
     private var voiceStatus: HealthAuthStatus {
         switch dictation.availability {
         case .ready:
@@ -546,19 +570,17 @@ struct SettingsView: View {
                 isError: false
             )
         case .needsDownload:
-            // **不说「Vana 会帮你下」**——它不会。这一行唯一的用处就是把「去哪装」说清楚,
-            // 否则用户只知道用不了、不知道能怎么办(同那句「没有可用的中文语音识别」要
-            // 一并列出这台设备支持什么)。
+            // **一句话说完。** Vana 不下载那份模型(见 `VoiceDictation` 头上那段),所以
+            // 这一行能给的只有一个事实;把「到设置里启用听写系统就会装上」那一串写进来,
+            // 是替系统写说明书,而多数人根本不需要这个功能。
             return HealthAuthStatus(
-                message: "这台设备还没装中文的本机语音模型，按住说话不会出现。"
-                    + "到「设置 › 通用 › 键盘 › 启用听写」用一次系统听写，系统会把它装上；"
-                    + "键盘上那颗麦克风一直都能用。",
+                message: "这台设备还没装本机语音模型，按住说话不会出现。",
                 icon: "mic.slash",
                 isError: false
             )
         case .downloading:
             return HealthAuthStatus(
-                message: "系统正在装中文的本机语音模型，装完按住说话就会出现。",
+                message: "系统正在装本机语音模型。",
                 icon: "arrow.down.circle",
                 isError: false
             )
