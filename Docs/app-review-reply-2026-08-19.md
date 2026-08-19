@@ -11,13 +11,13 @@
 
 Hello,
 
-Both issues are fixed in build 1.0 (4).
+Both issues are fixed in build 1.0 (5).
 
 **2.1(a) — errors in the chat.** Settings showed the default Provider (DeepSeek) and Model
 (DeepSeek V4 Flash), but that default only ever existed on screen — it was never saved, so
 the code that sends a request read an empty model and refused with "select a cloud model in
 Settings first". The app was asking for a choice the same screen already showed as made, and
-Retry sent the identical request. Build 4 saves the defaults on first launch, so the screen
+Retry sent the identical request. This build saves the defaults on first launch, so the screen
 and the request path read the same value; when a key or model really is missing it opens
 Settings instead of failing; and configuration errors now offer "Open Settings" rather than
 "Retry". Regression tests cover the fresh-install case.
@@ -49,7 +49,7 @@ Thank you for the screenshots — the "select a cloud model" one made the root c
 
 ## 粘之前先确认
 
-1. **build 号是 1.0 (4)**。`CURRENT_PROJECT_VERSION` 已经从 3 加到 4；ASC 拒收同号的 build。
+1. **build 号是 1.0 (5)**。4 传上去之后又修了「回到底部」那颗按钮，所以再加一位；ASC 拒收同号的 build。
 2. **审核备注里那把 DeepSeek key 还有额度**。上一轮就是这条路上出的事：审核员粘完 key 之后
    一步都跑不动。传之前自己用「测试连接」验一次。
 3. **录屏**。2.5.1 那条 Apple 明写了"如果已经标了，回信附一段真机录屏"。上面正文里**没有**
