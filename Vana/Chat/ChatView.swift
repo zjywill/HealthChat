@@ -190,10 +190,22 @@ struct ChatView: View {
                 // 他往回翻了多远。**只问一个布尔**,不是把偏移量搬进 `@State`:
                 // 手指一路滑下来,后者是每帧一次界面刷新,而这一屏要重画的是整列非 Lazy
                 // 的气泡。这里只在跨过门槛的那一下变一次。
+                //
+                // 「还剩多少内容在看得见的部分下面」只能这么算,别自己拿 offset 去凑:
+                // **`containerSize` 已经是扣掉安全区之后的高度**(实测 874 - 116 - 156 = 602),
+                // 而 `visibleRect` 是含安全区的那一份。第一版写成
+                // `contentSize + insB - (offset + containerSize)`,等于把底部安全区算了两遍——
+                // 贴在底部时它算出 284,门槛才 240,于是那颗按钮**一直亮着**(真机上被逮到)。
+                //
+                // 这一版贴底时算出来是 11(正文底下那 12 点内边距),往回翻 708 点时是 719,
+                // 差值和手指走的距离逐点对得上。
                 .onScrollGeometryChange(for: Bool.self) { geometry in
-                    let bottom = geometry.contentSize.height + geometry.contentInsets.bottom
-                    return bottom - (geometry.contentOffset.y + geometry.containerSize.height)
-                        > Self.jumpToBottomThreshold
+                    ScrollBottomDistance.isScrolledUp(
+                        contentHeight: geometry.contentSize.height,
+                        visibleMaxY: geometry.visibleRect.maxY,
+                        bottomInset: geometry.contentInsets.bottom,
+                        threshold: Self.jumpToBottomThreshold
+                    )
                 } action: { _, isAway in
                     isScrolledUp = isAway
                 }
@@ -500,6 +512,26 @@ struct ChatView: View {
         }
     }
 
+}
+
+/// 「还剩多少内容在看得见的部分下面」。
+///
+/// 拆成纯函数只有一个理由:那次算错**在界面上不报错**,只表现为一颗一直亮着的按钮,
+/// 而它是几个几何量之间的关系,不看真机上的数字根本判不出对错。测试里钉着的就是
+/// 那两组实测值(`VanaTests/JumpToBottomTests`)。
+enum ScrollBottomDistance {
+    static func below(contentHeight: CGFloat, visibleMaxY: CGFloat, bottomInset: CGFloat) -> CGFloat {
+        contentHeight - visibleMaxY + bottomInset
+    }
+
+    static func isScrolledUp(
+        contentHeight: CGFloat,
+        visibleMaxY: CGFloat,
+        bottomInset: CGFloat,
+        threshold: CGFloat
+    ) -> Bool {
+        below(contentHeight: contentHeight, visibleMaxY: visibleMaxY, bottomInset: bottomInset) > threshold
+    }
 }
 
 /// 折叠分隔线:从这里往上,模型记得的只有一句摘要,不再是逐字的对话。

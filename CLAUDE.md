@@ -350,6 +350,13 @@ user turn 的 provider,就是连着两条 user 消息。Anthropic 明确会合�
 - **出现的条件是「离底多远」,不是「滚了没有」**(`onScrollGeometryChange` 只取一个 Bool)。
   把偏移量搬进 `@State` 的话,手指一路滑下来就是每帧一次界面刷新,而这一屏每次刷新要重画
   整列气泡。门槛定在一条长回复的高度:再近他自己一划就到了,而按钮反倒挡着字。
+- **「下面还剩多少」只有一种算法**(`ScrollBottomDistance`):
+  `contentSize.height - visibleRect.maxY + contentInsets.bottom`。**别自己拿 offset 去凑**——
+  `containerSize` 已经是**扣掉安全区之后**的高度(实测 874 − 116 − 156 = 602),而 `visibleRect`
+  是含安全区的那一份。第一版写成 `contentSize + insB - (offset + containerSize)`,等于把底部
+  安全区算了两遍:贴底时算出 284、门槛才 240,那颗按钮于是**一直亮着**——界面上不报错,只是
+  一个本该藏起来的按钮从不消失,真机上才被逮到。两组实测值钉在
+  `VanaTests/JumpToBottomTests` 里(贴底 11;往回翻 708 点后 719)。
 - **它不进输入区那一列。** 做成 `VStack` 里的一行,每次出现和消失都会把整段对话顶一下——
   偏偏就在他正读着旧消息的时候。挂在 `ScrollView` 的 `overlay` 上,底部留出输入区的高度
   (`onGeometryChange` 现量,chip 那排、附件、波形都会让它长高)。
