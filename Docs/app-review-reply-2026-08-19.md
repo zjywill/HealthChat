@@ -11,93 +11,39 @@
 
 Hello,
 
-Thank you for the screenshots — they pinpointed the defect exactly. Both issues are fixed in
-build 1.0 (4), which accompanies this reply.
+Both issues are fixed in build 1.0 (4).
 
-### Guideline 2.1(a) — Performance: errors in the Vana AI chat
+**2.1(a) — errors in the chat.** Settings showed the default Provider (DeepSeek) and Model
+(DeepSeek V4 Flash), but that default only ever existed on screen — it was never saved, so
+the code that sends a request read an empty model and refused with "select a cloud model in
+Settings first". The app was asking for a choice the same screen already showed as made, and
+Retry sent the identical request. Build 4 saves the defaults on first launch, so the screen
+and the request path read the same value; when a key or model really is missing it opens
+Settings instead of failing; and configuration errors now offer "Open Settings" rather than
+"Retry". Regression tests cover the fresh-install case.
 
-Fixed. This was our bug, and the reviewer did nothing wrong.
+**2.5.1 — identifying HealthKit in the interface.** Apple Health (HealthKit) is now named in
+four places: the welcome card on the first screen ("Steps, sleep and heart rate come from
+Apple Health (HealthKit). Vana only reads what you authorize and never writes to or modifies
+your health records."), the Settings section titled "Apple Health (HealthKit)", the footer of
+the health status detail screen, and the header of every query result panel in a
+conversation. This build also adds an English localization, so those strings — and the
+HealthKit permission prompts — appear in English on an English device.
 
-**Root cause.** Settings displayed the default Provider (DeepSeek) and Model
-(DeepSeek V4 Flash), but that default existed only in the *display* layer — it was never
-written to persistent storage. The code path that sends a request read the stored value,
-found it empty, and refused with "You need to select a cloud model in Settings first."
+**Setup (the test key is in App Review Information > Notes):**
 
-So the app asked the reviewer to choose a model that the same screen already showed as
-chosen, and nothing he could do in Settings would satisfy it. The "Retry" button could not
-help either: retrying sent exactly the same request, which is why your screenshot shows the
-same message twice.
+1. Settings (gear, top right) > "Cloud model" > "API key" > paste the key.
+2. The rows below should already read Provider: DeepSeek, Model: DeepSeek V4 Flash. Our key
+   works only with DeepSeek.
+3. Tap "Test connection" — it validates key, provider and model together. Expect
+   "Connected. You're ready to ask."
+4. Ask a question, e.g. "How did I sleep last night?". A simulator has no Apple Health data,
+   so add a few samples in the Health app first, or test on a device.
 
-**What changed in build 4:**
+Privacy policy: https://vana.pinapia.com/privacy/ (Simplified Chinese) and
+https://vana.pinapia.com/privacy/en/ (English).
 
-1. The default provider and model are now genuinely persisted on first launch. The Settings
-   screen and the request path read the same single source, so they can no longer disagree.
-2. If the API key or the model is missing, the app no longer sends the message and produces
-   an error. It opens Settings instead, with an explanation of what is missing.
-3. Error bubbles now distinguish two kinds of failure. Configuration problems (no key, no
-   model, rejected key) offer **"Open Settings"**; only failures where retrying can actually
-   succeed (network, provider congestion) offer "Retry".
-4. Regression tests cover the fresh-install case, so a first launch that cannot send a
-   message will fail the build rather than reach review.
-
-**To verify:** install the build fresh, open Settings, paste the API key from our review
-notes into "API key" (Provider and Model are already filled in and now actually stored), and
-ask a question such as "How did I sleep last night?". "Test connection" in the same screen
-sends one real request and verifies key, provider and model together before any question is
-asked.
-
-### Guideline 2.5.1 — Performance: identifying HealthKit in the user interface
-
-Fixed. The app now names Apple Health (HealthKit) explicitly, in the places a user actually
-looks, rather than relying on a heart icon and the phrase "your health data":
-
-1. **First screen, welcome card** — under the heading "Start with your health data":
-   *"Steps, sleep and heart rate come from Apple Health (HealthKit). Vana only reads what you
-   authorize and never writes to or modifies your health records."*
-2. **Settings** — the section is now titled **"Apple Health (HealthKit)"** and contains
-   "Request Apple Health (HealthKit) access" and "Manage in the Health app", with the same
-   read-only statement in the footer.
-3. **Every health query result panel** — the panel that opens from a query in a conversation
-   carries the line *"From Apple Health (HealthKit) — read only, never modified"*.
-4. **The health status detail screen** (tap the summary card at the top of the first screen)
-   — the same attribution, plus the note that missing items usually mean the device was not
-   worn.
-5. The mandatory first-launch data-use screen and the privacy policy state the same thing.
-
-The wording is defined in one place in the source and is covered by automated tests, so the
-four surfaces cannot drift apart.
-
-This build also adds a full English localization, so on an English-language device every one
-of these strings — including the HealthKit permission prompts — appears in English.
-
-### Review environment
-
-- Reviewed on iPad Air 11-inch (M3), iPadOS 26.6: both fixes were verified on that exact
-  simulator configuration as well as on iPhone.
-- Privacy policy: https://vana.pinapia.com/privacy/ (Simplified Chinese) and
-  https://vana.pinapia.com/privacy/en/ (English).
-- Vana has no server and no accounts. Health data is read from HealthKit read-only, and the
-  aggregated values needed to answer a question are sent only to the AI provider the user
-  configures with their own key.
-
-### Setup, in case it is easier to have it here
-
-The same steps are in App Review Information > Notes, along with a test API key:
-
-1. Open Vana, tap the gear icon (top right) to open **Settings**.
-2. Under **Cloud model**, tap **API key** and paste the test key from our review notes.
-3. The two rows below it should already read **Provider: DeepSeek** and
-   **Model: DeepSeek V4 Flash** — both are pre-selected and saved on a fresh install, so no
-   change should be needed. Our test key works only with DeepSeek.
-4. Tap **Test connection**. It sends one real request and validates key, provider and model
-   together; you should see "Connected. You're ready to ask."
-5. Go back and ask a question, for example "How did I sleep last night?".
-
-A simulator has no Apple Health data — on a simulator, add a few steps or sleep samples in
-the Health app first, or test on a device.
-
-Thank you again for the screenshots — the "select a cloud model" screenshot is what made the
-root cause obvious.
+Thank you for the screenshots — the "select a cloud model" one made the root cause obvious.
 
 ---
 
