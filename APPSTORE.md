@@ -231,37 +231,67 @@ Tracking**（不做广告、不和第三方数据做匹配）。
 **必须给一把能用的测试 API key**，否则审核员打开 app 只看到「还没配置云端模型」，核心功能一步都
 跑不了——这是 2.1 拒绝里最常见的一种。现开一把、给足额度、上架通过之后作废。
 
+**整段用英文写。** 前两轮的审核意见和回信都是英文，审核员读的也是英文；app 现在自带英文界面，
+下面每一处引号里的字**和英文界面上的字逐字相同**——审核员按着找得到，不用在中文界面里猜。
+
+**每一步都点名那两行要显示什么**（Provider = DeepSeek、Model = DeepSeek V4 Flash）。它们现在是
+默认值而且真的存下来了，正常情况下不用他动手；写出来是为了让他**一眼核对**，而不是让他去设置。
+2026-08-16 被拒的那次就是 key 和 provider 对不上（拿 DeepSeek 的 key 敲了 Anthropic 的门），
+而屏幕上没有一处能让他发现这件事——「Test connection」这一步就是为这个存在的，别省。
+
 Notes 整段（健康档案那一节也并进来了，审核看的是一整段）：
 
 ```
-【无需账号】
-Vana 没有账号系统，打开即用，无需登录。
+NO ACCOUNT, NO SIGN-IN
+Vana has no accounts and no login. Open it and it works. The API key below is not a
+credential for Vana — it is the reviewer's key for a third-party AI service.
 
-【必读：需要先配置一把模型 API key】
-Vana 自身没有服务器，也不代收费用——回答问题依赖用户自行配置的云端模型服务。
-未配置时，app 可以打开、可以读取健康数据、首屏的状况摘要也会显示，但无法回答任何提问。
+SETUP — PLEASE DO THIS FIRST (about 30 seconds)
+Vana has no server of its own and resells nothing. Answering a question depends on a cloud
+model service that the user configures with their own key. Without a key the app opens,
+reads Apple Health and shows the status summary on the first screen, but it cannot answer
+questions.
 
-请按以下步骤配置后再测试：
-1. 打开 Vana →「设置」（右上角齿轮）
-2.「云端模型」→「API key」→ 粘贴下方提供的 key
-3. Provider 选 Anthropic，模型选 Claude Sonnet 5
-4. 返回主界面，在输入框提问，例如「我最近的活动量怎么样」
+1. Open Vana and tap the gear icon (top right) to open Settings.
+2. Under "Cloud model", tap "API key" and paste the test key at the end of this note.
+3. Confirm the two rows below it read exactly:
+      Provider  DeepSeek
+      Model     DeepSeek V4 Flash
+   Both are pre-selected and already saved on a fresh install — no change should be needed.
+   The key we provide works only with DeepSeek; if Provider shows anything else, the
+   provider will reject the key.
+4. Tap "Test connection". This sends one real request and checks the key, the provider and
+   the model together. Expect: "Connected. You're ready to ask."
+5. Go back and ask a question in the input box, for example:
+      "How did I sleep last night?"   or   "How active have I been lately?"
 
-测试用 API key：<在这里粘一把额度足够的 key>
+Test API key: <PASTE A KEY WITH SUFFICIENT CREDIT HERE>
 
-【健康数据】
-模拟器中没有 Apple 健康数据，请在真机上测试；或在「健康」App 中手动添加几条
-步数/睡眠记录后再提问。Vana 对 HealthKit 只读，从不写入或修改任何健康记录。
+APPLE HEALTH (HEALTHKIT)
+Vana reads Apple Health read-only and never writes to or modifies any health record.
+HealthKit is identified in the interface in four places: the welcome card on the first
+screen, the Settings section titled "Apple Health (HealthKit)", the footer of the health
+status detail screen (tap the summary card at the top of the first screen), and the header
+of every query result panel inside a conversation.
 
-【健康档案（Clinical Health Records）权限说明】
-entitlement 中申请了 com.apple.developer.healthkit.access: health-records，
-用于读取用户已在「健康」App 中连接的化验结果与体征（不读取诊断和用药记录），
-以便在对话中解释这些数值。数据仅在用户提问时读取，不用于广告或数据挖掘，
-不出售给任何第三方，也不保存到 iCloud（相关文件已排除出设备备份）。
+A simulator has no Apple Health data. Please test on a physical device, or add a few steps
+and sleep samples in the Health app first, then ask a question.
 
-【首次启动】
-首启会先显示一屏「在开始之前」，说明哪些数据会发给用户配置的模型服务、哪些不会。
-免责声明与完整隐私说明在：设置 →「关于 Vana」。
+CLINICAL HEALTH RECORDS
+The entitlement com.apple.developer.healthkit.access: health-records is used to read lab
+results and vital signs the user has already connected in the Health app, so they can be
+explained in conversation. Diagnoses and medication records are not read. The data is read
+only when the user asks about it, is never used for advertising or data mining, is never
+sold to any third party, and is never stored in iCloud (the related files are excluded from
+device backups).
+
+FIRST LAUNCH
+The first launch shows a "Before you start" screen stating exactly what is sent to the model
+service the user configures and what never leaves the device. The disclaimer and the full
+privacy policy are in Settings > About Vana.
+
+LANGUAGE
+The app ships in Simplified Chinese and English and follows the device language.
 ```
 
 ## 健康档案（Clinical Health Records）权限
