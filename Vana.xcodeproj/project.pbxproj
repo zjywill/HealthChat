@@ -77,7 +77,6 @@
 		7A7387ABAE107E59675E80D4 /* HealthTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EF735A49053191B3A4DF699 /* HealthTools.swift */; };
 		7F6985041E47C60AE8E155A9 /* AskUserCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2552218700BE157F9F2E07D /* AskUserCard.swift */; };
 		7FBBBB446DE2A5100F124A1E /* HealthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FFECA484A9D54D55039FC79 /* HealthStore.swift */; };
-		8059AF388C1390ED9F6C6DE5 /* PrivacyPolicy.html in Resources */ = {isa = PBXBuildFile; fileRef = 41D68B650ECD49CFA781BE5B /* PrivacyPolicy.html */; };
 		81570995D8D914BF506B0ABC /* AskUserTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20C6F3129A1B9D1B3D7DCA25 /* AskUserTools.swift */; };
 		81E49DDBF5398A49C6E7D399 /* SessionTimeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67EEB6666EC3E9D6F1A2C019 /* SessionTimeSection.swift */; };
 		840F38A1FC8617F9A6582E55 /* FollowUpChipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3F67C9D7380C4FE1B67E30 /* FollowUpChipTests.swift */; };
@@ -135,6 +134,7 @@
 		D8E6BBB35A032C62638F29E2 /* VoiceDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54378044064249BDE0BFFEE /* VoiceDictation.swift */; };
 		D98F32C38BE1B772039E689E /* GoalDigest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000B5670D1A44D4EEA16BA16 /* GoalDigest.swift */; };
 		DCCA39AA42B9EB9551EB59DA /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C7FF0E7A1F2E290B1EDCD04 /* AttachmentViews.swift */; };
+		DE4E80855A437D6D4129DFE6 /* PrivacyPolicy.html in Resources */ = {isa = PBXBuildFile; fileRef = E8E404D0CB27B81582779B7E /* PrivacyPolicy.html */; };
 		E3CEE514BC503EF719939787 /* TenantContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DF7836E663505558075E41 /* TenantContext.swift */; };
 		E4B23A2E6EA324BBE9790C38 /* CloudSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B253EFDF01109BB8B27E69D /* CloudSetupTests.swift */; };
 		E91695781C6119902AABE429 /* HealthAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FFD960CE99235F41C98FD9 /* HealthAnalysis.swift */; };
@@ -184,6 +184,7 @@
 		18FEDEE309909A538345C409 /* DeveloperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperView.swift; sourceTree = "<group>"; };
 		1973A68A33172B7A85BCC796 /* HealthReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthReport.swift; sourceTree = "<group>"; };
 		19F0E7FC535724B3F4A28C00 /* MarkdownTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextView.swift; sourceTree = "<group>"; };
+		1BA6181F7EA0475BC86CDBA9 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "zh-Hans"; path = "zh-Hans.lproj/PrivacyPolicy.html"; sourceTree = "<group>"; };
 		1CDE34995C46935E91D404CA /* MemoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryItem.swift; sourceTree = "<group>"; };
 		1E29403F279A181592E73E80 /* MedicationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationStore.swift; sourceTree = "<group>"; };
 		1F200ED4C8993CBE0265893E /* TenantOpening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantOpening.swift; sourceTree = "<group>"; };
@@ -209,7 +210,6 @@
 		3C3E90887C794C72B7FEFC67 /* ExerciseCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCards.swift; sourceTree = "<group>"; };
 		3D550B0AB7872F50B561F9D2 /* EngineSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSettings.swift; sourceTree = "<group>"; };
 		405CE0F84C135DF2B98CD651 /* ComplianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplianceTests.swift; sourceTree = "<group>"; };
-		41D68B650ECD49CFA781BE5B /* PrivacyPolicy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = PrivacyPolicy.html; sourceTree = "<group>"; };
 		423C4962744F79A776C50986 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
 		4666DC500CE790945C889056 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		46A10D929B8987B2E35CAE3C /* MedicationItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationItem.swift; sourceTree = "<group>"; };
@@ -225,6 +225,7 @@
 		563906CED4BFB3447265B2B6 /* VanaIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VanaIntents.swift; sourceTree = "<group>"; };
 		56439788998DFCBC59E37702 /* SessionRecallTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTools.swift; sourceTree = "<group>"; };
 		56EDB6D216E4C798453B3F39 /* ModelCapabilityTags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCapabilityTags.swift; sourceTree = "<group>"; };
+		58EC53F1064F15A9EB658B61 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = en; path = en.lproj/PrivacyPolicy.html; sourceTree = "<group>"; };
 		596D541CBA67458F0A43D761 /* HealthSituation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSituation.swift; sourceTree = "<group>"; };
 		5D103188F48FDAA2E06EA301 /* BackgroundDigest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDigest.swift; sourceTree = "<group>"; };
 		5EF735A49053191B3A4DF699 /* HealthTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTools.swift; sourceTree = "<group>"; };
@@ -412,8 +413,8 @@
 			isa = PBXGroup;
 			children = (
 				4DA27D3E28569907B8B5352B /* DataUseNotice.swift */,
-				41D68B650ECD49CFA781BE5B /* PrivacyPolicy.html */,
 				E6E4B569F7EF11E85FF11022 /* PrivacyPolicyView.swift */,
+				E8E404D0CB27B81582779B7E /* PrivacyPolicy.html */,
 			);
 			path = Legal;
 			sourceTree = "<group>";
@@ -752,7 +753,7 @@
 				FB78A112C9FF093E647EFDCE /* Exercises.xcassets in Resources */,
 				D8095A68D101C2C323D48AE9 /* InfoPlist.xcstrings in Resources */,
 				247054225E2421568E032DF5 /* Localizable.xcstrings in Resources */,
-				8059AF388C1390ED9F6C6DE5 /* PrivacyPolicy.html in Resources */,
+				DE4E80855A437D6D4129DFE6 /* PrivacyPolicy.html in Resources */,
 				FFAA29BF1AC707D858E8665F /* exercises.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -918,6 +919,18 @@
 			targetProxy = 9E8A518E8F6DA8AF18C37CB1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		E8E404D0CB27B81582779B7E /* PrivacyPolicy.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				58EC53F1064F15A9EB658B61 /* en */,
+				1BA6181F7EA0475BC86CDBA9 /* zh-Hans */,
+			);
+			name = PrivacyPolicy.html;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		003F885B355053EED7DE7848 /* Debug */ = {

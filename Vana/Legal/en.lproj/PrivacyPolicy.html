@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+  Vana privacy policy — English.
+
+  Two readers, one text: this file is bundled into the app (rendered by `PrivacyPolicyView`)
+  and published as-is as the English privacy-policy URL for App Store Connect. The Simplified
+  Chinese original lives next to it in `zh-Hans.lproj/PrivacyPolicy.html` — **change one and
+  you must change the other**; the one that drifts is the one review is comparing against.
+
+  So: no external resources (this has to render inside WKWebView with no network), no build step.
+  Keep comments after `<!doctype>` — putting one before it drops WebKit into quirks mode.
+  Before editing the wording, read `VanaTests/ComplianceTests.swift`.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Vana Privacy Policy</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1c1c1e;
+    --dim: #6c6c70;
+    --rule: #e5e5ea;
+    --card: #f2f2f7;
+    --accent: #d81b60;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --fg: #f2f2f7;
+      --dim: #98989f;
+      --rule: #2c2c2e;
+      --card: #1c1c1e;
+      --accent: #ff6090;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 20px 64px;
+    background: var(--bg);
+    color: var(--fg);
+    /* 字体不要写进 `font:` 简写里:里面带 `-apple-system` 这种连字符开头的关键字时,
+       WebKit 会把整条声明丢掉,退回一个没有中文字形的默认字体——整页汉字变成豆腐块。
+       中文字体也排在西文之前。 */
+    font-size: 17px;
+    line-height: 1.65;
+    font-family: -apple-system, system-ui, "Helvetica Neue", "PingFang SC", sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overflow-wrap: break-word;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  h1 { font-size: 1.6rem; line-height: 1.3; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 1.16rem;
+    margin: 2.2rem 0 0.6rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--rule);
+    letter-spacing: -0.01em;
+  }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  p { margin: 0.7rem 0; }
+  ul { margin: 0.7rem 0; padding-left: 1.3rem; }
+  li { margin: 0.4rem 0; }
+  .meta { color: var(--dim); font-size: 0.92rem; margin-bottom: 1.6rem; }
+  .lede {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 1.2rem 0 0.4rem;
+  }
+  .lede p:first-child { margin-top: 0; }
+  .lede p:last-child { margin-bottom: 0; }
+  strong { font-weight: 600; }
+  em { font-style: normal; color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); }
+  code {
+    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--card);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+  footer { margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--rule); color: var(--dim); font-size: 0.92rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Vana Privacy Policy</h1>
+<p class="meta">Effective date: August 10, 2026</p>
+
+<div class="lede">
+  <p><strong>Vana has no server and no accounts.</strong> We (the developer) cannot see any of your data — it never passes through a machine of ours.</p>
+  <p>Your data goes to exactly two places: <em>it stays on this iPhone</em>, or <em>it goes to the model service you configured yourself in Settings</em>, to answer the question you just asked.</p>
+</div>
+
+<h2>Where data is stored</h2>
+<p>All of the following is stored in Vana's sandbox on this device. Nothing is uploaded or synced:</p>
+<ul>
+  <li>Conversations (including the health data read in each turn)</li>
+  <li>Long-term memories (the few dozen short notes “about you”)</li>
+  <li>The medications &amp; supplements list</li>
+  <li>Lab reports, medical reports, medicine-box photos and files you take or choose</li>
+</ul>
+<p>Photos, lab reports and the medication list are encrypted with iOS complete file protection (<code>completeFileProtection</code>) — while the device is locked, they cannot be read off disk. Your API key lives in the system keychain, not in any of those files.</p>
+<p><strong>None of this goes into backups.</strong> It is explicitly excluded from iCloud and computer backups — health data should not leave this device, and a backup is no exception. Please note the cost: <em>when you move to a new phone, these conversations, memories, medications and photos do not come with you</em>; you start fresh on the new device.</p>
+
+<h2>What leaves this device</h2>
+<p>For anyone to answer your question, the question itself has to be sent. You decide to whom: you pick a provider in Settings and enter your own API key, and Vana simply sends the request there. What goes out includes:</p>
+<ul>
+  <li>What you type, and the earlier back-and-forth in this conversation</li>
+  <li><strong>Aggregated values</strong> read from Apple Health (per day or per night, e.g. “6.2 h of sleep on Aug 6”) — never raw samples</li>
+  <li>The <strong>text</strong> recognized on this device from lab reports, medical reports and medicine boxes, and the text inside documents you choose</li>
+  <li><strong>The original photo itself</strong> — not by default; only the ones you agree to. With the default setting, Vana asks only when this device recognized <strong>no text at all</strong> (a meal, a rash — things whose information isn't text to begin with), and nothing is sent until you tap. Photos with recognized text (lab reports, medicine boxes, nutrition labels) are never asked about, because the recognized text already answers the question. You can change this default under Settings › Photos to “never ask” or “always send originals”; whatever the setting, you can open any photo before sending and decide for that one.</li>
+  <li>The <strong>city</strong> you are in (only if you allowed location)</li>
+  <li>Content from long-term memory and the medication list (only if you have not turned those features off)</li>
+</ul>
+<p>If you enter a serper.dev search key, Vana sends the <strong>search terms</strong> to that service when it needs outside material. Search terms never contain your health data or personal situation — this is stated both in the tool description and in the system prompt.</p>
+<p>How those two services handle what they receive is governed by <strong>their own privacy policies</strong> and is outside Vana's control. Which provider to use, and whether to add a search key at all, is your choice.</p>
+
+<h2>What never leaves this device</h2>
+<ul>
+  <li><strong>File originals, and — by default — photo originals.</strong> All text recognition happens on this device, and only the recognized text is sent. A lab report carries a name, a record number, a hospital, a department and a doctor's signature, while answering the question only needs a few lines of numbers — that is why originals are not sent by default. Whether an original goes is your decision; see the section above.</li>
+  <li><strong>Hold-to-talk recordings.</strong> Speech recognition uses an on-device iOS model: the audio never touches the network and is never written to disk. Only the recognized text remains, in the input box — and that text is not sent until you tap send.</li>
+  <li><strong>Precise location.</strong> Vana requests “approximate location” only, and puts only the city name into a request; coordinates are never sent and never stored on this device.</li>
+  <li><strong>Your API key.</strong> It stays in the keychain and is used only to make requests to the service you chose.</li>
+  <li><strong>Raw Apple Health samples.</strong> Individual heart-rate and step samples are used on-device for charts and aggregation only; they never enter an outgoing request.</li>
+  <li><strong>The conversations, memories and medication list themselves.</strong> They are assembled into a request only as needed to answer the question at hand. No cloud copy exists.</li>
+</ul>
+
+<h2>Apple Health data</h2>
+<ul>
+  <li>Vana is <strong>read-only</strong> with HealthKit and never writes to or modifies your health records.</li>
+  <li>Health data is <strong>never</strong> used for advertising, marketing or data mining, and is never sold or provided to any data broker. It is used only to answer the questions you ask in conversation.</li>
+  <li>Vana does not store health data in iCloud and does not sync across devices; the related files are likewise excluded from device backups.</li>
+  <li>If you have connected a healthcare institution in the Health app, Vana can read <strong>lab results and vital signs</strong> from it for the conversation; diagnosis and medication records are not read. You can turn any of it off at any time in Health &gt; Sharing &gt; Apps &gt; Vana.</li>
+  <li>Apple Health data belongs to the owner of this device only. A family member you add is a completely separate, isolated set of data, and Vana can read no Apple Health data there.</li>
+</ul>
+
+<h2>Location</h2>
+<p>Vana requests “approximate location” only, to reason about season, climate, time zone and how care works locally. The permission sheet does not even offer a precise-location switch. If you don't allow it, requests carry no location at all and everything else works as usual. If you revoke access, the last known city is cleared immediately.</p>
+
+<h2>Microphone and voice input</h2>
+<p>The microphone is used only for the few seconds you hold the talk button. Recognition is done by an on-device iOS speech model (the system downloads the model on first use) and never touches the network; the recording is neither saved nor sent. When you let go, only the recognized text remains, in the input box, waiting for you to confirm — it is never sent automatically. To get medication and metric names right, Vana passes the names in your medication list and a set of metric names to the <strong>on-device</strong> recognizer as hints; those hints do not leave this device either.</p>
+
+<h2>Camera and photos</h2>
+<p>Camera and photo-library access is used only for a capture or selection you start yourself. Recognition happens on this device; photos are stored in the app sandbox and are deleted together with the conversation they belong to. The original photo is sent to the model service only if you agree — the default is “ask when no text is found”, which you can change in Settings and override for any single photo; see the two sections above.</p>
+
+<h2>Notifications</h2>
+<p>The morning and evening check-ins are local notifications scheduled on this device; they do not go through any push server. The notification text is written at scheduling time and stored locally.</p>
+
+<h2>“Conversations that aren't saved”</h2>
+<p>With this switch on, that conversation is not written to disk, does not appear in the conversation list, takes no part in memory extraction, and its photos stay in memory only. To be clear about the limit: <strong>the question itself still goes to the model service you configured</strong> — no switch can change that.</p>
+
+<h2>How you can delete data</h2>
+<ul>
+  <li>A single conversation: swipe to delete it in the conversation list (its photos go with it).</li>
+  <li>All conversations: Settings &gt; Conversation &gt; Clear conversation.</li>
+  <li>Memories: delete them one by one in Settings &gt; memory.</li>
+  <li>Medications &amp; supplements: delete them one by one in the list.</li>
+  <li>Everything for one family member: delete that member in the member list; their entire directory is deleted with them.</li>
+  <li>Everything: delete the app. All of it lives in the app sandbox and goes with it.</li>
+</ul>
+<p>There are no accounts, so there is no account to close; we hold no copy of your data, so there is no deletion request to send us.</p>
+
+<h2>Children</h2>
+<p>Vana is not directed at children under 13 and does not knowingly collect their information.</p>
+
+<h2>Changes to this policy</h2>
+<p>When the content changes, the effective date at the top of this page is updated and the new version ships with an app update.</p>
+
+<h2>Contact</h2>
+<p>Privacy questions are welcome via <a href="https://github.com/zjywill/Vana-iOS/issues">GitHub Issues</a> or by email to <a href="mailto:zjywill@gmail.com">zjywill@gmail.com</a>.</p>
+
+<footer>
+  <p><strong>Vana is not a medical device.</strong> Its analysis is for reference only: it is not a diagnosis, treatment plan or medication advice, it gives no doses, and it cannot replace a doctor, pharmacist or other health professional. In an emergency, seek care or call your local emergency number immediately.</p>
+</footer>
+
+</main>
+</body>
+</html>

@@ -17,17 +17,35 @@ enum HealthAssistantInstructions {
     ///   全是错的:那些工具**根本没挂出去**。对着一个不存在的工具发指令,模型只会调一次、
     ///   失败一次,再自己想办法圆场——同 `search_sessions` / `remember` / `web_search` 那几处
     ///   照着 registry 拼提示词的规矩。
+    /// 回答用哪种语言。**跟着界面走**,不跟着 prompt 走:界面整个是英文、回答却是中文,
+    /// 是这个 app 里最扎眼的一处不一致,而用户没有任何地方能改它。
+    ///
+    /// 读的是 `preferredLocalizations`——那是「这个 app 真的有的语言里,系统挑中了哪一个」,
+    /// 不是系统语言本身(系统是法语时它落在中文上,而界面那时候也是中文)。
+    static var replyLanguage: String {
+        let code = Bundle.main.preferredLocalizations.first ?? "zh-Hans"
+        return code.hasPrefix("en") ? "English" : "简体中文"
+    }
+
+    /// 急救号码只在中文那份里点名 120。英文界面的人多半不在中国大陆,给一个错的号码
+    /// 比不给更糟——「当地急救电话」在哪儿都成立。
+    private static var emergencyNumberHint: String {
+        replyLanguage == "English" ? "" : "（中国大陆是 120）"
+    }
+
     static func text(today: Date = Date(), hasHealthData: Bool = true) -> String {
         var text = """
-        你是 Vana 的中文健康助手。
+        你是 Vana 的健康助手。
 
         今天是 \(formatToday(today))。
 
         回答规则：
 
+        - 用\(replyLanguage)回答。这是用户界面此刻用的语言；他明确用另一种语言问你时，跟着他走。
+
         - 急症优先于一切。用户描述的情况可能是急症时——胸痛或胸闷持续不缓解、呼吸困难、意识改变或晕厥、\
         突发一侧无力或口齿不清、严重出血、疑似严重过敏、剧烈腹痛、高热伴精神很差——\
-        第一句就请他立即就医或拨打当地急救电话（中国大陆是 120），不要先查数据，也不要先分析可能的原因。\
+        第一句就请他立即就医或拨打当地急救电话\(emergencyNumberHint)，不要先查数据，也不要先分析可能的原因。\
         说完这一句再简短说明你能帮上什么。
         - 用户提到想伤害自己或不想活了时，同样先停下分析：表达关切，请他立刻联系当地心理危机热线、\
         信任的人或急诊，并说明你不是能替代他们的人。任何情况下都不要提供方法性的内容。

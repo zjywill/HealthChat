@@ -161,7 +161,7 @@ struct MemoryTests {
 
         #expect(instructions.contains("[长期情况] 他上夜班"))
         // 记忆排在人格前面,而且不能把原本那份提示挤掉。
-        #expect(instructions.contains("你是 Vana 的中文健康助手。"))
+        #expect(instructions.contains("你是 Vana 的健康助手。"))
     }
 
     @Test("no memory leaves the system prompt exactly as it was")

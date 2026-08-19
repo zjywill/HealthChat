@@ -111,6 +111,61 @@ struct ComplianceTests {
         #expect(html.contains("急救"))
     }
 
+    // MARK: - 英文那一份
+
+    /// 英文界面配一份中文隐私说明,和没有说明差不多——而这一条是静默的:中文开发者永远
+    /// 看不到那一屏。两份文件都打进包里,而且各自覆盖同样几件事。
+    @Test("英文隐私说明也在包里，覆盖同样几件必须说的事")
+    func englishPrivacyPolicyIsBundled() throws {
+        let url = try #require(Bundle.main.url(
+            forResource: PrivacyPolicy.resourceName,
+            withExtension: "html",
+            subdirectory: nil,
+            localization: "en"
+        ))
+        let html = try String(contentsOf: url, encoding: .utf8)
+
+        #expect(html.contains("Effective date"))
+        #expect(html.contains("mailto:"))
+        // HealthKit 那三条硬性要求,和中文那份逐条对应。
+        #expect(html.contains("read-only"))
+        #expect(html.contains("data mining"))
+        #expect(html.contains("iCloud"))
+        #expect(html.contains("delete"))
+        #expect(html.contains("Children"))
+        #expect(html.contains("emergency"))
+    }
+
+    /// 权限面板上那几句话是**用户按「允许」之前读到的最后一段字**。少一条英文,英文用户
+    /// 在那一刻读到的是中文——而审核员正是从那一屏开始看这个 app 的。
+    @Test("每一条权限用途都有英文")
+    func permissionStringsAreLocalizedToEnglish() throws {
+        let url = try #require(Bundle.main.url(
+            forResource: "InfoPlist",
+            withExtension: "strings",
+            subdirectory: nil,
+            localization: "en"
+        ))
+        let strings = try #require(NSDictionary(contentsOf: url) as? [String: String])
+
+        for key in [
+            "NSHealthShareUsageDescription",
+            "NSHealthClinicalHealthRecordsShareUsageDescription",
+            "NSHealthUpdateUsageDescription",
+            "NSLocationWhenInUseUsageDescription",
+            "NSCameraUsageDescription",
+            "NSPhotoLibraryUsageDescription",
+            "NSMicrophoneUsageDescription"
+        ] {
+            let text = try #require(strings[key], "\(key) 没有英文")
+            #expect(!text.isEmpty)
+            #expect(
+                !text.unicodeScalars.contains { (0x4E00...0x9FFF).contains(Int($0.value)) },
+                "\(key) 的英文里还留着汉字"
+            )
+        }
+    }
+
     // MARK: - 界面上认得出 HealthKit(Guideline 2.5.1)
 
     /// 用了 HealthKit 就得在**界面上**说得出来。2026-08-19 被判的正是这一条:界面上到处

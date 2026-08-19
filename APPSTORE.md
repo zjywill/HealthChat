@@ -188,7 +188,7 @@ npx wrangler@latest pages deploy build/site --project-name=vana
 
 三条不要破坏的：
 
-- **隐私说明只有一份**，在 [`Vana/Legal/PrivacyPolicy.html`](Vana/Legal/PrivacyPolicy.html)。
+- **隐私说明每种语言一份**，在 [`Vana/Legal/zh-Hans.lproj/PrivacyPolicy.html`](Vana/Legal/zh-Hans.lproj/PrivacyPolicy.html) 和 [`en.lproj`](Vana/Legal/en.lproj/PrivacyPolicy.html)。
   它同时打进 app 包（设置 > 关于 > 隐私说明），`build.sh` 在发布时把它复制成
   `privacy/index.html`。**`site/` 里没有它的副本，也别加一份**——两处必须逐字相同，而审核
   核对的正是这个；留两份就是改一处忘一处。改了这个文件要重新发布一次。

@@ -1,20 +1,25 @@
 #!/bin/bash
 # 组装 vana.pinapia.com 要发布的那个目录。
 #
-# **隐私说明不在这个目录里,它在 `Vana/Legal/PrivacyPolicy.html`**——那一份同时打进 app 包
-# (设置 › 关于 › 隐私说明)。网上和 app 里必须逐字相同,审核核对的正是这个,所以这里不留
-# 副本、由这个脚本在发布时复制一次。留两份的话,改一处忘一处是迟早的事。
+# **隐私说明不在这个目录里,它在 `Vana/Legal/<语言>.lproj/PrivacyPolicy.html`**——那两份
+# 同时打进 app 包(设置 › 关于 › 隐私说明,跟着界面语言走)。网上和 app 里必须逐字相同,
+# 审核核对的正是这个,所以这里不留副本、由这个脚本在发布时复制一次。留两份的话,改一处
+# 忘一处是迟早的事。
+#
+# 英文那份发在 `/privacy/en/`:ASC 的隐私政策 URL 是按语言各填一个的,而英文用户点开一份
+# 中文说明,和没有说明差不多。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 out="build/site"
 
 rm -rf "$out"
-mkdir -p "$out/support" "$out/privacy"
+mkdir -p "$out/support" "$out/privacy" "$out/privacy/en"
 
 cp site/index.html          "$out/index.html"
 cp site/support/index.html  "$out/support/index.html"
-cp Vana/Legal/PrivacyPolicy.html "$out/privacy/index.html"
+cp Vana/Legal/zh-Hans.lproj/PrivacyPolicy.html "$out/privacy/index.html"
+cp Vana/Legal/en.lproj/PrivacyPolicy.html      "$out/privacy/en/index.html"
 
 echo "组装好了：$out"
 find "$out" -type f | sort | sed 's/^/  /'
@@ -49,5 +54,6 @@ vana-bqs.pages.dev(不带 https://、不带某次部署的哈希前缀,否则域
 
   Marketing URL     https://vana.pinapia.com/
   Support URL       https://vana.pinapia.com/support/
-  隐私政策 URL       https://vana.pinapia.com/privacy/
+  隐私政策 URL       https://vana.pinapia.com/privacy/      （简体中文）
+                    https://vana.pinapia.com/privacy/en/   （English，填在 ASC 的英文本地化里）
 EOF

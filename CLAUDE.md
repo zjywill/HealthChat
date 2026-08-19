@@ -1432,6 +1432,48 @@ UserDefaults;而发请求那一侧读的是 `string(forKey:)`,拿到的是 nil�
 
 `VanaTests/CloudSetupTests` 盯着这一套。
 
+## 架构:多语言(`Localizable.xcstrings` / `InfoPlist.xcstrings`)
+
+**中文是源语言,英文是加上去的那一份。** `developmentLanguage: zh-Hans` 不动(Siri 短语按它
+登记),键就是中文原文——`Text("昨晚睡得怎么样？")` 本来就是 `LocalizedStringKey`,界面代码
+一个字都不用改写成 key,英文那份在 catalog 里。
+
+- **`Text("a" + "b")` 走的是逐字那条重载**,`String` 拼接不是字面量,编译器抽不到,英文那边
+  永远是中文。跨行拼接一律合并成一条多行字面量(`\` 续行),排版一个字没变,而它现在是
+  `LocalizedStringKey`。**新写的每一处都要照这条来。**
+- **界面用的纯 `String` 包进 `String(localized:)`**:首屏那句话(`HealthSituation` /
+  `HealthVitals`)、设置页的状态提示、通知文案、用药/记忆/成员那些枚举标签。**发给模型的
+  prompt 一个字不动**——那一份的读者是模型,不是用户。
+- **组句时分隔号、句号、首字母大小写都跟着语言走**(`HealthSituation.sentence`)。中文那句是
+  「A；B。」,英文是「A; B.」,而英文还要把第一个字母大写:每一条 `brief` 都是半句话
+  (「no sleep recorded last night」),而它们各自都可能排在最前面。
+- **别在句子中间拼方向词**。「比基线\(多/少) 3 次」在英文里语序整个不一样,拼出来的那半句
+  没法翻——多和少各写一条整句(`HealthVitals.comparison`)。
+- **回答的语言跟着界面走**(`HealthAssistantInstructions.replyLanguage`,读
+  `Bundle.main.preferredLocalizations`)。界面全英文、回答却是中文,是这个 app 里最扎眼的一处
+  不一致,而用户没有任何地方能改它。急救号码同理:英文那份不点名 120,只说「当地急救电话」。
+- **权限用途字符串走 `InfoPlist.xcstrings`**。那几句是用户按「允许」之前读到的最后一段字,
+  漏一条,英文用户在那一刻读到的是中文——而审核员正是从那一屏开始看这个 app 的。有测试盯着。
+- **隐私说明两份**(`Vana/Legal/<语言>.lproj/PrivacyPolicy.html`),app 内跟着界面语言走,
+  `site/build.sh` 把它们发到 `/privacy/` 和 `/privacy/en/`。**改一份就要改另一份**——对不上的
+  那条恰好是审核在核对的。英文那份也有测试盯着必须说到的几件事。
+- **测试 scheme 钉在 zh-Hans**(`project.yml` 的 `scheme.language`)。模拟器默认是英文系统,
+  而合规、首屏、Siri 那几套断言盯的是**中文原文**(它们要挡的是「声明和行为对不上」,那是
+  逐字的)。不钉住的话,一加英文全挂,而挂的原因和代码没有关系。
+
+新加/改动界面文案之后,把新键收进来:
+
+```bash
+xcodebuild -exportLocalizations -project Vana.xcodeproj -localizationPath /tmp/loc -exportLanguage en
+```
+
+这一步会把编译器抽到的键写进 `Localizable.xcstrings`(空的 `localizations`),再补英文。
+**Xcode 那个"自动填充"只在 IDE 里跑,`xcodebuild build` 不会填**——所以少了这一步,新写的
+中文在英文设备上就是原样显示,而本机开发时看不出来。
+
+**故意没做的**:Siri 短语和 `SpokenBrief` 那几句口播还是中文(它们按开发语言登记,而英文
+Siri 那条路要另验一遍);站点的介绍页和支持页也还是中文。
+
 ## 依赖
 
 云端 LLM 请求走 AIKit(`zjywill/aikitswift`),以本地包 `../aikitswift` 引入——构建这个项目需要旁边有 aikitswift 的 checkout。`AgentRuntime` 是仓库内的本地包,没有外部依赖。
