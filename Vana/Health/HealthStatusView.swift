@@ -58,7 +58,7 @@ struct HealthStatusView: View {
 
                 Section {
                 } footer: {
-                    Text("数据来自「健康」，只读取，不会修改你的健康记录。缺少的项目多半是那几天没有戴设备。")
+                    Text(HealthKitAttribution.statusFooter)
                 }
             }
             .navigationTitle("现在的状况")

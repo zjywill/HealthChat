@@ -36,6 +36,49 @@ enum EngineSettings {
     static let defaultMorningHour = 8
     static let defaultEveningHour = 21
 
+    /// 全新安装时把默认 provider 和模型**真的写进** UserDefaults。
+    ///
+    /// **2026-08-19 那次审核就栽在这条缝里。** `@AppStorage(modelKey) = defaultModel` 只是
+    /// 「读不到时显示什么」,它一个字都不会写进 UserDefaults;而发请求那一侧读的是
+    /// `string(forKey:)`,拿到的是 nil。于是设置页上 Provider 写着 DeepSeek、模型写着
+    /// DeepSeek V4 Flash、key 也存好了,一发消息却是「需要先在设置里选择云端模型」——
+    /// 而屏幕上**没有任何一处**能让他把这个看着已经选好的模型再选一遍。审核员照着截图
+    /// 一步都没做错。
+    ///
+    /// 默认值只能有一份,而且必须是存下来的那一份:显示的那份和发请求的那份各算各的,
+    /// 迟早会像这次一样对不上,而对不上的表现是一句「你还没选」指着一个明明写在屏幕上的
+    /// 选择。所以补的不是那句文案,是让它们从同一个地方读。
+    ///
+    /// 幂等,且**只填空**:存过的那份一个字不动(`?? defaultProvider` 那一侧的兜底本来
+    /// 就只对全新安装生效),用户自己清空的也照样留空——那是他明确的选择,不是没配过。
+    static func seedDefaultsIfNeeded(_ defaults: UserDefaults = .standard) {
+        if defaults.string(forKey: providerKey) == nil {
+            defaults.set(defaultProvider, forKey: providerKey)
+        }
+        if defaults.string(forKey: modelKey) == nil {
+            defaults.set(defaultModel, forKey: modelKey)
+        }
+    }
+
+    /// 这次请求该发给谁。**所有发请求的地方都从这儿读**(聊天、后台派生、用药说明),
+    /// 各写一遍 `string(forKey:) ?? ""` 的话,漏掉兜底的那一处就是上面那个 bug 的下一次。
+    ///
+    /// 先补一次种子再读:`VanaApp.init` 已经补过了,这一句是为了让「谁先跑」不再是一个
+    /// 要靠启动顺序保证的事——它幂等,而且只在全新安装的第一次真的写一下。
+    ///
+    /// 模型为空**不兜底**:那只可能是用户在设置页把它清掉了,或者换到了一个目录里没有内置
+    /// 模型的 provider。这时候拿 DeepSeek 的模型名去顶,是拿这把钥匙去敲另一家的门。
+    static var selection: (provider: String, model: String) { selection(from: .standard) }
+
+    static func selection(from defaults: UserDefaults) -> (provider: String, model: String) {
+        seedDefaultsIfNeeded(defaults)
+        let provider = defaults.string(forKey: providerKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let model = defaults.string(forKey: modelKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return (provider.isEmpty ? defaultProvider : provider, model)
+    }
+
     static var persona: AssistantPersona {
         AssistantPersona(rawValue: UserDefaults.standard.string(forKey: personaKey) ?? "")
             ?? .balanced
@@ -91,8 +134,7 @@ enum EngineSettings {
     /// 其实收不了图,换来的是一次白花的往返;少问一句最多是他接着用文字描述,而那本来就是
     /// 这个 app 一直以来的样子。
     static var modelSupportsVision: Bool {
-        let provider = UserDefaults.standard.string(forKey: providerKey) ?? defaultProvider
-        let model = UserDefaults.standard.string(forKey: modelKey) ?? defaultModel
-        return ProviderCatalog.model(model, provider: provider)?.1.supportsVision ?? false
+        let selection = selection
+        return ProviderCatalog.model(selection.model, provider: selection.provider)?.1.supportsVision ?? false
     }
 }

@@ -111,6 +111,36 @@ struct ComplianceTests {
         #expect(html.contains("急救"))
     }
 
+    // MARK: - 界面上认得出 HealthKit(Guideline 2.5.1)
+
+    /// 用了 HealthKit 就得在**界面上**说得出来。2026-08-19 被判的正是这一条:界面上到处
+    /// 是「你的健康数据」和一颗心形图标,而那两样说不出**数据是从 Apple 的「健康」App
+    /// 来的**——审核员要确认的恰好是这件事。
+    ///
+    /// 中文用户认得的是「健康」App,审核员认得的是 HealthKit,两个名字都要在。
+    @Test("每一句数据来源都同时报得出「健康」App 和 HealthKit")
+    func attributionNamesAppleHealth() {
+        for line in [
+            HealthKitAttribution.source,
+            HealthKitAttribution.welcome,
+            HealthKitAttribution.settingsSection,
+            HealthKitAttribution.panelNote,
+            HealthKitAttribution.statusFooter
+        ] {
+            #expect(line.contains("健康"), "\(line) 没提「健康」App")
+            #expect(line.contains("HealthKit"), "\(line) 没提 HealthKit")
+        }
+    }
+
+    /// 只读、不写不改这两件要跟着来源一起说。HealthKit 的规矩里它们是同一件事的两半,
+    /// 而这个 app 从来只读——说不出口就白只读了。
+    @Test("首屏那一句同时说清了只读和不修改")
+    func welcomeAttributionSaysReadOnly() {
+        #expect(HealthKitAttribution.welcome.contains("只读取"))
+        #expect(HealthKitAttribution.welcome.contains("不会写入"))
+        #expect(HealthKitAttribution.panelNote.contains("不修改"))
+    }
+
     // MARK: - 首次使用那一屏
 
     @Test("正反两组都在，而且各自说了具体的东西")

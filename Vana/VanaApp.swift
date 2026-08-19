@@ -15,6 +15,9 @@ struct VanaApp: App {
     /// 的答案。这里同步做完(迁移就是几次目录改名),启动路径上因此没有"还不知道当前是谁"的
     /// 窗口——而那个窗口里读到的会是别人的数据。
     init() {
+        // 默认 provider 和模型在任何一屏画出来之前就落进 UserDefaults。设置页显示的那份
+        // 和发请求时读的那份必须是同一份——见 `EngineSettings.seedDefaultsIfNeeded`。
+        EngineSettings.seedDefaultsIfNeeded()
         TenantScope.bootstrap()
         _tenants = State(initialValue: TenantContext())
     }

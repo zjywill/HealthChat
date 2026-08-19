@@ -1096,12 +1096,48 @@ final class ChatViewModel {
     /// 小字说的都是它。三处各写一句的话,它们会慢慢漂成三种说法,而用户会以为是三件事。
     static let cloudSetupGuidance = "还没配置云端模型。到设置里填一把 API key，再选 provider 和模型，就能开始问了。"
 
+    /// key 填好了、模型没选上时那句。和上面那句分开:两句话要他做的事不一样,而
+    /// 「到设置里填一把 API key」对一个已经填好 key 的人是一句读不懂的话。
+    static let modelSetupGuidance = "还没选好云端模型。到设置里的「模型」那一行选一个，就能开始问了。"
+
+    /// key 存在但没通过验证时那句。**一处定义**:气泡上要认出这一类失败(重试解不掉,
+    /// 该去的是设置页),靠的就是和这句对上。
+    static let authFailureGuidance = "API key 没通过验证。请到「设置 › 云端模型」确认 key 填对了、没有过期，"
+        + "并且和选中的 provider 对得上。"
+
     func refreshEngineAvailability() {
-        // 问的是**「现在答不答得出来」**,不是「钥匙串里有没有东西」——注入了引擎的那条路
-        // (测试、预览)根本不走 `cloudSettings()`,拿 key 的有无去挡它,挡掉的是一个明明
-        // 跑得起来的引擎。判据必须和 `resolveEngine()` 里那个分支一致。
-        let canReply = engineFactory != nil || ((try? cloudKeyAvailable()) ?? false)
-        engineGuidance = canReply ? nil : Self.cloudSetupGuidance
+        engineGuidance = currentSetupGuidance
+    }
+
+    /// 现在这台设备配齐了没有,配不齐差的是哪一样。**纯计算,不写任何状态**——
+    /// 报错气泡在 `body` 里要问它一次,而在 `body` 里改 `@Observable` 就是一次无限刷新。
+    ///
+    /// 问的是**「现在答不答得出来」**,不是「钥匙串里有没有东西」——注入了引擎的那条路
+    /// (测试、预览)根本不走 `cloudSettings()`,拿 key 的有无去挡它,挡掉的是一个明明
+    /// 跑得起来的引擎。判据必须和 `resolveEngine()` 里那个分支一致:那边抛得出两种错
+    /// (没 key、没模型),这边就得挡得住两种。
+    ///
+    /// **模型这一条是后补的。** 只问 key 的话,模型那一格空着的人照样发得出去,换来的是
+    /// 一个「需要先在设置里选择云端模型」的错误气泡加一颗按几次都一样的「重试」——
+    /// 2026-08-19 那次审核看到的正是这一屏。
+    private var currentSetupGuidance: String? {
+        guard engineFactory == nil else { return nil }
+        guard (try? cloudKeyAvailable()) ?? false else { return Self.cloudSetupGuidance }
+        return EngineSettings.selection.model.isEmpty ? Self.modelSetupGuidance : nil
+    }
+
+    /// 一条报错气泡底下该给他哪颗按钮。
+    ///
+    /// 「重试」只对**这一次没成功**有意义。key 没填、模型没选、key 没通过验证这几种,
+    /// 重试一百次都是同一句话,而屏幕上没有一个字告诉他该去哪儿——审核员就是这么按了两次
+    /// 重试然后把这个 build 拒掉的。
+    func recovery(for messageID: UUID) -> ErrorRecovery? {
+        guard canRetry(messageID), let index = index(of: messageID) else { return nil }
+        guard let failure = session.messages[index].errorDescription else { return nil }
+        // 现在就配不齐:重试发出去的还是同一句话。**现算一次**而不是记在消息上,
+        // 这样他配完回来那颗按钮自己就变回「重试」。
+        if currentSetupGuidance != nil { return .openSetup }
+        return failure == Self.authFailureGuidance ? .openSetup : .retry
     }
 
     // MARK: - 回复
@@ -1313,8 +1349,7 @@ final class ChatViewModel {
         let raw = error.localizedDescription
         switch ModelFailure.kind(of: raw) {
         case .authentication:
-            return "API key 没通过验证。请到「设置 › 云端模型」确认 key 填对了、没有过期，"
-                + "并且和选中的 provider 对得上。"
+            return authFailureGuidance
         case .quota:
             return "这把 key 的额度用完了，或者账户欠着费。到 provider 那边确认额度之后再试一次。"
         case .contextOverflow:
@@ -1406,21 +1441,16 @@ final class ChatViewModel {
             throw AgentError.needsAPIKey
         }
 
-        let defaults = UserDefaults.standard
-        // 模型是在设置里选的,选空了就别拿默认模型顶上——那多半属于另一个 provider。
-        let model = defaults.string(forKey: EngineSettings.modelKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !model.isEmpty else {
+        // 和设置页显示的那两行**同一个来源**(`EngineSettings.selection`)。各读各的那一版
+        // 让审核员看着一屏配好的设置收到「你还没选模型」,见 `seedDefaultsIfNeeded`。
+        //
+        // 模型是在设置里选的,选空了仍然不拿默认模型顶上——那多半属于另一个 provider。
+        let selection = EngineSettings.selection
+        guard !selection.model.isEmpty else {
             throw AgentError.needsModelSelection
         }
 
-        return (
-            nonEmptySetting(
-                defaults.string(forKey: EngineSettings.providerKey),
-                fallback: EngineSettings.defaultProvider
-            ),
-            model
-        )
+        return selection
     }
 
     private func cloudKeyAvailable() throws -> Bool {
@@ -1473,4 +1503,13 @@ final class ChatViewModel {
         // 对不上——刚删掉的那条线还在上面挂着。
         goals = await sessionStore.goals()
     }
+}
+
+/// 一条报错气泡底下那颗按钮做什么。
+///
+/// 定在文件层不定在 `ChatViewModel` 里面:气泡的 `==` 是 `nonisolated` 的,而嵌在一个
+/// `@MainActor` 类型里的枚举在那儿要多绕一圈。
+enum ErrorRecovery {
+    case retry
+    case openSetup
 }

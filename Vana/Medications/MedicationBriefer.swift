@@ -75,16 +75,9 @@ struct MedicationBriefer: Sendable {
     @discardableResult
     static func fill(_ item: MedicationItem, store: MedicationStore = .shared) async -> Bool {
         guard !item.briefIsUserWritten else { return false }
-        let defaults = UserDefaults.standard
-        let model = defaults.string(forKey: EngineSettings.modelKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !model.isEmpty else { return false }
-        let provider = defaults.string(forKey: EngineSettings.providerKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let briefer = MedicationBriefer(
-            providerId: provider.isEmpty ? EngineSettings.defaultProvider : provider,
-            model: model
-        )
+        let selection = EngineSettings.selection
+        guard !selection.model.isEmpty else { return false }
+        let briefer = MedicationBriefer(providerId: selection.provider, model: selection.model)
         // `try?` 把「抛错」和「模型说不认识」都压成 nil。这里两者的处置本来就一样:都不写。
         guard let text = try? await briefer.brief(for: item.name) else { return false }
         _ = try? await store.setGeneratedBrief(id: item.id, text: text)

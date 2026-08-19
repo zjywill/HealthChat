@@ -147,13 +147,8 @@ enum DerivedTurn {
         let key = (try? KeychainStore.get(account: KeychainStore.apiKeyAccount)) ?? ""
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 
-        let defaults = UserDefaults.standard
-        let model = defaults.string(forKey: EngineSettings.modelKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !model.isEmpty else { return nil }
-
-        let provider = defaults.string(forKey: EngineSettings.providerKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return (provider.isEmpty ? EngineSettings.defaultProvider : provider, model)
+        let selection = EngineSettings.selection
+        guard !selection.model.isEmpty else { return nil }
+        return selection
     }
 }

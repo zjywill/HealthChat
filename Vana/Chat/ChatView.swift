@@ -28,6 +28,13 @@ struct ChatView: View {
     /// 用 push 不用 sheet:它和 toolbar 上那颗齿轮通向的是同一页,两条路进去的样子该一样,
     /// 而 push 自带一颗返回按钮——sheet 里那一页没有任何一处写着怎么退出去。
     @State private var isShowingCloudSetup = false
+    /// 往回翻远了。输入框上方那颗「回到底部」靠它出现。
+    ///
+    /// 不记「滚到哪儿了」只记「远不远」:见下面 `onScrollGeometryChange` 那段。
+    @State private var isScrolledUp = false
+    /// 输入区这一刻有多高。那颗「回到底部」浮在它上面,而它会跟着 chip 那排、附件、
+    /// 波形一起长高。
+    @State private var composerHeight: CGFloat = 0
 
     init(openedCheckIn: Binding<CheckInLaunch?> = .constant(nil)) {
         _openedCheckIn = openedCheckIn
@@ -100,7 +107,12 @@ struct ChatView: View {
                                     // 接不上任何东西的话——而模型此刻正在说的是别的事。
                                     canAnswerAsk: message.id == model.messages.last?.id
                                         && !model.isReplying,
+                                    // 只有报错的那几条要问一次,它读钥匙串。
+                                    recovery: message.errorDescription == nil
+                                        ? nil
+                                        : model.recovery(for: message.id),
                                     onRetry: { model.retry(message.id) },
+                                    onOpenSetup: { isShowingCloudSetup = true },
                                     onBranch: { model.branch(from: message.id) },
                                     onWithdraw: { model.withdrawQueued(message.id) },
                                     onAnswerAsk: { callID, answer in
@@ -175,8 +187,43 @@ struct ChatView: View {
                 .onChange(of: model.session.id) {
                     scroll(with: proxy, animated: true)
                 }
+                // 他往回翻了多远。**只问一个布尔**,不是把偏移量搬进 `@State`:
+                // 手指一路滑下来,后者是每帧一次界面刷新,而这一屏要重画的是整列非 Lazy
+                // 的气泡。这里只在跨过门槛的那一下变一次。
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    let bottom = geometry.contentSize.height + geometry.contentInsets.bottom
+                    return bottom - (geometry.contentOffset.y + geometry.containerSize.height)
+                        > Self.jumpToBottomThreshold
+                } action: { _, isAway in
+                    isScrolledUp = isAway
+                }
+                // 输入区挪进 `ScrollViewReader` 里面:那颗「回到底部」要用 `proxy`,
+                // 而贴底这件事从头到尾只有 `scroll(with:animated:)` 一个说了算的地方——
+                // 为它另起一套滚动机制,就是这一屏最早那阵抖动的来路。
+                .safeAreaInset(edge: .bottom) {
+                    ComposerBar(model: model, isFocused: $isComposerFocused)
+                        // 那颗按钮要浮在输入区**上面**,而它自己不知道输入区有多高
+                        // (chip 那排、附件、波形都会让它长高)。量一次交上去。
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                            composerHeight = $0
+                        }
+                }
+                // 浮在对话上,**不进输入区那一列**:做成 `VStack` 里的一行,它每次出现和
+                // 消失都会把整段对话顶一下——而它恰好在用户正翻着旧消息的时候出现。
+                //
+                // 也不做成输入区的 `overlay` 往上偏移:画得出来,但**点不着**——画到父视图
+                // 框外的那部分收不到触摸,表现是按钮好端端地摆在那儿,按下去什么都不发生
+                // (在 iPad 上试过一次)。挂在这一层,它整个落在自己的框里。
+                .overlay(alignment: .bottom) {
+                    // 空会话时不出:那一屏本来就没有「底部」可回。
+                    if isScrolledUp, !model.messages.isEmpty {
+                        jumpToBottomButton { scroll(with: proxy, animated: true) }
+                            .padding(.bottom, composerHeight + 8)
+                            .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    }
+                }
+                .animation(.smooth(duration: 0.2), value: isScrolledUp)
             }
-            .safeAreaInset(edge: .bottom) { ComposerBar(model: model, isFocused: $isComposerFocused) }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Vana")
             // 隐私是整条会话的属性,不是刚才点过的一个动作,所以它得一直在视线里。放在
@@ -325,6 +372,11 @@ struct ChatView: View {
 
     private static let welcomeAnchor = "welcome"
 
+    /// 离底多远才算"翻上去了"。半屏太迟(他已经翻过好几条了),几十点太早(流式期间
+    /// 手指轻轻一顶就冒出来)。240 点大概是一条长回复的高度:少于这个距离,他自己往下
+    /// 一划就到了,那颗按钮反而挡着字。
+    private static let jumpToBottomThreshold: CGFloat = 240
+
     /// 会改变内容高度的一切。贴底的触发信号。
     ///
     /// 不拿 `model.messages` 当信号:那要把整条会话深比较一遍,里面含 `storedTurn`
@@ -417,6 +469,23 @@ struct ChatView: View {
     ///
     /// `animated` 由调用方决定,不是由 `reduceMotion` 一家说了算:贴着流式内容走本来就
     /// 不该有动画,那是"位置跟着内容",不是一次跳转。
+    /// 翻远了之后回到最新一条。**只有一颗箭头**,不写字:它浮在对话上面,盖住的每一个
+    /// 像素都是他正在读的内容。
+    private func jumpToBottomButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.footnote.weight(.bold))
+                .frame(width: 36, height: 36)
+                .glassEffect(.regular.interactive(), in: .circle)
+                // 画出来是 36 的一颗圆,点得着的是 44 见方——低于 44 的目标在手指底下
+                // 就是「按不准」,而它浮在正文上面,再画大一圈又会挡住字。
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("回到最新消息")
+    }
+
     private func scroll(with proxy: ScrollViewProxy, animated: Bool) {
         let target: (id: AnyHashable, anchor: UnitPoint) = model.messages.last
             .map { (AnyHashable($0.id), UnitPoint.bottom) }
@@ -567,7 +636,13 @@ private struct MessageBubble: View, Equatable {
     let canBranch: Bool
     /// 这条里的 `ask_user` 卡现在还答得了吗(见 `AskUserCard.isLive`)。
     let canAnswerAsk: Bool
+    /// 这条报错底下该给他哪颗按钮:重试,还是去设置。`nil` 是「这条不是报错」。
+    ///
+    /// 「重试」只对**这一次没成功**有意义;key 没填、模型没选、key 没通过验证那几种,
+    /// 按几次都是同一句话——2026-08-19 那次审核就是这么按了两次然后把 build 拒掉的。
+    let recovery: ErrorRecovery?
     let onRetry: () -> Void
+    let onOpenSetup: () -> Void
     let onBranch: () -> Void
     let onWithdraw: () -> Void
     let onAnswerAsk: (String, AskUserAnswer) -> Void
@@ -583,6 +658,7 @@ private struct MessageBubble: View, Equatable {
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.isStreaming == rhs.isStreaming
             && lhs.canRetry == rhs.canRetry
+            && lhs.recovery == rhs.recovery
             && lhs.canBranch == rhs.canBranch
             && lhs.canAnswerAsk == rhs.canAnswerAsk
             && lhs.message.rendersIdentically(to: rhs.message)
@@ -738,17 +814,20 @@ private struct MessageBubble: View, Equatable {
                     .foregroundStyle(.secondary)
             }
 
-            if message.errorDescription != nil, canRetry {
+            if message.errorDescription != nil, let recovery {
                 // 用 bordered 不用 glass:它跟着对话一起滚,不是浮在内容上的那一层。
                 // 见 `inlineChipStyle` 里那条边界。
-                Button(action: onRetry) {
-                    Label("重试", systemImage: "arrow.clockwise")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 30)
+                Button(action: recovery == .retry ? onRetry : onOpenSetup) {
+                    Label(
+                        recovery == .retry ? "重试" : "去设置",
+                        systemImage: recovery == .retry ? "arrow.clockwise" : "gearshape"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 30)
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
-                .accessibilityHint("重新发送上一条问题")
+                .accessibilityHint(recovery == .retry ? "重新发送上一条问题" : "去设置里把云端模型配好")
             } else if !isStreaming, !message.text.isEmpty {
                 actions
             }
@@ -1074,12 +1153,23 @@ private struct WelcomeCard: View {
                 // 「我读不到」,而这是他见到的第一屏。
                 Text(
                     tenant.isOwner
-                        ? "你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。Vana 只读取你授权的数据，不会修改健康记录。"
+                        ? "你可以直接询问步数、睡眠、心率、锻炼、体重体脂，以及血压、血氧这类有记录才有的数据。"
                         : "拍一张\(tenant.displayName)的化验单、报告或药盒，Vana 在本机识别成文字再帮你看。\(tenant.displayName)的步数、睡眠、心率这些读不到——Apple 健康数据只有本人有。"
                 )
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+                // 数据是从哪儿来的,要在第一屏上说得出口(Guideline 2.5.1)。图标加
+                // 「你的健康数据」这种说法说不出这一件事——见 `HealthKitAttribution`。
+                // 家人那边不出:那条路上一个健康工具都没挂,写上就是许一个给不了的东西。
+                if tenant.isOwner {
+                    Label(HealthKitAttribution.welcome, systemImage: "heart.text.square.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .combine)
+                }
             }
 
             // 话题格子(跑步、睡眠、心率与 HRV…)每一颗都指着一个健康工具。家人这边它们

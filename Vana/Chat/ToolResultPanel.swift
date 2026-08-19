@@ -180,7 +180,7 @@ struct ToolResultPanel: View {
                 .font(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("来自「健康」App，只读取，不修改")
+            Text(HealthKitAttribution.panelNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

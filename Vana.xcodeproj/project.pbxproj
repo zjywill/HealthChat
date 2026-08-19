@@ -69,6 +69,7 @@
 		6C31A04025132ED57C92F2E1 /* SuggestedQuestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E957C5E1ECBBD2535B7591 /* SuggestedQuestions.swift */; };
 		6E45E0D37A8953C751E0C5CB /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4666DC500CE790945C889056 /* KeychainStore.swift */; };
 		705196FBEB809E78863ADB46 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF15991886D8C3841B441A70 /* ChatMessage.swift */; };
+		73420A9807BAC741F3F0CD6C /* HealthKitAttribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A7758F9BD74B85B9C27B3A /* HealthKitAttribution.swift */; };
 		73D603D230AF090995E9D21F /* TurnSegmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD1501F5575704F8893E9977 /* TurnSegmentTests.swift */; };
 		758CAFC9CD3E866CBCA09A62 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F329C843BC24BC69B9C8B22 /* ChatView.swift */; };
 		76CA8D0A1B861F76C94DF847 /* TenantPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925B164E60F06AE5F04C34A1 /* TenantPaths.swift */; };
@@ -133,6 +134,7 @@
 		D98F32C38BE1B772039E689E /* GoalDigest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000B5670D1A44D4EEA16BA16 /* GoalDigest.swift */; };
 		DCCA39AA42B9EB9551EB59DA /* AttachmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C7FF0E7A1F2E290B1EDCD04 /* AttachmentViews.swift */; };
 		E3CEE514BC503EF719939787 /* TenantContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DF7836E663505558075E41 /* TenantContext.swift */; };
+		E4B23A2E6EA324BBE9790C38 /* CloudSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B253EFDF01109BB8B27E69D /* CloudSetupTests.swift */; };
 		E91695781C6119902AABE429 /* HealthAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31FFD960CE99235F41C98FD9 /* HealthAnalysis.swift */; };
 		EAAE976BB21C5F8A104AB78C /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490B1A2E11DDC3F6DB82C021 /* SessionListView.swift */; };
 		EB7213F5FEC4CC193C04582B /* TextRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00879D57177DD8B50F9D16EE /* TextRecognizer.swift */; };
@@ -193,6 +195,7 @@
 		27F1A10864C2F4C42FBA3AF4 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		28922F1A363A7C0959385517 /* SessionRecallTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecallTrigger.swift; sourceTree = "<group>"; };
 		2ADD466EF0B43D83424825FE /* QuestionSuggester.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionSuggester.swift; sourceTree = "<group>"; };
+		2B253EFDF01109BB8B27E69D /* CloudSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSetupTests.swift; sourceTree = "<group>"; };
 		2F329C843BC24BC69B9C8B22 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		30CE1570F39B79E91A8274FE /* CheckInScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInScheduler.swift; sourceTree = "<group>"; };
 		31FFD960CE99235F41C98FD9 /* HealthAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthAnalysis.swift; sourceTree = "<group>"; };
@@ -200,6 +203,7 @@
 		36CCC885A1AACF0467162558 /* VanaTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VanaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3756A32AA9A10291859E8F06 /* SpokenBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenBrief.swift; sourceTree = "<group>"; };
 		38A1F7A4B686A7E32D818C08 /* MedicationEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationEditView.swift; sourceTree = "<group>"; };
+		38A7758F9BD74B85B9C27B3A /* HealthKitAttribution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitAttribution.swift; sourceTree = "<group>"; };
 		3C3E90887C794C72B7FEFC67 /* ExerciseCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCards.swift; sourceTree = "<group>"; };
 		3D550B0AB7872F50B561F9D2 /* EngineSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSettings.swift; sourceTree = "<group>"; };
 		405CE0F84C135DF2B98CD651 /* ComplianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplianceTests.swift; sourceTree = "<group>"; };
@@ -521,6 +525,7 @@
 				87875CAFD39B15E599BF9503 /* ChatLoopHarness.swift */,
 				4B21274D070E0B38FBD3E174 /* ChatLoopTests.swift */,
 				B5652F6BF2520AAC033C8EC7 /* ChatMessagePersistenceTests.swift */,
+				2B253EFDF01109BB8B27E69D /* CloudSetupTests.swift */,
 				405CE0F84C135DF2B98CD651 /* ComplianceTests.swift */,
 				A870C828465B6A656BA05D3D /* ContextBudgetPerformanceTests.swift */,
 				E5D65068691DF366D2832FAC /* DocumentImportTests.swift */,
@@ -605,6 +610,7 @@
 				30CE1570F39B79E91A8274FE /* CheckInScheduler.swift */,
 				21D12A09352778086AC19CC4 /* DebugSeeder.swift */,
 				31FFD960CE99235F41C98FD9 /* HealthAnalysis.swift */,
+				38A7758F9BD74B85B9C27B3A /* HealthKitAttribution.swift */,
 				596D541CBA67458F0A43D761 /* HealthSituation.swift */,
 				2412C2E5C7C81F086F308EFF /* HealthStatusView.swift */,
 				6FFECA484A9D54D55039FC79 /* HealthStore.swift */,
@@ -754,6 +760,7 @@
 				0614679A044F8FD1435F1CE0 /* ChatLoopHarness.swift in Sources */,
 				223C8FE1FC78C54F6E96E657 /* ChatLoopTests.swift in Sources */,
 				90B8967B20D5973BCED8DA65 /* ChatMessagePersistenceTests.swift in Sources */,
+				E4B23A2E6EA324BBE9790C38 /* CloudSetupTests.swift in Sources */,
 				B8315A82F5568767A7BB1747 /* ComplianceTests.swift in Sources */,
 				8A60CD200BF4DB6E5DC7DBAC /* ContextBudgetPerformanceTests.swift in Sources */,
 				12EB85C4A62C21D593825F9B /* DocumentImportTests.swift in Sources */,
@@ -828,6 +835,7 @@
 				D98F32C38BE1B772039E689E /* GoalDigest.swift in Sources */,
 				E91695781C6119902AABE429 /* HealthAnalysis.swift in Sources */,
 				32498112069C5485E96C176F /* HealthAssistantInstructions.swift in Sources */,
+				73420A9807BAC741F3F0CD6C /* HealthKitAttribution.swift in Sources */,
 				C93E08516048BC8A6015E920 /* HealthReport.swift in Sources */,
 				2477E00C81BA12BA55A41DB5 /* HealthSituation.swift in Sources */,
 				EBAA7A4953D0B45B709B25AF /* HealthStatusView.swift in Sources */,

@@ -16,8 +16,10 @@ enum AgentError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .needsAPIKey: "需要先在设置里填写云端 API key"
-        case .needsModelSelection: "需要先在设置里选择云端模型"
+        // 说清楚**下一步做什么**,不是只报一句缺什么:这两句出现的时候,用户手上除了
+        // 一颗解不掉它的「重试」什么都没有(气泡底下那颗按钮这时候换成「去设置」)。
+        case .needsAPIKey: "还没配置云端 API key。到设置里填一把，再选 provider 和模型，就能开始问了。"
+        case .needsModelSelection: "还没选好云端模型。到设置里的「模型」那一行选一个，就能开始问了。"
         case .cloudService(let message): "云端服务返回错误：\(message)"
         case .incompleteResponse: "模型回复没有正常结束，请重试"
         case .contextWindowExceeded: "当前对话过长，超出模型上下文限制，请开启新对话或缩小问题范围"
