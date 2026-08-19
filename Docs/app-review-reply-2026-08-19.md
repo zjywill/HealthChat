@@ -80,6 +80,22 @@ of these strings — including the HealthKit permission prompts — appears in E
   aggregated values needed to answer a question are sent only to the AI provider the user
   configures with their own key.
 
+### Setup, in case it is easier to have it here
+
+The same steps are in App Review Information > Notes, along with a test API key:
+
+1. Open Vana, tap the gear icon (top right) to open **Settings**.
+2. Under **Cloud model**, tap **API key** and paste the test key from our review notes.
+3. The two rows below it should already read **Provider: DeepSeek** and
+   **Model: DeepSeek V4 Flash** — both are pre-selected and saved on a fresh install, so no
+   change should be needed. Our test key works only with DeepSeek.
+4. Tap **Test connection**. It sends one real request and validates key, provider and model
+   together; you should see "Connected. You're ready to ask."
+5. Go back and ask a question, for example "How did I sleep last night?".
+
+A simulator has no Apple Health data — on a simulator, add a few steps or sleep samples in
+the Health app first, or test on a device.
+
 Thank you again for the screenshots — the "select a cloud model" screenshot is what made the
 root cause obvious.
 
