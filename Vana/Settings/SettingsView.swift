@@ -105,7 +105,7 @@ struct SettingsView: View {
                     } label: {
                         LabeledContent(
                             "模型",
-                            value: model.isEmpty ? "未选择" : CloudCatalog.modelName(for: model, in: providerId)
+                            value: model.isEmpty ? String(localized: "未选择") : CloudCatalog.modelName(for: model, in: providerId)
                         )
                     }
 
@@ -250,8 +250,10 @@ struct SettingsView: View {
             } footer: {
                 // key 的有无就是开关,所以这句话要说清「填了会怎样、不填会怎样」,
                 // 不然用户会去找一个并不存在的开关。
-                Text("填了 serper.dev 的 key，Vana 遇到自己不知道的事就能上网查一下，并给出出处。"
-                    + "不填就只用它已有的知识回答。搜索词不会带上你的健康数据。key 只保存在本机钥匙串。")
+                Text("""
+                    填了 serper.dev 的 key，Vana 遇到自己不知道的事就能上网查一下，并给出出处。\
+                    不填就只用它已有的知识回答。搜索词不会带上你的健康数据。key 只保存在本机钥匙串。
+                    """)
             }
 
             Section {
@@ -275,8 +277,10 @@ struct SettingsView: View {
             } header: {
                 Text("助手")
             } footer: {
-                Text("只改语气和详略，不改数据口径——同样只引用工具返回的数字，同样不做诊断。"
-                    + "\n思考让多步分析更准，但更慢也更贵；有些模型不支持关闭，那就还是会思考。")
+                Text("""
+                    只改语气和详略，不改数据口径——同样只引用工具返回的数字，同样不做诊断。\
+                    \n思考让多步分析更准，但更慢也更贵；有些模型不支持关闭，那就还是会思考。
+                    """)
             }
 
             // 模型看不了图的时候这一节**照样显示**,只是多一行说它现在不起作用。
@@ -297,8 +301,10 @@ struct SettingsView: View {
 
                 if !EngineSettings.modelSupportsVision {
                     Label {
-                        Text("当前模型（\(model)）看不了图，这一项暂时不起作用——"
-                            + "原图一张都不会发出去，换一个支持看图的模型才会生效。")
+                        Text("""
+                            当前模型（\(model)）看不了图，这一项暂时不起作用——\
+                            原图一张都不会发出去，换一个支持看图的模型才会生效。
+                            """)
                     } icon: {
                         Image(systemName: "eye.slash")
                     }
@@ -313,8 +319,10 @@ struct SettingsView: View {
                 //
                 // 这里**不能用 `**` 加粗**:markdown 只对字符串字面量生效,而这几段是拼出来
                 // 的 `String`,那两颗星会原样显示在屏幕上(踩过)。要强调就分句,别靠符号。
-                Text("照片里的文字一律在本机识别，发出去的默认只有文字。这一项管的只是原图要不要"
-                    + "跟着走，而且只是默认——发送之前点开任意一张，都能单独决定这一张发不发。")
+                Text("""
+                    照片里的文字一律在本机识别，发出去的默认只有文字。这一项管的只是原图要不要\
+                    跟着走，而且只是默认——发送之前点开任意一张，都能单独决定这一张发不发。
+                    """)
             }
 
             Section {
@@ -342,8 +350,10 @@ struct SettingsView: View {
             } header: {
                 Text("提醒")
             } footer: {
-                Text("早上说昨晚的睡眠，晚上说今天的活动量，都基于本机算出来的数据；"
-                    + "点开通知会直接带着对应话题开一条新对话。文案在每次打开 app 时刷新。")
+                Text("""
+                    早上说昨晚的睡眠，晚上说今天的活动量，都基于本机算出来的数据；\
+                    点开通知会直接带着对应话题开一条新对话。文案在每次打开 app 时刷新。
+                    """)
             }
 
             Section {
@@ -351,7 +361,7 @@ struct SettingsView: View {
                     requestHealthAuthorization()
                 } label: {
                     Label(
-                        isRequestingHealth ? "正在请求…" : HealthKitAttribution.authorizeAction,
+                        isRequestingHealth ? String(localized: "正在请求…") : HealthKitAttribution.authorizeAction,
                         systemImage: "heart.text.square"
                     )
                 }
@@ -376,9 +386,11 @@ struct SettingsView: View {
             } footer: {
                 // iOS 从不告诉 app 读取权限被拒了(拒绝和"没数据"长得一样),所以这里
                 // 不假装能显示授权状态,只说清楚该去哪儿改。
-                Text(HealthKitAttribution.panelNote + "。"
-                    + "新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。"
-                    + "已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > Vana。")
+                Text(HealthKitAttribution.panelNote + """
+                    。\
+                    新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。\
+                    已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > Vana。
+                    """)
             }
 
             Section {
@@ -409,8 +421,10 @@ struct SettingsView: View {
                 // 授权本身就是开关,所以这段话得说清「给了会怎样、不给会怎样」,不然用户会去找
                 // 一个并不存在的开关(同上面那把搜索 key)。也要说清它到底拿到了什么——
                 // 「大概位置」四个字在 iOS 那张面板上有确切含义,这里不该说得比它更模糊。
-                Text("给了之后 Vana 每次回答都知道你大概在哪个城市，季节气候、时差、当地饮食和就医方式才答得准。"
-                    + "只取到城市，不取街道地址，也不会保存在本机；不给就完全不带位置，其余功能照常。")
+                Text("""
+                    给了之后 Vana 每次回答都知道你大概在哪个城市，季节气候、时差、当地饮食和就医方式才答得准。\
+                    只取到城市，不取街道地址，也不会保存在本机；不给就完全不带位置，其余功能照常。
+                    """)
             }
 
             // **用不了的时候整节不出现。**
@@ -555,22 +569,30 @@ struct SettingsView: View {
     private var locationStatus: HealthAuthStatus {
         if location.isDenied {
             return HealthAuthStatus(
-                message: "已拒绝，Vana 不会带上位置。要打开请到「设置 > Vana > 位置」。",
+                message: String(localized: "已拒绝，Vana 不会带上位置。要打开请到「设置 > Vana > 位置」。"),
                 icon: "location.slash",
                 isError: true
             )
         }
         if !location.isAuthorized {
-            return HealthAuthStatus(message: "还没授权，回答里不会带位置。", icon: "location", isError: false)
+            return HealthAuthStatus(
+                message: String(localized: "还没授权，回答里不会带位置。"),
+                icon: "location",
+                isError: false
+            )
         }
         if location.snapshot.isKnown {
             return HealthAuthStatus(
-                message: "只到城市这一级，模型看到的就是上面这一行。",
+                message: String(localized: "只到城市这一级，模型看到的就是上面这一行。"),
                 icon: "checkmark.circle.fill",
                 isError: false
             )
         }
-        return HealthAuthStatus(message: "已授权，还没定到位置。", icon: "location", isError: false)
+        return HealthAuthStatus(
+            message: String(localized: "已授权，还没定到位置。"),
+            icon: "location",
+            isError: false
+        )
     }
 
     /// 语音识别在这台设备上是什么状况。
@@ -580,9 +602,11 @@ struct SettingsView: View {
     /// 整个不出现,而这里要说清为什么——并指一条还走得通的路(键盘上那颗麦克风)。
     /// 拼在常量里而不是 ViewBuilder 里:`Form` 那一大坨本来就在类型检查的边缘,
     /// 往里再塞一个三段 `+` 的字符串,编译器直接报 "unable to type-check in reasonable time"。
-    private static let voiceFooter = "输入框里按住麦克风说话，识别在本机完成，录音不保存也不联网。"
-        + "你记在用药表里的药名和常问的指标名会作为提示交给识别器，"
-        + "这是键盘听写做不到的一件事。松开只把文字填进输入框，不会直接发送。"
+    private static let voiceFooter = """
+        输入框里按住麦克风说话，识别在本机完成，录音不保存也不联网。\
+        你记在用药表里的药名和常问的指标名会作为提示交给识别器，\
+        这是键盘听写做不到的一件事。松开只把文字填进输入框，不会直接发送。
+        """
 
     private var canTestConnection: Bool {
         !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !model.isEmpty
@@ -626,7 +650,7 @@ struct SettingsView: View {
         case .ready:
             let locale = dictation.resolvedLocale?.identifier ?? ""
             return HealthAuthStatus(
-                message: "可以用，识别语言 \(locale)，全程在本机。",
+                message: String(localized: "可以用，识别语言 \(locale)，全程在本机。"),
                 icon: "checkmark.circle.fill",
                 isError: false
             )
@@ -635,13 +659,13 @@ struct SettingsView: View {
             // 这一行能给的只有一个事实;把「到设置里启用听写系统就会装上」那一串写进来,
             // 是替系统写说明书,而多数人根本不需要这个功能。
             return HealthAuthStatus(
-                message: "这台设备还没装本机语音模型，按住说话不会出现。",
+                message: String(localized: "这台设备还没装本机语音模型，按住说话不会出现。"),
                 icon: "mic.slash",
                 isError: false
             )
         case .downloading:
             return HealthAuthStatus(
-                message: "系统正在装本机语音模型。",
+                message: String(localized: "系统正在装本机语音模型。"),
                 icon: "arrow.down.circle",
                 isError: false
             )
@@ -650,17 +674,21 @@ struct SettingsView: View {
             // 而「不支持」三个字说不清缺的是什么——这一行是这个功能能不能成立的唯一证据。
             let available = dictation.supportedLocaleIdentifiers
             let listing = available.isEmpty
-                ? "这台设备一种语言都没读到。"
-                : "这台设备支持的是：\(available.prefix(8).joined(separator: "、"))\(available.count > 8 ? " 等" : "")。"
+                ? String(localized: "这台设备一种语言都没读到。")
+                : String(localized: "这台设备支持的是：\(available.prefix(8).joined(separator: "、"))\(available.count > 8 ? " 等" : "")。")
             return HealthAuthStatus(
-                message: "没有可用的中文语音识别，按住说话不会出现。\(listing)键盘上那颗麦克风照样能用。",
+                message: String(localized: "没有可用的中文语音识别，按住说话不会出现。\(listing)键盘上那颗麦克风照样能用。"),
                 icon: "mic.slash",
                 isError: true
             )
         case .unavailable:
-            return HealthAuthStatus(message: "这台设备用不了本机语音识别。", icon: "mic.slash", isError: true)
+            return HealthAuthStatus(
+                message: String(localized: "这台设备用不了本机语音识别。"),
+                icon: "mic.slash",
+                isError: true
+            )
         case .unknown:
-            return HealthAuthStatus(message: "正在检查…", icon: "mic", isError: false)
+            return HealthAuthStatus(message: String(localized: "正在检查…"), icon: "mic", isError: false)
         }
     }
 
@@ -684,7 +712,7 @@ struct SettingsView: View {
         guard await CheckInScheduler.requestAuthorization() else {
             checkInsEnabled = false
             checkInStatus = HealthAuthStatus(
-                message: "系统通知权限没有打开，请到「设置 > Vana > 通知」里允许。",
+                message: String(localized: "系统通知权限没有打开，请到「设置 > Vana > 通知」里允许。"),
                 icon: "exclamationmark.triangle.fill",
                 isError: true
             )
@@ -693,7 +721,7 @@ struct SettingsView: View {
 
         await CheckInScheduler.reschedule()
         checkInStatus = HealthAuthStatus(
-            message: "已排程，每天 \(morningHour):00 和 \(eveningHour):00 各一条。",
+            message: String(localized: "已排程，每天 \(morningHour):00 和 \(eveningHour):00 各一条。"),
             icon: "checkmark.circle.fill",
             isError: false
         )
@@ -716,14 +744,14 @@ struct SettingsView: View {
                 let didAsk = try await HealthStore.owner.requestAuthorizationIfNeeded(force: true)
                 healthStatus = HealthAuthStatus(
                     message: didAsk
-                        ? "已弹出授权面板，你的选择已保存。"
-                        : "这些数据类型都已经问过了。要打开或关闭，请到“健康”App 里改。",
+                        ? String(localized: "已弹出授权面板，你的选择已保存。")
+                        : String(localized: "这些数据类型都已经问过了。要打开或关闭，请到“健康”App 里改。"),
                     icon: didAsk ? "checkmark.circle.fill" : "info.circle",
                     isError: false
                 )
             } catch {
                 healthStatus = HealthAuthStatus(
-                    message: "请求失败：\(error.localizedDescription)",
+                    message: String(localized: "请求失败：\(error.localizedDescription)"),
                     icon: "exclamationmark.triangle.fill",
                     isError: true
                 )
@@ -827,13 +855,13 @@ private enum KeyStatus: Equatable {
     var message: String {
         switch self {
         case .notSet:
-            return "尚未保存 API key"
+            return String(localized: "尚未保存 API key")
         case .pending:
-            return "更改尚未保存"
+            return String(localized: "更改尚未保存")
         case .saved:
-            return "API key 已保存"
+            return String(localized: "API key 已保存")
         case .error(let message):
-            return "无法保存：\(message)"
+            return String(localized: "无法保存：\(message)")
         }
     }
 
@@ -841,13 +869,13 @@ private enum KeyStatus: Equatable {
     var searchMessage: String {
         switch self {
         case .notSet:
-            return "没填，Vana 不会上网搜"
+            return String(localized: "没填，Vana 不会上网搜")
         case .pending:
-            return "更改尚未保存"
+            return String(localized: "更改尚未保存")
         case .saved:
-            return "已保存"
+            return String(localized: "已保存")
         case .error(let message):
-            return "无法保存：\(message)"
+            return String(localized: "无法保存：\(message)")
         }
     }
 

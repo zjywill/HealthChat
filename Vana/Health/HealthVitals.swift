@@ -45,12 +45,12 @@ struct VitalItem: Sendable, Equatable, Identifiable {
     var phrase: String? {
         guard let value else { return nil }
         switch kind {
-        case .sleep: return "昨晚睡了 \(value)"
-        case .steps: return "今天走了 \(value)"
-        case .restingHR: return "静息心率 \(value)"
+        case .sleep: return String(localized: "昨晚睡了 \(value)")
+        case .steps: return String(localized: "今天走了 \(value)")
+        case .restingHR: return String(localized: "静息心率 \(value)")
         case .hrv: return "HRV \(value)"
-        case .workout: return "最近一次锻炼是\(value)"
-        case .weight: return "体重 \(value)"
+        case .workout: return String(localized: "最近一次锻炼是\(value)")
+        case .weight: return String(localized: "体重 \(value)")
         }
     }
 
@@ -105,10 +105,10 @@ extension HealthVitals {
         else {
             return VitalItem(
                 kind: .sleep,
-                title: "昨晚睡眠",
+                title: String(localized: "昨晚睡眠"),
                 icon: "moon.zzz",
                 value: nil,
-                note: "昨晚没有记录"
+                note: String(localized: "昨晚没有记录")
             )
         }
 
@@ -119,16 +119,16 @@ extension HealthVitals {
             let average = baseline.reduce(0, +) / Double(baseline.count)
             note = comparison(
                 delta: Int((last.asleep - average) / 60),
-                unit: "分钟",
+                unit: String(localized: "分钟"),
                 tolerance: 15,
-                reference: "最近 \(baseline.count) 晚平均"
+                reference: String(localized: "最近 \(baseline.count) 晚平均")
             )
         }
         return VitalItem(
             kind: .sleep,
-            title: "昨晚睡眠",
+            title: String(localized: "昨晚睡眠"),
             icon: "moon.zzz",
-            value: "\(hours.oneDecimal) 小时",
+            value: String(localized: "\(hours.oneDecimal) 小时"),
             note: note
         )
     }
@@ -147,10 +147,10 @@ extension HealthVitals {
         guard let today, hasAnySteps else {
             return VitalItem(
                 kind: .steps,
-                title: "今天步数",
+                title: String(localized: "今天步数"),
                 icon: "figure.walk",
                 value: nil,
-                note: hasAnySteps ? "今天还没有记录" : "最近没有记录"
+                note: hasAnySteps ? String(localized: "今天还没有记录") : String(localized: "最近没有记录")
             )
         }
 
@@ -159,13 +159,13 @@ extension HealthVitals {
             let average = Int(history.map(\.value).reduce(0, +) / Double(history.count))
             // 步数是**攒了一天的量**,不是一个瞬时值。上午八点走了两千步远低于日均,那是
             // 时间还早,不是他今天动得少——所以只报平常是多少,不替它下"偏少"的判断。
-            note = "最近平常 \(average.grouped) 步"
+            note = String(localized: "最近平常 \(average.grouped) 步")
         }
         return VitalItem(
             kind: .steps,
-            title: "今天步数",
+            title: String(localized: "今天步数"),
             icon: "figure.walk",
-            value: "\(Int(today.value).grouped) 步",
+            value: String(localized: "\(Int(today.value).grouped) 步"),
             note: note
         )
     }
@@ -175,10 +175,10 @@ extension HealthVitals {
         guard let latest = resting.last else {
             return VitalItem(
                 kind: .restingHR,
-                title: "静息心率",
+                title: String(localized: "静息心率"),
                 icon: "heart",
                 value: nil,
-                note: "最近没有记录"
+                note: String(localized: "最近没有记录")
             )
         }
         var note: String?
@@ -187,16 +187,16 @@ extension HealthVitals {
             let average = baseline.reduce(0, +) / Double(baseline.count)
             note = comparison(
                 delta: Int(latest - average),
-                unit: "次",
+                unit: String(localized: "次"),
                 tolerance: 2,
-                reference: "最近基线 \(Int(average))"
+                reference: String(localized: "最近基线 \(Int(average))")
             )
         }
         return VitalItem(
             kind: .restingHR,
-            title: "静息心率",
+            title: String(localized: "静息心率"),
             icon: "heart",
-            value: "\(Int(latest)) 次/分",
+            value: String(localized: "\(Int(latest)) 次/分"),
             note: note
         )
     }
@@ -209,7 +209,7 @@ extension HealthVitals {
                 title: "HRV",
                 icon: "waveform.path.ecg",
                 value: nil,
-                note: "最近没有记录"
+                note: String(localized: "最近没有记录")
             )
         }
         var note: String?
@@ -220,7 +220,7 @@ extension HealthVitals {
                 delta: Int(latest - average),
                 unit: "ms",
                 tolerance: 3,
-                reference: "最近基线 \(Int(average))"
+                reference: String(localized: "最近基线 \(Int(average))")
             )
         }
         return VitalItem(
@@ -240,10 +240,10 @@ extension HealthVitals {
         guard let latest = sessions.max(by: { $0.date < $1.date }) else {
             return VitalItem(
                 kind: .workout,
-                title: "最近一次锻炼",
+                title: String(localized: "最近一次锻炼"),
                 icon: "flame",
                 value: nil,
-                note: "最近两周没有记录"
+                note: String(localized: "最近两周没有记录")
             )
         }
         let ended = latest.date.addingTimeInterval(latest.duration)
@@ -255,16 +255,16 @@ extension HealthVitals {
         ).day ?? 0
         let when: String
         switch days {
-        case ..<1: when = "今天"
-        case 1: when = "昨天"
-        default: when = "\(days) 天前"
+        case ..<1: when = String(localized: "今天")
+        case 1: when = String(localized: "昨天")
+        default: when = String(localized: "\(days) 天前")
         }
         return VitalItem(
             kind: .workout,
-            title: "最近一次锻炼",
+            title: String(localized: "最近一次锻炼"),
             icon: "flame",
-            value: "\(when)的\(latest.typeName) \(minutes) 分钟",
-            note: "最近两周 \(sessions.count) 次"
+            value: String(localized: "\(when)的\(latest.typeName) \(minutes) 分钟"),
+            note: String(localized: "最近两周 \(sessions.count) 次")
         )
     }
 
@@ -276,10 +276,10 @@ extension HealthVitals {
         guard let last = weights.last else {
             return VitalItem(
                 kind: .weight,
-                title: "体重",
+                title: String(localized: "体重"),
                 icon: "scalemass",
                 value: nil,
-                note: "最近没有记录"
+                note: String(localized: "最近没有记录")
             )
         }
         var note: String?
@@ -287,14 +287,16 @@ extension HealthVitals {
             let days = calendar.dateComponents([.day], from: first.0, to: last.0).day ?? 0
             let delta = last.1 - first.1
             note = abs(delta) < 0.3
-                ? "\(max(days, 1)) 天里基本没变"
-                : "\(max(days, 1)) 天里\(delta > 0 ? "涨" : "降")了 \(abs(delta).oneDecimal) 公斤"
+                ? String(localized: "\(max(days, 1)) 天里基本没变")
+                : delta > 0
+                    ? String(localized: "\(max(days, 1)) 天里涨了 \(abs(delta).oneDecimal) 公斤")
+                    : String(localized: "\(max(days, 1)) 天里降了 \(abs(delta).oneDecimal) 公斤")
         }
         return VitalItem(
             kind: .weight,
-            title: "体重",
+            title: String(localized: "体重"),
             icon: "scalemass",
-            value: "\(last.1.oneDecimal) 公斤",
+            value: String(localized: "\(last.1.oneDecimal) 公斤"),
             note: note
         )
     }
@@ -312,8 +314,12 @@ extension HealthVitals {
         // 「最近基线 57」这种以数字收尾的说法后面要补一个空格,否则接出来的是「57多 7 次」
         // ——数字和汉字之间不留空,这一整行就是这里唯一一处读起来发黏的地方。
         let joint = reference.last?.isNumber == true ? " " : ""
-        guard abs(delta) > tolerance else { return "和\(reference)\(joint)差不多" }
-        return "比\(reference)\(joint)\(delta > 0 ? "多" : "少") \(abs(delta)) \(unit)"
+        guard abs(delta) > tolerance else { return String(localized: "和\(reference)\(joint)差不多") }
+        // 多和少分两条整句,不在句子中间拼一个方向词:英文那边「比基线多 3 次」整句的
+        // 语序和中文不一样,拼出来的那半句没法翻。
+        return delta > 0
+            ? String(localized: "比\(reference)\(joint)多 \(abs(delta)) \(unit)")
+            : String(localized: "比\(reference)\(joint)少 \(abs(delta)) \(unit)")
     }
 }
 

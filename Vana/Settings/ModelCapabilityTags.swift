@@ -58,10 +58,10 @@ struct ModelCapabilityTags: View {
     private var tags: [Tag] {
         var tags: [Tag] = []
         if model.supportsVision {
-            tags.append(Tag(title: "看图", icon: "eye", tint: .accentColor))
+            tags.append(Tag(title: String(localized: "看图"), icon: "eye", tint: .accentColor))
         }
         if model.supportsReasoning {
-            tags.append(Tag(title: "思考", icon: "sparkles", tint: .purple))
+            tags.append(Tag(title: String(localized: "思考"), icon: "sparkles", tint: .purple))
         }
         // 排在最后但最要紧。放前面会把两颗中性标签挤到看不见,而这一句是「这个模型在这个
         // app 里基本用不了」——它该被读成一句警告,不是一项参数。
@@ -70,7 +70,7 @@ struct ModelCapabilityTags: View {
         // 「不支持的模型读不到健康数据」)。一颗七个字的徽章排在另外两颗两个字的旁边,
         // 读起来不像同一套东西,而它本来就该和它们并排。
         if !model.supportsTools {
-            tags.append(Tag(title: "不支持工具", icon: "exclamationmark.triangle.fill", tint: .orange))
+            tags.append(Tag(title: String(localized: "不支持工具"), icon: "exclamationmark.triangle.fill", tint: .orange))
         }
         return tags
     }

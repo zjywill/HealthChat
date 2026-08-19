@@ -11,10 +11,9 @@ enum TenantOpening {
     static func quickSummary(for tenant: Tenant, medications: MedicationSnapshot) -> String {
         let name = tenant.displayName
         guard !medications.isEmpty else {
-            return "这里是\(name)的记录。拍一张\(name)的化验单或报告，或者先把\(name)在吃的药记下来。"
+            return String(localized: "这里是\(name)的记录。拍一张\(name)的化验单或报告，或者先把\(name)在吃的药记下来。")
         }
-        return "\(name)的清单里记着 \(medications.items.count) 样东西。"
-            + "读不到\(name)的健康数据，要看具体数值就拍一张化验单给我。"
+        return String(localized: "\(name)的清单里记着 \(medications.items.count) 样东西。读不到\(name)的健康数据，要看具体数值就拍一张化验单给我。")
     }
 
     /// 三颗 chip。有清单和没清单是两种处境,给的下一步也该是两种。
@@ -24,26 +23,26 @@ enum TenantOpening {
         if medications.isEmpty {
             questions.append(SuggestedQuestion(
                 icon: "pills",
-                text: "把\(name)在吃的药记下来"
+                text: String(localized: "把\(name)在吃的药记下来")
             ))
         } else {
             questions.append(SuggestedQuestion(
                 icon: "pills",
-                text: "\(name)在吃的这些一起吃有问题吗"
+                text: String(localized: "\(name)在吃的这些一起吃有问题吗")
             ))
             questions.append(SuggestedQuestion(
                 icon: "exclamationmark.triangle",
-                text: "这几样有什么要注意的"
+                text: String(localized: "这几样有什么要注意的")
             ))
         }
         questions.append(SuggestedQuestion(
             icon: "doc.text.viewfinder",
-            text: "化验单上哪几项要重点看"
+            text: String(localized: "化验单上哪几项要重点看")
         ))
         if let ageBand = tenant.ageBand {
             questions.append(SuggestedQuestion(
                 icon: "heart.text.square",
-                text: "\(ageBand.label)体检要重点查什么"
+                text: String(localized: "\(ageBand.label)体检要重点查什么")
             ))
         }
         return Array(questions.prefix(3))

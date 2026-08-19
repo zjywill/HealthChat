@@ -163,8 +163,10 @@ extension ChatAttachment {
         if photos == 0 {
             return "（以下是用户选的 \(documents) 份文件里的文字，原样取出，不是他打的字。）"
         }
-        return "（以下是用户随这句话带来的 \(attachments.count) 件东西里的文字，都不是他打的字："
-            + "照片是本机识别的，可能有错；文件是原样取出的。\(attached)）"
+        return """
+            （以下是用户随这句话带来的 \(attachments.count) 件东西里的文字，都不是他打的字：\
+            照片是本机识别的，可能有错；文件是原样取出的。\(attached)）
+            """
     }
 
     private func block(number: Int, attachedImage: Int? = nil) -> String {

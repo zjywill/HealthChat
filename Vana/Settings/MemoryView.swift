@@ -19,8 +19,10 @@ struct MemoryView: View {
             Section {
                 Toggle("记住我说过的事", isOn: $memoryEnabled)
             } footer: {
-                Text("开着时，Vana 会在对话结束后记下你的长期情况和表达偏好，并在之后的提问里带上。"
-                    + "关掉只是先不用，已经记下的还在下面，要删有单独的按钮。")
+                Text("""
+                    开着时，Vana 会在对话结束后记下你的长期情况和表达偏好，并在之后的提问里带上。\
+                    关掉只是先不用，已经记下的还在下面，要删有单独的按钮。
+                    """)
             }
 
             if let errorMessage {
@@ -74,10 +76,12 @@ struct MemoryView: View {
                 }
                 .disabled(items.isEmpty)
             } footer: {
-                Text("已记 \(items.count)/\(MemoryStore.maxItems) 条。"
-                    + "这里只记查不到的事——作息、限制、你的偏好；"
-                    + "步数、睡眠、心率这些每次都会重新查，不会记进来。"
-                    + "\n对话时这些内容会随问题一起发给你选的模型 provider。")
+                Text("""
+                    已记 \(items.count)/\(MemoryStore.maxItems) 条。\
+                    这里只记查不到的事——作息、限制、你的偏好；\
+                    步数、睡眠、心率这些每次都会重新查，不会记进来。\
+                    \n对话时这些内容会随问题一起发给你选的模型 provider。
+                    """)
             }
         }
         .navigationTitle("Vana 记住的事")
@@ -133,14 +137,14 @@ struct MemoryView: View {
     private func subtitle(_ item: MemoryItem) -> String {
         var parts: [String]
         switch item.origin {
-        case .manual: parts = ["你写的"]
-        case .asked: parts = ["你让我记的"]
-        case .extracted: parts = ["从对话中记下"]
+        case .manual: parts = [String(localized: "你写的")]
+        case .asked: parts = [String(localized: "你让我记的")]
+        case .extracted: parts = [String(localized: "从对话中记下")]
         }
         parts.append(item.updatedAt.formatted(.relative(presentation: .named)))
         if let dueAt = item.dueAt {
             let days = Calendar.current.dateComponents([.day], from: Date(), to: dueAt).day ?? 0
-            parts.append(days <= 0 ? "该回头看了" : "\(days) 天后回头看")
+            parts.append(days <= 0 ? String(localized: "该回头看了") : String(localized: "\(days) 天后回头看"))
         }
         return parts.joined(separator: " · ")
     }
@@ -187,7 +191,7 @@ struct MemoryView: View {
                 items = try await work()
                 errorMessage = nil
             } catch {
-                errorMessage = "保存失败：\(error.localizedDescription)"
+                errorMessage = String(localized: "保存失败：\(error.localizedDescription)")
             }
         }
     }
@@ -228,8 +232,10 @@ private struct MemoryEditor: View {
                         .lineLimit(2...5)
                         .focused($isTextFocused)
                 } footer: {
-                    Text("一句话说清就行。不要写具体数字——步数、睡眠时长这些每次都会重新查，"
-                        + "写死在这里明天就是错的。")
+                    Text("""
+                        一句话说清就行。不要写具体数字——步数、睡眠时长这些每次都会重新查，\
+                        写死在这里明天就是错的。
+                        """)
                 }
 
                 Section {

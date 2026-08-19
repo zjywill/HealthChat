@@ -1,0 +1,159 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "version": "1.0",
+  "strings": {
+    "CFBundleDisplayName": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vana"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vana"
+          }
+        }
+      }
+    },
+    "CFBundleName": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vana"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vana"
+          }
+        }
+      }
+    },
+    "NSHealthShareUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于在对话中分析你的步数、睡眠、心率等健康数据。分析由你在设置里配置的云端模型完成，相关的聚合数值会发送给该服务；原始样本不会离开这台设备，Vana 也不会修改你的健康记录。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used to analyze your steps, sleep, heart rate and other health data in conversation. The analysis is done by the cloud model you configure in Settings, and the relevant aggregated values are sent to that service; raw samples never leave this device, and Vana never modifies your health records."
+          }
+        }
+      }
+    },
+    "NSHealthClinicalHealthRecordsShareUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于在对话中读取你已连接到「健康」的化验和体检记录。只在你提问时读取，相关内容会发送给你在设置里配置的云端模型来分析；Vana 不会修改这些记录，也不会把它们用于广告或数据挖掘。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used to read the lab results and vital signs you have connected to the Health app. They are read only when you ask about them, and the relevant content is sent to the cloud model you configure in Settings for analysis; Vana never modifies these records and never uses them for advertising or data mining."
+          }
+        }
+      }
+    },
+    "NSHealthUpdateUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vana 只读取健康数据，不会写入或修改任何健康记录。这一项是系统在检测到 HealthKit 授权接口时要求声明的，Vana 不会请求写入权限。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vana only reads health data and never writes or modifies any health record. This entry is required by the system whenever the HealthKit authorization API is present; Vana never requests write access."
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于让 Vana 知道你大概在哪个城市，回答季节、气候、时差和当地就医方式相关的问题；只取到城市，不取街道地址，也不会保存在本机。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used to let Vana know roughly which city you are in, so it can answer questions about season, climate, time zone and local care; only the city is used, never a street address, and it is not stored on this device."
+          }
+        }
+      }
+    },
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于拍摄化验单、药瓶或说明书；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used to photograph lab reports, medicine bottles or package inserts; text recognition happens on this device, only the recognized text is sent to the model you configure, and the photo never leaves this device."
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于选取你已经拍好的化验单或药瓶照片；文字识别在本机完成，只有识别出的文字会发给你配置的模型，照片不会离开这台设备。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used to pick lab report or medicine photos you have already taken; text recognition happens on this device, only the recognized text is sent to the model you configure, and the photo never leaves this device."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于「按住说话」把你说的话识别成文字填进输入框。识别在本机完成，录音不会保存，也不会离开这台设备；只有识别出的文字在你按发送后才会发给你配置的模型。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used by hold-to-talk to turn what you say into text in the input box. Recognition happens on this device, the recording is never saved and never leaves this device; only the recognized text is sent to the model you configure, and only after you tap send."
+          }
+        }
+      }
+    }
+  }
+}

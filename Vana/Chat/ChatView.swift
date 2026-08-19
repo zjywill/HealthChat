@@ -509,7 +509,7 @@ struct ChatView: View {
 private struct CompactionDivider: View {
     let artifact: CompactionArtifact
 
-    private var countText: String { "以上 \(artifact.sourceMessageIDs.count) 条已折叠" }
+    private var countText: String { String(localized: "以上 \(artifact.sourceMessageIDs.count) 条已折叠") }
 
     var body: some View {
         VStack(spacing: 6) {

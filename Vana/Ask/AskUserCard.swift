@@ -239,8 +239,8 @@ struct AskUserCard: View {
     /// 一句,按钮却当那句不存在。所以这个数和 `messageText` 同源(`AskUserAnswer.itemCount`)。
     private var confirmTitle: String {
         let count = draft.itemCount
-        guard question.allowsMultiple, count > 1 else { return "发送" }
-        return "发送 \(count) 项"
+        guard question.allowsMultiple, count > 1 else { return String(localized: "发送") }
+        return String(localized: "发送 \(count) 项")
     }
 
     private var draft: AskUserAnswer {

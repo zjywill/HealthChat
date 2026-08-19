@@ -132,7 +132,9 @@ enum CheckInScheduler {
         if period == .morning, let followUp = dueFollowUps.first {
             let conclusion = followUpConclusions[followUp.id]
             return CheckIn(
-                title: conclusion == nil ? "说好今天回头看的" : "说好今天回头看的，看过了",
+                title: conclusion == nil
+                    ? String(localized: "说好今天回头看的")
+                    : String(localized: "说好今天回头看的，看过了"),
                 body: conclusion ?? followUp.text,
                 topicId: nil,
                 // 问的还是原来那句。点开是要接着聊的,不是要它把通知上那行再念一遍。
@@ -149,10 +151,10 @@ enum CheckInScheduler {
         // 替他回答一个主观问题——而这一列要的恰恰是他那句「没什么感觉」。
         if period == .morning, let medication = dueMedications.first {
             return CheckIn(
-                title: "说好回头问你一句",
-                body: "\(medication.name)试下来怎么样？",
+                title: String(localized: "说好回头问你一句"),
+                body: String(localized: "\(medication.name)试下来怎么样？"),
                 topicId: nil,
-                question: "\(medication.name)试下来有感觉吗？",
+                question: String(localized: "\(medication.name)试下来有感觉吗？"),
                 threadId: SessionThread.medication(medication.id).id
             )
         }
@@ -195,7 +197,7 @@ enum CheckInScheduler {
         if let relevant {
             let question = relevant.question
             return CheckIn(
-                title: period == .morning ? "早上好" : "今天收个尾",
+                title: period == .morning ? String(localized: "早上好") : String(localized: "今天收个尾"),
                 body: relevant.brief,
                 topicId: topicId(for: relevant),
                 question: question.text
@@ -205,17 +207,17 @@ enum CheckInScheduler {
         switch period {
         case .morning:
             return CheckIn(
-                title: "早上好",
-                body: "昨晚的睡眠数据已经同步好了，要看看吗？",
+                title: String(localized: "早上好"),
+                body: String(localized: "昨晚的睡眠数据已经同步好了，要看看吗？"),
                 topicId: "sleep",
-                question: "昨晚睡得怎么样？"
+                question: String(localized: "昨晚睡得怎么样？")
             )
         case .afternoon, .evening:
             return CheckIn(
-                title: "今天收个尾",
-                body: "今天的活动量已经记完了，要看看吗？",
+                title: String(localized: "今天收个尾"),
+                body: String(localized: "今天的活动量已经记完了，要看看吗？"),
                 topicId: "activity",
-                question: "今天运动量够吗？"
+                question: String(localized: "今天运动量够吗？")
             )
         }
     }
@@ -252,7 +254,7 @@ enum CheckInScheduler {
     @discardableResult
     static func sendTest(after seconds: TimeInterval = 5) async -> String {
         guard await isAuthorized() else {
-            return "还没有通知权限，先打开每日 check-in。"
+            return String(localized: "还没有通知权限，先打开每日 check-in。")
         }
 
         let situation = await HealthSituation.detect(interests: await TenantScope.ownerStores.sessions.interests())
@@ -276,7 +278,7 @@ enum CheckInScheduler {
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false),
             content: checkIn
         )
-        return "\(Int(seconds)) 秒后送达：\(checkIn.body)"
+        return String(localized: "\(Int(seconds)) 秒后送达：\(checkIn.body)")
     }
     #endif
 

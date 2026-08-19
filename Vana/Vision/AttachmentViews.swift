@@ -126,7 +126,7 @@ struct AttachmentThumbnail: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(draft.documentName ?? "照片")，\(caption)"
-            + (draft.sendsImage ? "，原图会一起发出去" : ""))
+            + (draft.sendsImage ? String(localized: "，原图会一起发出去") : ""))
         .accessibilityHint("打开可以核对和修改要发出去的文字")
     }
 
@@ -140,7 +140,7 @@ struct AttachmentThumbnail: View {
             // 还不知道是照片还是文件,所以这一格什么都不说,只留一个空底给上面那个圈。
             Rectangle().fill(.fill.tertiary)
         } else {
-            AttachmentDocumentTile(name: draft.documentName ?? "文件")
+            AttachmentDocumentTile(name: draft.documentName ?? String(localized: "文件"))
         }
     }
 
@@ -148,12 +148,14 @@ struct AttachmentThumbnail: View {
         // 「载入中」和「识别中」是两件事:前者是这张图还没读进来(相册在递、PDF 在渲染),
         // 后者是图已经在了、正在认字。合成一句的话,一份二十页的 PDF 会在「识别中」上停很久,
         // 而那时候根本还没开始识别。
-        if draft.isLoading { return "载入中…" }
-        if draft.isRecognizing { return "识别中…" }
-        if draft.failure != nil { return "读不出来" }
-        guard draft.hasText else { return draft.isDocument ? "没有正文" : "没有文字" }
+        if draft.isLoading { return String(localized: "载入中…") }
+        if draft.isRecognizing { return String(localized: "识别中…") }
+        if draft.failure != nil { return String(localized: "读不出来") }
+        guard draft.hasText else {
+            return draft.isDocument ? String(localized: "没有正文") : String(localized: "没有文字")
+        }
         let lines = draft.text.split(separator: "\n").count
-        return draft.droppedLines > 0 ? "\(lines) 行·已截断" : "\(lines) 行"
+        return draft.droppedLines > 0 ? String(localized: "\(lines) 行·已截断") : String(localized: "\(lines) 行")
     }
 }
 
@@ -197,7 +199,7 @@ struct AttachmentReviewView: View {
                             .listRowInsets(EdgeInsets())
                             .listRowBackground(Color.clear)
                     } else {
-                        Label(draft.documentName ?? "文件", systemImage: "doc.text")
+                        Label(draft.documentName ?? String(localized: "文件"), systemImage: "doc.text")
                             .lineLimit(2)
                     }
                 } footer: {
@@ -221,10 +223,14 @@ struct AttachmentReviewView: View {
                         // 发图是**多交一份身份**,而文字已经够用了。说成同一句就是在劝他随手
                         // 把化验单发出去。
                         Text(draft.hasText
-                            ? "文字已经识别出来了，上面那段就够回答问题。原图上还有姓名、就诊号、"
-                                + "医院和医生签名——真要发的话，它会一起发到你配置的模型服务上。"
-                            : "本机一个字都没认出来。一顿饭、一处皮疹这类照片的信息本来就不是字，"
-                                + "让模型直接看图才答得上——但那意味着这张照片本身会发到你配置的模型服务上。")
+                            ? """
+                                文字已经识别出来了，上面那段就够回答问题。原图上还有姓名、就诊号、\
+                                医院和医生签名——真要发的话，它会一起发到你配置的模型服务上。
+                                """
+                            : """
+                                本机一个字都没认出来。一顿饭、一处皮疹这类照片的信息本来就不是字，\
+                                让模型直接看图才答得上——但那意味着这张照片本身会发到你配置的模型服务上。
+                                """)
                     }
                 }
 
@@ -287,11 +293,11 @@ struct AttachmentReviewView: View {
 
     /// 这一件到底有什么会离开这台手机。
     private var footprint: String {
-        if draft.isDocument { return "文件留在这台手机上，发给模型的只有下面这段文字。" }
+        if draft.isDocument { return String(localized: "文件留在这台手机上，发给模型的只有下面这段文字。") }
         if draft.sendsImage {
-            return "这张照片本身会发到你配置的模型服务上。关掉下面那个开关，就只发识别出来的文字。"
+            return String(localized: "这张照片本身会发到你配置的模型服务上。关掉下面那个开关，就只发识别出来的文字。")
         }
-        let base = "图片留在这台手机上，发给模型的只有下面这段文字。"
+        let base = String(localized: "图片留在这台手机上，发给模型的只有下面这段文字。")
         // 他设过「每张都发原图」而这个模型看不了图时,上面那句和他记得的设置是对不上的。
         guard let visionUnavailableNote else { return base }
         return "\(base)\(visionUnavailableNote)"
@@ -301,18 +307,18 @@ struct AttachmentReviewView: View {
         if let failure = draft.failure { return failure }
         guard draft.hasText else {
             if draft.sendsImage {
-                return "这张图里没认出文字，原图会随这句话一起发出去，让模型直接看。"
+                return String(localized: "这张图里没认出文字，原图会随这句话一起发出去，让模型直接看。")
             }
             return draft.isDocument
-                ? "这份文件里没取到正文。里面如果是扫描件（整页都是图），先导出成 PDF 或者直接拍一张。"
-                : "这张图里没认出文字。Vana 现在只能读照片里的字——一顿饭、一处皮疹这类，可以打开上面那个开关让它直接看图。"
+                ? String(localized: "这份文件里没取到正文。里面如果是扫描件（整页都是图），先导出成 PDF 或者直接拍一张。")
+                : String(localized: "这张图里没认出文字。Vana 现在只能读照片里的字——一顿饭、一处皮疹这类，可以打开上面那个开关让它直接看图。")
         }
         if draft.droppedLines > 0 {
-            return "太长了，后面 \(draft.droppedLines) 行没有带进来。删掉用不上的几段，再把要问的那几项留下。"
+            return String(localized: "太长了，后面 \(draft.droppedLines) 行没有带进来。删掉用不上的几段，再把要问的那几项留下。")
         }
         return draft.isDocument
-            ? "改成什么样，发出去的就是什么样。用不上的段落可以直接删掉。"
-            : "改成什么样，发出去的就是什么样。数值和单位值得对一眼。"
+            ? String(localized: "改成什么样，发出去的就是什么样。用不上的段落可以直接删掉。")
+            : String(localized: "改成什么样，发出去的就是什么样。数值和单位值得对一眼。")
     }
 
     // MARK: - 记进用药表
@@ -405,7 +411,7 @@ struct MessageAttachmentsView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(attachment.sendsImage
                         ? "照片，原图已发给模型，点开看随附的文字"
-                        : "\(attachment.documentName ?? "照片")，点开看发出去的文字")
+                        : "\(attachment.documentName ?? String(localized: "照片"))，点开看发出去的文字")
                 }
             }
 

@@ -25,9 +25,11 @@ struct MedicationListView: View {
                 Section {
                     Toggle("让 Vana 看到这份清单", isOn: $medicationsEnabled)
                 } footer: {
-                    Text("开着时，这份清单会随每次提问一起发给你选的模型 provider，"
-                        + "Vana 给建议之前会先看你不能吃什么、试过什么没用。"
-                        + "关掉只是先不用，下面的内容还在。")
+                    Text("""
+                        开着时，这份清单会随每次提问一起发给你选的模型 provider，\
+                        Vana 给建议之前会先看你不能吃什么、试过什么没用。\
+                        关掉只是先不用，下面的内容还在。
+                        """)
                 }
 
                 if let errorMessage {
@@ -44,8 +46,10 @@ struct MedicationListView: View {
                         ContentUnavailableView {
                             Label("还没记下什么", systemImage: "pills")
                         } description: {
-                            Text("你吃过、在吃、不能吃的东西。Vana 每次给建议之前都会先看这里。\n\n"
-                                + "这里不做用药提醒和打卡——那些在「健康」App 里管更合适。")
+                            Text("""
+                                你吃过、在吃、不能吃的东西。Vana 每次给建议之前都会先看这里。\n\n\
+                                这里不做用药提醒和打卡——那些在「健康」App 里管更合适。
+                                """)
                         }
                         .listRowBackground(Color.clear)
                     }
@@ -168,7 +172,7 @@ struct MedicationListView: View {
                 items = try await work()
                 errorMessage = nil
             } catch {
-                errorMessage = "保存失败：\(error.localizedDescription)"
+                errorMessage = String(localized: "保存失败：\(error.localizedDescription)")
             }
         }
     }

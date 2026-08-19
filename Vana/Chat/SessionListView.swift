@@ -311,9 +311,11 @@ struct SessionListView: View {
 
                 // 分了几段是这条线的年龄,不是它的碎片数——说清楚它一直在往下走。
                 Text(
-                    "\(SessionTimeSection.earlier.timeLabel(for: goal.updatedAt, now: now, calendar: .current))"
-                        + " · \(goal.messageCount) 条消息"
-                        + (goal.segmentCount > 1 ? " · \(goal.segmentCount) 段" : "")
+                    """
+                        \(SessionTimeSection.earlier.timeLabel(for: goal.updatedAt, now: now, calendar: .current))\
+                         · \(goal.messageCount) 条消息
+                        """
+                        + (goal.segmentCount > 1 ? String(localized: " · \(goal.segmentCount) 段") : "")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)

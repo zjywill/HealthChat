@@ -82,28 +82,28 @@ struct ToolCallChip: View {
 
     private var note: String {
         if isAsk {
-            return call.isError ? "没能把问题显示出来" : "想问你一句"
+            return call.isError ? String(localized: "没能把问题显示出来") : String(localized: "想问你一句")
         }
         if isExercise {
             let count = call.exerciseIDs?.count ?? 0
-            return count > 0 ? "挑了 \(count) 个动作" : "没找到合适的动作"
+            return count > 0 ? String(localized: "挑了 \(count) 个动作") : String(localized: "没找到合适的动作")
         }
         if isWebSearch {
             guard let query = WebSearchTools.query(fromInput: call.input), !query.isEmpty else {
-                return "上网搜了一下"
+                return String(localized: "上网搜了一下")
             }
-            return call.isError ? "没能搜到「\(query)」" : "上网搜了「\(query)」"
+            return call.isError ? String(localized: "没能搜到「\(query)」") : String(localized: "上网搜了「\(query)」")
         }
         if isMemory {
-            guard let text = MemoryTools.text(fromInput: call.input) else { return "记下了一条" }
-            return call.isError ? "没能记下「\(text)」" : "记住了「\(text)」"
+            guard let text = MemoryTools.text(fromInput: call.input) else { return String(localized: "记下了一条") }
+            return call.isError ? String(localized: "没能记下「\(text)」") : String(localized: "记住了「\(text)」")
         }
         if isRecall {
-            guard call.name == SessionRecallTools.readToolName else { return "翻了翻过往对话" }
+            guard call.name == SessionRecallTools.readToolName else { return String(localized: "翻了翻过往对话") }
             // 一轮里常常连着回顾好几次。三个一模一样的胶囊等于没说,而日期正好在读回来的
             // 那段开头——它本来就是给模型标日期用的,顺手也给了用户。
             return SessionRecallTranscript.dateLabel(inOutput: call.output)
-                .map { "回顾了 \($0) 的对话" } ?? "回顾了之前的一次对话"
+                .map { String(localized: "回顾了 \($0) 的对话") } ?? String(localized: "回顾了之前的一次对话")
         }
         return HealthTools.note(
             for: call.name,
@@ -167,9 +167,9 @@ struct ToolResultPanel: View {
     /// 而面板里摆的是过往对话——对不上的标题比没有标题更让人困惑。
     private var title: String {
         switch call.name {
-        case SessionRecallTools.searchToolName: "翻过的对话"
-        case SessionRecallTools.readToolName: "回顾的对话"
-        case WebSearchTools.searchToolName: "网页搜索结果"
+        case SessionRecallTools.searchToolName: String(localized: "翻过的对话")
+        case SessionRecallTools.readToolName: String(localized: "回顾的对话")
+        case WebSearchTools.searchToolName: String(localized: "网页搜索结果")
         default: HealthTools.label(for: call.name, activity: HealthTools.activity(fromInput: call.input))
         }
     }
@@ -374,6 +374,6 @@ private struct HourlyChart: View {
 
     private var accessibilityText: String {
         guard let peak else { return series.title }
-        return "\(series.title)，峰值 \(format(peak)) \(series.unit)"
+        return String(localized: "\(series.title)，峰值 \(format(peak)) \(series.unit)")
     }
 }

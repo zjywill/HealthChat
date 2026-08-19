@@ -151,7 +151,7 @@ enum SessionTitle {
         // 拿它当标题,列表里就会出现好几条一模一样的名字,而它们本该是一件事的几段。
         if let thread = threadId.flatMap(SessionThread.init(id:)) {
             let name = threadTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-            return "\(name?.isEmpty == false ? name! : thread.title) · \(SessionRecall.dateLabel(createdAt))起"
+            return String(localized: "\(name?.isEmpty == false ? name! : thread.title) · \(SessionRecall.dateLabel(createdAt))起")
         }
 
         let first = firstUserText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

@@ -126,8 +126,10 @@ struct MedicationItem: Identifiable, Equatable, Codable, Sendable {
         if !when.isEmpty { text += "他记的服用情况是「\(when)」。" }
         let outcome = outcome.trimmingCharacters(in: .whitespacesAndNewlines)
         if !outcome.isEmpty { text += "他自己的评价是「\(outcome)」。" }
-        text += "照常查健康数据回答，把变化和这件事挂上钩，"
-            + "但不要建议他调整剂量、停药或换药——那要问开药的医生或药师。"
+        text += """
+            照常查健康数据回答，把变化和这件事挂上钩，\
+            但不要建议他调整剂量、停药或换药——那要问开药的医生或药师。
+            """
         return text
     }
 
@@ -139,13 +141,29 @@ struct MedicationItem: Identifiable, Equatable, Codable, Sendable {
     var openingQuestions: [String] {
         switch status {
         case .cannotTake:
-            ["为什么我会对它有反应？", "有什么要避开的？", "有别的选择吗？"]
+            [
+                String(localized: "为什么我会对它有反应？"),
+                String(localized: "有什么要避开的？"),
+                String(localized: "有别的选择吗？")
+            ]
         case .ongoing:
-            ["它和我最近的数据有关系吗？", "吃了这么久有变化吗？", "有什么要注意的？"]
+            [
+                String(localized: "它和我最近的数据有关系吗？"),
+                String(localized: "吃了这么久有变化吗？"),
+                String(localized: "有什么要注意的？")
+            ]
         case .asNeeded:
-            ["什么情况下该吃它？", "吃得太频繁了吗？", "有别的办法吗？"]
+            [
+                String(localized: "什么情况下该吃它？"),
+                String(localized: "吃得太频繁了吗？"),
+                String(localized: "有别的办法吗？")
+            ]
         case .tried:
-            ["为什么对我没用？", "要不要换一个试试？", "是不是时间不够？"]
+            [
+                String(localized: "为什么对我没用？"),
+                String(localized: "要不要换一个试试？"),
+                String(localized: "是不是时间不够？")
+            ]
         }
     }
 }
@@ -173,19 +191,19 @@ enum MedicationStatus: String, Codable, CaseIterable, Sendable, Identifiable {
     /// 模型看到的对不上了(同 `MemoryKind.title`)。
     var title: String {
         switch self {
-        case .cannotTake: "不能吃"
-        case .ongoing: "长期在吃"
-        case .asNeeded: "需要时吃"
-        case .tried: "试过了"
+        case .cannotTake: String(localized: "不能吃")
+        case .ongoing: String(localized: "长期在吃")
+        case .asNeeded: String(localized: "需要时吃")
+        case .tried: String(localized: "试过了")
         }
     }
 
     var hint: String {
         switch self {
-        case .cannotTake: "过敏、不耐受、医生说不能用的。Vana 给建议之前一定会先看这一组。"
-        case .ongoing: "每天或按疗程在吃的。它会成为解读你健康数据时的前提。"
-        case .asNeeded: "有需要才吃的。记下什么情况下吃，下次问起来 Vana 才接得上。"
-        case .tried: "试过之后的结论。记下来，Vana 就不会再推荐一次你已经试过的东西。"
+        case .cannotTake: String(localized: "过敏、不耐受、医生说不能用的。Vana 给建议之前一定会先看这一组。")
+        case .ongoing: String(localized: "每天或按疗程在吃的。它会成为解读你健康数据时的前提。")
+        case .asNeeded: String(localized: "有需要才吃的。记下什么情况下吃，下次问起来 Vana 才接得上。")
+        case .tried: String(localized: "试过之后的结论。记下来，Vana 就不会再推荐一次你已经试过的东西。")
         }
     }
 
@@ -236,12 +254,16 @@ struct MedicationSnapshot: Equatable, Sendable {
         // 这三句是这个功能真正的产出,不是免责声明:前两句决定了这张表有没有用,第三句是
         // 安全线。少一句就有测试挂。
         lines.append(
-            "要提到吃什么之前先看这份表：他明确不能吃的绝对不要提；"
-                + "他试过没用的不要再推荐一次，要提也得先说一句「你之前试过」。"
+            """
+                要提到吃什么之前先看这份表：他明确不能吃的绝对不要提；\
+                他试过没用的不要再推荐一次，要提也得先说一句「你之前试过」。
+                """
         )
         lines.append("剂量一律不给建议，也不要建议他停药或换药——那要问开药的医生或药师。")
-        lines.append("这份表只是他自己记下的，不是完整病历；"
-            + "更全的内容（含没列在上面的）用 list_medications 查。")
+        lines.append("""
+            这份表只是他自己记下的，不是完整病历；\
+            更全的内容（含没列在上面的）用 list_medications 查。
+            """)
         return lines.joined(separator: "\n")
     }
 

@@ -230,7 +230,7 @@ final class VoiceDictation {
         status = .starting
 
         guard await Self.requestMicrophone() else {
-            return abort(token: token, notice: "要用按住说话，得先在「设置 > Vana > 麦克风」里允许录音。")
+            return abort(token: token, notice: String(localized: "要用按住说话，得先在「设置 > Vana > 麦克风」里允许录音。"))
         }
 
         if availability != .ready {
@@ -243,11 +243,11 @@ final class VoiceDictation {
         case .needsDownload:
             // 走不到这儿(`isEnabled` 已经把按钮收起来了),留着是因为可用性是异步查的:
             // 这一按和那次查询可能撞在一起。照实说一句,不去下载。
-            return abort(token: token, notice: "这台设备还没装本机语音识别模型，键盘上那颗麦克风可以用。")
+            return abort(token: token, notice: String(localized: "这台设备还没装本机语音识别模型，键盘上那颗麦克风可以用。"))
         case .downloading:
-            return abort(token: token, notice: "语音识别模型正在下载，先用键盘吧。")
+            return abort(token: token, notice: String(localized: "语音识别模型正在下载，先用键盘吧。"))
         case .unsupportedLocale, .unavailable, .unknown:
-            return abort(token: token, notice: "这台设备还不支持中文语音识别，键盘上那颗麦克风可以用。")
+            return abort(token: token, notice: String(localized: "这台设备还不支持中文语音识别，键盘上那颗麦克风可以用。"))
         }
 
         guard let locale = resolvedLocale else {
@@ -265,7 +265,7 @@ final class VoiceDictation {
             return true
         } catch {
             teardown()
-            return abort(token: token, notice: "麦克风打不开，先用键盘吧。")
+            return abort(token: token, notice: String(localized: "麦克风打不开，先用键盘吧。"))
         }
     }
 

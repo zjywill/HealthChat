@@ -64,7 +64,7 @@ struct ProviderPickerView: View {
 
     private func subtitle(for provider: ProviderInfo) -> String {
         let count = CloudCatalog.models(for: provider.id).count
-        return count == 0 ? provider.id : "\(provider.id) · \(count) 个模型"
+        return count == 0 ? provider.id : String(localized: "\(provider.id) · \(count) 个模型")
     }
 }
 
@@ -216,10 +216,10 @@ struct ModelPickerView: View {
                 let key = try KeychainStore.get(account: KeychainStore.apiKeyAccount) ?? ""
                 fetched = try await CloudCatalog.fetchModels(providerId: providerId, apiKey: key)
                 if fetched.isEmpty {
-                    fetchError = "服务端没有返回模型"
+                    fetchError = String(localized: "服务端没有返回模型")
                 }
             } catch {
-                fetchError = "获取失败：\(error.localizedDescription)"
+                fetchError = String(localized: "获取失败：\(error.localizedDescription)")
             }
         }
     }

@@ -91,19 +91,19 @@ enum MemoryKind: String, Codable, CaseIterable, Sendable, Identifiable {
     /// 就和模型看到的对不上了。
     var title: String {
         switch self {
-        case .profile: "长期情况"
-        case .preference: "表达偏好"
-        case .interpretation: "已有解释"
-        case .followUp: "待跟进"
+        case .profile: String(localized: "长期情况")
+        case .preference: String(localized: "表达偏好")
+        case .interpretation: String(localized: "已有解释")
+        case .followUp: String(localized: "待跟进")
         }
     }
 
     var hint: String {
         switch self {
-        case .profile: "作息、工作、伤病限制、正在进行的目标"
-        case .preference: "希望 Vana 怎么说话、自己看重哪个指标"
-        case .interpretation: "对你而言某个指标的正常范围，或某段异常的原因"
-        case .followUp: "说好过一阵子再看的事，到点会在 check-in 里提醒你"
+        case .profile: String(localized: "作息、工作、伤病限制、正在进行的目标")
+        case .preference: String(localized: "希望 Vana 怎么说话、自己看重哪个指标")
+        case .interpretation: String(localized: "对你而言某个指标的正常范围，或某段异常的原因")
+        case .followUp: String(localized: "说好过一阵子再看的事，到点会在 check-in 里提醒你")
         }
     }
 
@@ -154,8 +154,10 @@ struct MemorySnapshot: Equatable, Sendable {
         }
         // 这一句是这套东西最要紧的防线。没有它,模型会拿三个月前记下的一句话当今天的数据讲。
         lines.append(
-            "以上只用于理解他的处境和表达方式。任何具体数值一律以本次工具返回的为准，"
-                + "记忆与工具结果冲突时以工具结果为准，也不要把上面的内容当成诊断。"
+            """
+                以上只用于理解他的处境和表达方式。任何具体数值一律以本次工具返回的为准，\
+                记忆与工具结果冲突时以工具结果为准，也不要把上面的内容当成诊断。
+                """
         )
         return lines.joined(separator: "\n")
     }

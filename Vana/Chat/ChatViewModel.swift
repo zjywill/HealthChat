@@ -132,7 +132,7 @@ final class ChatViewModel {
     var navigationSubtitle: String {
         var parts: [String] = []
         if !tenant.isOwner { parts.append(tenant.displayName) }
-        if session.isPrivate { parts.append("隐私对话 · 不保存") }
+        if session.isPrivate { parts.append(String(localized: "隐私对话 · 不保存")) }
         return parts.joined(separator: " · ")
     }
 
@@ -504,7 +504,7 @@ final class ChatViewModel {
     /// 偏好,不跟着模型走——所以它一直在,只是不生效,而不生效这件事必须说出口。
     var visionUnavailableNote: String? {
         guard !modelSupportsVision, photoImagePolicy != .textOnly else { return nil }
-        return "你设的是「\(photoImagePolicy.name)」，但当前模型看不了图——这一档暂时不生效。"
+        return String(localized: "你设的是「\(photoImagePolicy.name)」，但当前模型看不了图——这一档暂时不生效。")
     }
 
     /// 输入框上方那一行要说哪几张。
@@ -1094,16 +1094,17 @@ final class ChatViewModel {
 
     /// 没配 key 时那句引导。**一处定义**:发送被挡下、欢迎卡上那条横幅、首屏那段话底下的
     /// 小字说的都是它。三处各写一句的话,它们会慢慢漂成三种说法,而用户会以为是三件事。
-    static let cloudSetupGuidance = "还没配置云端模型。到设置里填一把 API key，再选 provider 和模型，就能开始问了。"
+    static let cloudSetupGuidance = String(localized: "还没配置云端模型。到设置里填一把 API key，再选 provider 和模型，就能开始问了。")
 
     /// key 填好了、模型没选上时那句。和上面那句分开:两句话要他做的事不一样,而
     /// 「到设置里填一把 API key」对一个已经填好 key 的人是一句读不懂的话。
-    static let modelSetupGuidance = "还没选好云端模型。到设置里的「模型」那一行选一个，就能开始问了。"
+    static let modelSetupGuidance = String(localized: "还没选好云端模型。到设置里的「模型」那一行选一个，就能开始问了。")
 
     /// key 存在但没通过验证时那句。**一处定义**:气泡上要认出这一类失败(重试解不掉,
     /// 该去的是设置页),靠的就是和这句对上。
-    static let authFailureGuidance = "API key 没通过验证。请到「设置 › 云端模型」确认 key 填对了、没有过期，"
-        + "并且和选中的 provider 对得上。"
+    static let authFailureGuidance = String(
+        localized: "API key 没通过验证。请到「设置 › 云端模型」确认 key 填对了、没有过期，并且和选中的 provider 对得上。"
+    )
 
     func refreshEngineAvailability() {
         engineGuidance = currentSetupGuidance
@@ -1281,7 +1282,7 @@ final class ChatViewModel {
             session.messages[index].storedTurn.compaction = artifact
             return
         case .retryScheduled(let notice):
-            retryNotice = "连接不稳定，正在重试（\(notice.attempt)/\(notice.maxAttempts)）"
+            retryNotice = String(localized: "连接不稳定，正在重试（\(notice.attempt)/\(notice.maxAttempts)）")
         case .textDelta:
             // 重试成功了,模型开口了。
             retryNotice = nil
@@ -1351,11 +1352,11 @@ final class ChatViewModel {
         case .authentication:
             return authFailureGuidance
         case .quota:
-            return "这把 key 的额度用完了，或者账户欠着费。到 provider 那边确认额度之后再试一次。"
+            return String(localized: "这把 key 的额度用完了，或者账户欠着费。到 provider 那边确认额度之后再试一次。")
         case .contextOverflow:
-            return "这条对话太长了，装不下。开一条新对话再问一次，刚才查到的数据都还在。"
+            return String(localized: "这条对话太长了，装不下。开一条新对话再问一次，刚才查到的数据都还在。")
         case .transient:
-            return "网络或者模型服务暂时不通，重试几次都没成功。过一会儿再试一次。"
+            return String(localized: "网络或者模型服务暂时不通，重试几次都没成功。过一会儿再试一次。")
         case .other:
             return raw
         }

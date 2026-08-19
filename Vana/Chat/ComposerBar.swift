@@ -43,12 +43,16 @@ struct ComposerBar: View {
     ///
     /// 第一颗固定不动:「详细一点」对任何一段回答都成立,而且它正是最想在模型还在写的时候
     /// 点的那一句——生成的那几条要等这一轮答完才有。
-    private static let alwaysOn = "详细一点"
+    private static let alwaysOn = String(localized: "详细一点")
     /// 生成的还没到、或者压根没生成出来时顶上的三条。
     ///
     /// chip 那排不能空,也不能在答完的那一刻先空一下再抖出来:那一下比这几条泛泛的问法
     /// 难看得多,而它恰好发生在用户刚读完回答、正要往下问的时候。
-    private static let fallbackFollowUps = ["有什么建议？", "和上周比呢？", "可能是什么原因？"]
+    private static let fallbackFollowUps = [
+        String(localized: "有什么建议？"),
+        String(localized: "和上周比呢？"),
+        String(localized: "可能是什么原因？")
+    ]
 
     /// 固定那颗 + 三条按刚才那段回答生成的(`FollowUpSuggestionHook`),没有就用兜底。
     ///
@@ -218,15 +222,19 @@ struct ComposerBar: View {
     /// `.always` 那档下面这几张里可能有化验单,照抄那句话就是在骗他。
     private static func imageSendTitle(candidates: [DraftAttachment], sending: Int) -> String {
         if sending > 0 {
-            return sending == 1 ? "原图会随这句话发出去" : "\(sending) 张原图会随这句话发出去"
+            return sending == 1
+                ? String(localized: "原图会随这句话发出去")
+                : String(localized: "\(sending) 张原图会随这句话发出去")
         }
         let allBlank = candidates.allSatisfy { !$0.hasText }
         if candidates.count == 1 {
-            return allBlank ? "这张图没有文字，让 Vana 直接看图？" : "让 Vana 直接看这张图？"
+            return allBlank
+                ? String(localized: "这张图没有文字，让 Vana 直接看图？")
+                : String(localized: "让 Vana 直接看这张图？")
         }
         return allBlank
-            ? "有 \(candidates.count) 张没有文字，让 Vana 直接看图？"
-            : "让 Vana 直接看这 \(candidates.count) 张图？"
+            ? String(localized: "有 \(candidates.count) 张没有文字，让 Vana 直接看图？")
+            : String(localized: "让 Vana 直接看这 \(candidates.count) 张图？")
     }
 
     /// 玻璃底下的一层渐隐。
@@ -325,7 +333,7 @@ struct ComposerBar: View {
                 title: model.session.threadTitle ?? SessionThread.goal(UUID()).title,
                 isOn: true
             )
-            .accessibilityLabel("目标：\(model.session.threadTitle ?? "长期目标")")
+            .accessibilityLabel("目标：\(model.session.threadTitle ?? String(localized: "长期目标"))")
         }
     }
 
@@ -372,14 +380,14 @@ struct ComposerBar: View {
             } label: {
                 ChipLabel(
                     icon: model.session.topic?.icon ?? "text.bubble",
-                    title: model.session.topic?.name ?? "话题",
+                    title: model.session.topic?.name ?? String(localized: "话题"),
                     isOn: model.session.topic != nil
                 )
             }
             // Menu 会拿 tint 给 label 上色,盖过 chip 自己的前景色——不改的话没选话题
             // 的 chip 也是一颗蓝的,和「已选中」长得一样。
             .tint(model.session.topic == nil ? Color.secondary : Color.accentColor)
-            .accessibilityLabel("话题：\(model.session.topic?.name ?? "不限")")
+            .accessibilityLabel("话题：\(model.session.topic?.name ?? String(localized: "不限"))")
         } else if let topic = model.session.topic {
             ChipLabel(icon: topic.icon, title: topic.name, isOn: true)
                 .accessibilityElement(children: .combine)
@@ -404,7 +412,7 @@ struct ComposerBar: View {
                 // 要发给云端模型。图标也是承诺的一部分,不能替文案吹一个做不到的牛。
                 ChipLabel(
                     icon: "eye.slash",
-                    title: "隐私",
+                    title: String(localized: "隐私"),
                     isOn: model.session.isPrivate
                 )
             }
@@ -451,7 +459,9 @@ struct ComposerBar: View {
     private var field: some View {
         // 家人那边不写「问问你的健康数据」——那句话许的正是这条路上唯一给不了的东西。
         TextField(
-            model.hasHealthData ? "问问你的健康数据…" : "问问\(model.currentTenant.displayName)的情况…",
+            model.hasHealthData
+                ? String(localized: "问问你的健康数据…")
+                : String(localized: "问问\(model.currentTenant.displayName)的情况…"),
             text: $model.input,
             axis: .vertical
         )
@@ -639,9 +649,9 @@ struct ComposerBar: View {
 
     private func accessibilityLabel(for action: SendAction) -> String {
         switch action {
-        case .stop: "停止回复"
-        case .recognizing: "正在识别照片里的文字"
-        case .send, .idle: "发送"
+        case .stop: String(localized: "停止回复")
+        case .recognizing: String(localized: "正在识别照片里的文字")
+        case .send, .idle: String(localized: "发送")
         }
     }
 }

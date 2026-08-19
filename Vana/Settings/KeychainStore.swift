@@ -66,10 +66,10 @@ private enum KeychainError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidData:
-            return "钥匙串中的 API key 无法读取"
+            return String(localized: "钥匙串中的 API key 无法读取")
         case .status(let status):
             let message = SecCopyErrorMessageString(status, nil) as String?
-            return message ?? "钥匙串操作失败（\(status)）"
+            return message ?? String(localized: "钥匙串操作失败（\(status)）")
         }
     }
 }

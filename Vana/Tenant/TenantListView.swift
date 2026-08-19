@@ -44,9 +44,11 @@ struct TenantListView: View {
                 // 这段话是这一屏最要紧的部分:它在用户添加第一位家人**之前**就把边界说清楚。
                 // 不说的话,他会拍完化验单等着 Vana 像对自己那样报「昨晚睡了几小时」,而那份
                 // 数据根本不存在——期待落空一次,这个功能在他心里就是坏的。
-                Text("每位成员的会话、用药清单、记忆和照片各存一份，互相看不到。\n"
-                    + "Apple 健康数据只有本人有：家人这边读不到步数、睡眠、心率这些，"
-                    + "他的情况来自你记下的用药、拍给 Vana 的化验单，和你们聊过的内容。")
+                Text("""
+                    每位成员的会话、用药清单、记忆和照片各存一份，互相看不到。\n\
+                    Apple 健康数据只有本人有：家人这边读不到步数、睡眠、心率这些，\
+                    他的情况来自你记下的用药、拍给 Vana 的化验单，和你们聊过的内容。
+                    """)
             }
 
             if let failure = context.failure {
@@ -118,7 +120,9 @@ struct TenantListView: View {
     private func subtitle(_ tenant: Tenant) -> String {
         var parts: [String] = []
         if let ageBand = tenant.ageBand { parts.append(ageBand.label) }
-        parts.append(tenant.isOwner ? "本人 · 有 Apple 健康数据" : "只有你记下的内容")
+        parts.append(tenant.isOwner
+            ? String(localized: "本人 · 有 Apple 健康数据")
+            : String(localized: "只有你记下的内容"))
         return parts.joined(separator: " · ")
     }
 }

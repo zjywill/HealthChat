@@ -54,10 +54,10 @@ enum SessionThread: Equatable, Sendable {
     /// 用户没起名字时的兜底名。
     var title: String {
         switch self {
-        case .checkIn: "每日 check-in"
-        case .followUp: "说好回头看的事"
-        case .goal: "长期目标"
-        case .medication: "药和补剂"
+        case .checkIn: String(localized: "每日 check-in")
+        case .followUp: String(localized: "说好回头看的事")
+        case .goal: String(localized: "长期目标")
+        case .medication: String(localized: "药和补剂")
         }
     }
 

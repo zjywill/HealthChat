@@ -92,13 +92,15 @@ struct HealthStatusView: View {
 
     /// 那段话底下的一行小字。**每一种情况都得说得出话**——尤其是"按了刷新但什么都没变"。
     private var footnote: String {
-        if isWriting { return "正在重新写…" }
+        if isWriting { return String(localized: "正在重新写…") }
         if !canGenerate {
             return justRefreshed
-                ? "已重新读取健康数据。还没配置云端模型，这段话是本机按下面的读数拼的。"
-                : "还没配置云端模型，这段话是本机按下面的读数拼的。"
+                ? String(localized: "已重新读取健康数据。还没配置云端模型，这段话是本机按下面的读数拼的。")
+                : String(localized: "还没配置云端模型，这段话是本机按下面的读数拼的。")
         }
-        return justRefreshed ? "已重新读取健康数据。" : "根据下面这些读数写的。"
+        return justRefreshed
+            ? String(localized: "已重新读取健康数据。")
+            : String(localized: "根据下面这些读数写的。")
     }
 }
 

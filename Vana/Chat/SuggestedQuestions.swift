@@ -59,21 +59,21 @@ enum SuggestedQuestions {
         switch period {
         case .morning:
             return [
-                SuggestedQuestion(icon: "moon.stars", text: "昨晚睡得怎么样？"),
-                SuggestedQuestion(icon: "bed.double", text: "最近睡眠稳定吗？"),
-                SuggestedQuestion(icon: "figure.run", text: "今天适合训练吗？")
+                SuggestedQuestion(icon: "moon.stars", text: String(localized: "昨晚睡得怎么样？")),
+                SuggestedQuestion(icon: "bed.double", text: String(localized: "最近睡眠稳定吗？")),
+                SuggestedQuestion(icon: "figure.run", text: String(localized: "今天适合训练吗？"))
             ]
         case .afternoon:
             return [
-                SuggestedQuestion(icon: "figure.walk", text: "今天走够步数了吗？"),
-                SuggestedQuestion(icon: "figure.cooldown", text: "刚练完，恢复得如何？"),
-                SuggestedQuestion(icon: "heart.text.square", text: "最近状态还行吗？")
+                SuggestedQuestion(icon: "figure.walk", text: String(localized: "今天走够步数了吗？")),
+                SuggestedQuestion(icon: "figure.cooldown", text: String(localized: "刚练完，恢复得如何？")),
+                SuggestedQuestion(icon: "heart.text.square", text: String(localized: "最近状态还行吗？"))
             ]
         case .evening:
             return [
-                SuggestedQuestion(icon: "figure.walk", text: "今天运动量够吗？"),
-                SuggestedQuestion(icon: "flame", text: "这周锻炼够了吗？"),
-                SuggestedQuestion(icon: "heart.text.square", text: "今天比昨天累吗？")
+                SuggestedQuestion(icon: "figure.walk", text: String(localized: "今天运动量够吗？")),
+                SuggestedQuestion(icon: "flame", text: String(localized: "这周锻炼够了吗？")),
+                SuggestedQuestion(icon: "heart.text.square", text: String(localized: "今天比昨天累吗？"))
             ]
         }
     }

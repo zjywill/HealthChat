@@ -14,10 +14,10 @@ enum SessionTimeSection: Int, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .today: "今天"
-        case .yesterday: "昨天"
-        case .lastWeek: "最近 7 天"
-        case .earlier: "更早"
+        case .today: String(localized: "今天")
+        case .yesterday: String(localized: "昨天")
+        case .lastWeek: String(localized: "最近 7 天")
+        case .earlier: String(localized: "更早")
         }
     }
 

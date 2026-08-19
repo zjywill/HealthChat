@@ -43,34 +43,34 @@ enum HealthTrigger: Sendable, Equatable {
     var question: SuggestedQuestion {
         switch self {
         case .justTrained(let name, _, _):
-            return SuggestedQuestion(icon: "figure.cooldown", text: "刚练完\(name)，强度合适吗？")
+            return SuggestedQuestion(icon: "figure.cooldown", text: String(localized: "刚练完\(name)，强度合适吗？"))
         case .shortSleep(let hours, _):
-            return SuggestedQuestion(icon: "moon.zzz", text: "昨晚只睡 \(hours.oneDecimal) 小时，要紧吗？")
+            return SuggestedQuestion(icon: "moon.zzz", text: String(localized: "昨晚只睡 \(hours.oneDecimal) 小时，要紧吗？"))
         case .longSleepStillLow:
-            return SuggestedQuestion(icon: "bed.double", text: "睡够了还是累，为什么？")
+            return SuggestedQuestion(icon: "bed.double", text: String(localized: "睡够了还是累，为什么？"))
         case .missingLastNight:
-            return SuggestedQuestion(icon: "moon.stars", text: "昨晚没有睡眠记录？")
+            return SuggestedQuestion(icon: "moon.stars", text: String(localized: "昨晚没有睡眠记录？"))
         case .elevatedRestingHR:
-            return SuggestedQuestion(icon: "heart", text: "静息心率怎么比平时高？")
+            return SuggestedQuestion(icon: "heart", text: String(localized: "静息心率怎么比平时高？"))
         case .suppressedHRV:
-            return SuggestedQuestion(icon: "waveform.path.ecg", text: "HRV 掉了，今天该练吗？")
+            return SuggestedQuestion(icon: "waveform.path.ecg", text: String(localized: "HRV 掉了，今天该练吗？"))
         case .bigActivityDay:
-            return SuggestedQuestion(icon: "figure.walk.motion", text: "今天走得多，要注意什么？")
+            return SuggestedQuestion(icon: "figure.walk.motion", text: String(localized: "今天走得多，要注意什么？"))
         case .sedentaryStreak:
-            return SuggestedQuestion(icon: "figure.seated.side", text: "这几天怎么动得这么少？")
+            return SuggestedQuestion(icon: "figure.seated.side", text: String(localized: "这几天怎么动得这么少？"))
         case .noStepsToday:
-            return SuggestedQuestion(icon: "figure.walk", text: "今天怎么一步都没走？")
+            return SuggestedQuestion(icon: "figure.walk", text: String(localized: "今天怎么一步都没走？"))
         case .noWorkouts(let days):
-            return SuggestedQuestion(icon: "flame", text: "\(days) 天没练，怎么捡起来？")
+            return SuggestedQuestion(icon: "flame", text: String(localized: "\(days) 天没练，怎么捡起来？"))
         case .weightShift(let delta, _):
             return SuggestedQuestion(
                 icon: "scalemass",
-                text: delta < 0 ? "体重降了，正常吗？" : "体重涨了，正常吗？"
+                text: delta < 0 ? String(localized: "体重降了，正常吗？") : String(localized: "体重涨了，正常吗？")
             )
         case .lateBedtimeDrift:
-            return SuggestedQuestion(icon: "clock.badge.exclamationmark", text: "越睡越晚，有影响吗？")
+            return SuggestedQuestion(icon: "clock.badge.exclamationmark", text: String(localized: "越睡越晚，有影响吗？"))
         case .weeklyReview:
-            return SuggestedQuestion(icon: "chart.line.uptrend.xyaxis", text: "上周整体怎么样？")
+            return SuggestedQuestion(icon: "chart.line.uptrend.xyaxis", text: String(localized: "上周整体怎么样？"))
         }
     }
 
@@ -96,31 +96,31 @@ enum HealthTrigger: Sendable, Equatable {
     var brief: String {
         switch self {
         case .justTrained(let name, let minutes, let ago):
-            return "\(ago) 分钟前刚结束一次 \(minutes) 分钟的\(name)"
+            return String(localized: "\(ago) 分钟前刚结束一次 \(minutes) 分钟的\(name)")
         case .shortSleep(let hours, let deficit):
-            return "昨晚只睡了 \(hours.oneDecimal) 小时，比最近常态少 \(deficit) 分钟"
+            return String(localized: "昨晚只睡了 \(hours.oneDecimal) 小时，比最近常态少 \(deficit) 分钟")
         case .longSleepStillLow(let hours):
-            return "昨晚睡了 \(hours.oneDecimal) 小时，时长够但恢复指标不好看"
+            return String(localized: "昨晚睡了 \(hours.oneDecimal) 小时，时长够但恢复指标不好看")
         case .missingLastNight:
-            return "昨晚没有任何睡眠记录（多半是没戴设备）"
+            return String(localized: "昨晚没有任何睡眠记录（多半是没戴设备）")
         case .elevatedRestingHR(let latest, let baseline):
-            return "静息心率 \(latest) 次/分，比最近基线 \(baseline) 高"
+            return String(localized: "静息心率 \(latest) 次/分，比最近基线 \(baseline) 高")
         case .suppressedHRV(let drop):
-            return "HRV 比最近基线低约 \(drop)%"
+            return String(localized: "HRV 比最近基线低约 \(drop)%")
         case .bigActivityDay(let steps):
-            return "今天已经走了 \(steps) 步，明显高于平常"
+            return String(localized: "今天已经走了 \(steps) 步，明显高于平常")
         case .sedentaryStreak(let days):
-            return "最近 \(days) 天步数只有平常的一半左右"
+            return String(localized: "最近 \(days) 天步数只有平常的一半左右")
         case .noStepsToday:
-            return "今天到现在 0 步"
+            return String(localized: "今天到现在 0 步")
         case .noWorkouts(let days):
-            return "已经 \(days) 天没有锻炼记录"
+            return String(localized: "已经 \(days) 天没有锻炼记录")
         case .weightShift(let delta, let days):
-            return "体重在 \(days) 天里变化了 \(delta.oneDecimal) 公斤"
+            return String(localized: "体重在 \(days) 天里变化了 \(delta.oneDecimal) 公斤")
         case .lateBedtimeDrift(let minutes):
-            return "入睡时间比上周平均晚了约 \(minutes) 分钟"
+            return String(localized: "入睡时间比上周平均晚了约 \(minutes) 分钟")
         case .weeklyReview:
-            return "周一早上，适合回顾上一周"
+            return String(localized: "周一早上，适合回顾上一周")
         }
     }
 }
@@ -160,14 +160,27 @@ struct HealthSituation: Sendable {
     /// app 读到的第一行字,读完仍然不知道自己现在怎么样。没有波动不等于没有现状。
     var quickSummary: String {
         let facts = notableTriggers.prefix(2).map(\.brief)
-        if !facts.isEmpty { return facts.joined(separator: "；") + "。" }
+        if !facts.isEmpty {
+            return Self.sentence(facts, separator: String(localized: "；"))
+        }
 
         // 三项打住。首屏这句话是"几秒钟看完"的东西,再往下就是一份日报——剩下那几项
         // 点开详情页全都在。
         let readings = vitals.measured.prefix(3).compactMap(\.phrase)
-        if !readings.isEmpty { return readings.joined(separator: "，") + "。" }
+        if !readings.isEmpty {
+            return Self.sentence(readings, separator: String(localized: "，"))
+        }
 
         return Self.calmSummary
+    }
+
+    /// 把几个短句接成一句话。**分隔号、句号和首字母大小写都跟着语言走**:中文那句是
+    /// 「A；B。」,英文那句是「A; B.」,而英文还要把第一个字母大写——每一条 brief 都是
+    /// 半句话(「no sleep recorded last night」),它们各自都可能排在最前面。
+    private static func sentence(_ parts: some Sequence<String>, separator: String) -> String {
+        let joined = parts.joined(separator: separator) + String(localized: "。")
+        guard let first = joined.first else { return joined }
+        return String(first).localizedUppercase + joined.dropFirst()
     }
 
     /// 有没有东西可写。两样都空的时候连模型都不叫。
@@ -184,7 +197,7 @@ struct HealthSituation: Sendable {
     /// 走到这里说明的不是「他很平稳」,而是**这台设备上什么都没读到**——没授权、刚装上、
     /// 或者没戴表。所以话要说在这上面,而不是「没读到值得留意的波动」:那句话听起来像
     /// 一份体检结论,实际上一个数字都没看过。更不能写成「一切正常」。
-    static let calmSummary = "还没有读到最近的健康数据。"
+    static let calmSummary = String(localized: "还没有读到最近的健康数据。")
 
     /// 给模型的场景说明。没有触发点时只有时段,让它写通用的三条。
     var brief: String {

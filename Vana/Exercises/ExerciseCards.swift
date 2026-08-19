@@ -87,9 +87,9 @@ private struct ExerciseCard: View {
                     }
                 }
             }
-            labelled("要领", move.cue, tint: .green)
+            labelled(String(localized: "要领"), move.cue, tint: .green)
             // 禁忌那一行永远显示,不折叠在更深的一层里。它是这张卡上唯一一句可能拦住伤害的话。
-            labelled("什么情况别做", move.avoid, tint: .orange)
+            labelled(String(localized: "什么情况别做"), move.avoid, tint: .orange)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

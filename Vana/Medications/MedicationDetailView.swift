@@ -56,7 +56,7 @@ struct MedicationDetailView: View {
                     Label(
                         followUpAt <= Date()
                             ? "说好回头看的时间到了"
-                            : "\(followUpAt.formatted(.dateTime.month().day())) 回头问你一句",
+                            : String(localized: "\(followUpAt.formatted(.dateTime.month().day())) 回头问你一句"),
                         systemImage: "clock.arrow.circlepath"
                     )
                     .foregroundStyle(followUpAt <= Date() ? Color.orange : Color.secondary)
@@ -174,9 +174,9 @@ struct MedicationDetailView: View {
     private func origin(_ item: MedicationItem) -> String {
         var parts: [String]
         switch item.origin {
-        case .manual: parts = ["你自己加的"]
-        case .asked: parts = ["你在对话里让我记的"]
-        case .health: parts = ["来自「健康」App"]
+        case .manual: parts = [String(localized: "你自己加的")]
+        case .asked: parts = [String(localized: "你在对话里让我记的")]
+        case .health: parts = [String(localized: "来自「健康」App")]
         }
         parts.append(item.updatedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")

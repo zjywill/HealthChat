@@ -39,8 +39,8 @@ enum ConnectionTest {
     @MainActor
     static func run(providerId: String, model: String, apiKey: String) async -> Result {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return .failed("先填一把 API key。") }
-        guard !model.isEmpty else { return .failed("先选一个模型。") }
+        guard !key.isEmpty else { return .failed(String(localized: "先填一把 API key。")) }
+        guard !model.isEmpty else { return .failed(String(localized: "先选一个模型。")) }
 
         do {
             let client = try AIClient(providerId: providerId, configuration: .init(apiKey: key))

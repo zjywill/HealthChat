@@ -46,6 +46,12 @@ targets:
     scheme:
       testTargets:
         - VanaTests
+      # **测试跑在中文下。** 界面加了英文之后,模拟器默认是英文系统,`String(localized:)`
+      # 于是返回英文——而合规、首屏、Siri 那几套断言盯的是**中文原文**(它们要挡的是
+      # 「声明和行为对不上」,那是逐字的)。不钉住语言的话,一加英文全挂,而挂的原因和
+      # 代码没有关系。英文那一份由 catalog 保证:少一条键就没有译文,不是断言的事。
+      language: zh-Hans
+      region: CN
     sources:
       - path: Vana
     dependencies:
@@ -156,6 +162,11 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         SWIFT_STRICT_CONCURRENCY: targeted
+        # 让编译器把 `Text("…")` / `String(localized:)` 里的中文原文抽进
+        # `Localizable.xcstrings`。中文是**源语言**(`developmentLanguage: zh-Hans`),
+        # 英文是加上去的那一份——所以键就是中文原文,界面代码一个字都不用改写成 key。
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
       configs:
         # 开发版本里 `DebugSeeder` 真的会写模拟数据,所以这一句要说实话,盖掉上面那份。
         Debug:

@@ -34,10 +34,10 @@ struct Tenant: Identifiable, Codable, Hashable, Sendable {
 
         var label: String {
             switch self {
-            case .child: "儿童"
-            case .teen: "青少年"
-            case .adult: "成年人"
-            case .senior: "老年人"
+            case .child: String(localized: "儿童")
+            case .teen: String(localized: "青少年")
+            case .adult: String(localized: "成年人")
+            case .senior: String(localized: "老年人")
             }
         }
     }
@@ -64,7 +64,7 @@ struct Tenant: Identifiable, Codable, Hashable, Sendable {
         self.createdAt = createdAt
     }
 
-    static let ownerDefaultName = "我自己"
+    static let ownerDefaultName = String(localized: "我自己")
 
     static func owner(id: UUID = UUID(), name: String = ownerDefaultName) -> Tenant {
         Tenant(id: id, name: name, kind: .owner)
@@ -76,7 +76,7 @@ struct Tenant: Identifiable, Codable, Hashable, Sendable {
     var displayName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        return isOwner ? Self.ownerDefaultName : "家人"
+        return isOwner ? Self.ownerDefaultName : String(localized: "家人")
     }
 
     static let maxNameLength = 12

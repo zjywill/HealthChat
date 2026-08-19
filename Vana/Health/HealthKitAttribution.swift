@@ -12,20 +12,20 @@ import Foundation
 /// **不写不改**。少一件,剩下两件就得靠别处补。
 enum HealthKitAttribution {
     /// 名字本身。中文用户认得的是「健康」App,审核员认得的是 HealthKit,两个都写上。
-    static let source = "Apple「健康」App（HealthKit）"
+    static let source = String(localized: "Apple「健康」App（HealthKit）")
 
     /// 首屏欢迎卡上那一句。第一次打开 app 的人读到的第一段关于数据来源的话。
-    static let welcome = "步数、睡眠、心率这些数字来自 \(source)。Vana 只读取你授权的项目，不会写入或修改你的健康记录。"
+    static let welcome = String(localized: "步数、睡眠、心率这些数字来自 \(source)。Vana 只读取你授权的项目，不会写入或修改你的健康记录。")
 
     /// 设置页那一节的标题。原来叫「健康数据」——那四个字说不出这些数据是谁家的。
     static let settingsSection = "\(source)"
 
     /// 设置页那颗授权按钮。
-    static let authorizeAction = "请求读取 Apple 健康（HealthKit）"
+    static let authorizeAction = String(localized: "请求读取 Apple 健康（HealthKit）")
 
     /// 一张查询结果面板顶上那行小字,和状况详情页底下那句。
-    static let panelNote = "来自 \(source)，只读取，不修改"
+    static let panelNote = String(localized: "来自 \(source)，只读取，不修改")
 
     /// 状况详情页底下那句:多一句「读不到多半是没戴设备」,那是这一页特有的困惑。
-    static let statusFooter = "\(panelNote)。缺少的项目多半是那几天没有戴设备。"
+    static let statusFooter = String(localized: "\(panelNote)。缺少的项目多半是那几天没有戴设备。")
 }
