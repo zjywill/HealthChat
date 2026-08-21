@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import AIKit
 import AgentRuntime
 
 @testable import Vana
@@ -14,6 +15,16 @@ import AgentRuntime
 /// 那条)。
 @Suite("Cloud setup")
 struct CloudSetupTests {
+
+    @Test("iOS reads the synced DeepSeek catalog through AIKit")
+    func readsSyncedProviderCatalog() throws {
+        let model = try #require(
+            ProviderCatalog.model("deepseek-v4-flash-vision-exp", provider: "deepseek")?.1
+        )
+
+        #expect(model.supportsVision)
+        #expect(ProviderCatalog.provider("grok-build") == nil)
+    }
 
     private func freshDefaults() -> UserDefaults {
         let suite = "CloudSetupTests.\(UUID().uuidString)"
