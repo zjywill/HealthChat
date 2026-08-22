@@ -12,7 +12,7 @@
 
 Hello,
 
-Fixed in build 1.0 (6). Thank you for the device details — they pointed straight at it.
+Fixed in build 1.0 (8). Thank you for the device details — they pointed straight at it.
 
 **What happened.** The button is "Request Apple Health (HealthKit) access" in Settings. It asks
 HealthKit for authorization and then waits for the permission sheet's result, and the row shows
@@ -63,8 +63,8 @@ https://vana.pinapia.com/privacy/en/ (English).
 
 ## 粘之前先确认
 
-1. **build 号**。正文写的是 1.0 (6)，和 `project.yml` 里的 `CURRENT_PROJECT_VERSION` 一致。
-   ASC 里要是已经有一个 6，就继续加一位，并同步修改工程和正文；ASC 拒收同号的 build。
+1. **build 号**。正文写的是 1.0 (8)，和 `project.yml` 里的 `CURRENT_PROJECT_VERSION` 一致。
+   ASC 里要是已经有一个 8，就继续加一位，并同步修改工程和正文；ASC 拒收同号的 build。
 2. **审核备注里那把 DeepSeek key 还有额度**。传之前自己用「测试连接」验一次——上上轮就是
    这条路上出的事。
 3. **这一条只能靠真机验到一半**。模拟器上 `supportsHealthRecords()` 恒为 false，所以「不支持

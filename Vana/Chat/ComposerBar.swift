@@ -86,7 +86,12 @@ struct ComposerBar: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 6)
-        .background(alignment: .bottom) { scrim }
+        .background(alignment: .bottom) {
+            ZStack(alignment: .bottom) {
+                scrim
+                composerHitShield
+            }
+        }
         .animation(.smooth(duration: 0.2), value: model.draftAttachments.count)
         // 那一行是识别跑完之后才冒出来的(在那之前不知道认没认出字),所以它自己要有
         // 一次淡入,不能跟着上面那条按件数走的动画。
@@ -262,6 +267,20 @@ struct ComposerBar: View {
         .ignoresSafeArea(edges: .bottom)
         // 多出来的那 56pt 压在对话上,不挡掉点击的话,那一条的气泡和工具面板都点不开。
         .allowsHitTesting(false)
+    }
+
+    /// 输入区盖在欢迎卡和消息列表上。玻璃之间看起来是空的,但这整块空间已经属于输入区;
+    /// 点击不能穿过去落到下面的话题格子上。
+    ///
+    /// 2026-08-22 真机上点「这张图没有文字，让 Vana 直接看图？ · 好」时,触点穿到了
+    /// 欢迎卡同一位置的「睡眠」格子,于是原图没打开,话题却变成了睡眠。透明底本身不参与
+    /// 命中测试,所以给它一条空手势来真正接住点击。它只占 `ComposerBar` 自己的高度;
+    /// `scrim` 往上多铺的 56pt 仍然不挡聊天内容。
+    private var composerHitShield: some View {
+        Color.clear
+            .contentShape(.rect)
+            .onTapGesture {}
+            .accessibilityHidden(true)
     }
 
     // MARK: - 快捷 chip
