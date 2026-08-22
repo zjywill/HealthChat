@@ -26,6 +26,13 @@ enum HealthKitAttribution {
     /// 一张查询结果面板顶上那行小字,和状况详情页底下那句。
     static let panelNote = String(localized: "来自 \(source)，只读取，不修改")
 
+    /// 设置页那一节底下那段。
+    ///
+    /// **整段必须是一条字符串**:原来是 `panelNote + """…"""`,而 `String` 拼接不是
+    /// 字面量,编译器抽不到,英文设备上后半段就原样显示中文——2026-08-21 审核那台 iPad 上
+    /// 看到的正是这一节:上半句英文、下半句中文,而他此刻正要按的就是上面那颗按钮。
+    static let settingsFooter = String(localized: "\(panelNote)。新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > Vana。")
+
     /// 状况详情页底下那句:多一句「读不到多半是没戴设备」,那是这一页特有的困惑。
     static let statusFooter = String(localized: "\(panelNote)。缺少的项目多半是那几天没有戴设备。")
 }

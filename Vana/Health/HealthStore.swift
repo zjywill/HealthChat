@@ -131,7 +131,7 @@ final class HealthStore: Sendable {
     private let store = HKHealthStore()
     private let calendar = Calendar.autoupdatingCurrent
 
-    private let readTypes: Set<HKObjectType> = [
+    private static let readTypes: Set<HKObjectType> = [
         HKQuantityType(.stepCount),
         HKQuantityType(.distanceWalkingRunning),
         HKQuantityType(.distanceCycling),
@@ -164,21 +164,61 @@ final class HealthStore: Sendable {
     ///
     /// 挪到按需申请还顺带解决了另一件事:用户还没问任何问题,就弹窗要读化验单,本来
     /// 就过界了。
-    private let bloodPressureReadTypes: Set<HKObjectType> = [
+    private static let bloodPressureReadTypes: Set<HKObjectType> = [
         HKQuantityType(.bloodPressureSystolic),
         HKQuantityType(.bloodPressureDiastolic)
     ]
 
-    private let clinicalReadTypes: Set<HKObjectType> = [
+    private static let clinicalReadTypes: Set<HKObjectType> = [
         HKClinicalType(.labResultRecord),
         HKClinicalType(.vitalSignRecord)
     ]
+
+    /// 病历(FHIR)那套东西**不是每台设备上都存在的**。Health Records 按地区开放,
+    /// 设备和账号的状态也算数,SDK 头文件里那句话写得很直白:
+    /// "Call supportsHealthRecords before attempting to request authorization for any
+    /// clinical types."
+    ///
+    /// **2026-08-21 那次审核就栽在这条上**:iPad Air (M4) 上按设置页那颗
+    /// 「请求读取 Apple 健康」,那一行就一直停在「正在请求…」——面板没弹出来,请求也没回话。
+    /// 启动时那次请求(只有普通数据类型)在同一台设备上照常弹了面板,两次的差别只有一处:
+    /// 设置页那次多带了这两个病历类型。要读的东西不在这台设备上,就不要去问——问了连
+    /// 「问不到」都不会告诉你。
+    ///
+    /// 每次现问,不缓存:文档里明说它会随着账号在恢复、同步过程中被改动而变化。
+    var supportsHealthRecords: Bool { store.supportsHealthRecords() }
+
+    /// 这一次请求要问哪些类型。
+    ///
+    /// force 时把按需那几类也一起问了:设置页那个按钮是用户主动点的,一次问全比让他们
+    /// 各点一遍强。**但病历那两类得先问这台设备有没有**——`supportsHealthRecords` 从外面
+    /// 传进来,因为它是真机上的地区/账号状态,测试里造不出那台设备,而这条判断恰恰是
+    /// 2026-08-21 那次审核卡住的地方(见 `supportsHealthRecords`)。
+    static func requestedTypes(force: Bool, supportsHealthRecords: Bool) -> Set<HKObjectType> {
+        guard force else { return readTypes }
+        var requested = readTypes.union(bloodPressureReadTypes)
+        if supportsHealthRecords {
+            requested.formUnion(clinicalReadTypes)
+        }
+        return requested
+    }
 
     /// 一次运行里只自动问一次。
     ///
     /// 从设置返回时 SwiftUI 会让根视图重新 appear,挂在上面的 `.task` 跟着重跑;
     /// 每跑一次就请求一次授权,面板就闪一次。设置页那个按钮传 `force: true` 绕开它。
     @MainActor private static var hasRequestedThisLaunch = false
+
+    /// HealthKit 的授权面板没有取消 API。系统调用悬着时,界面即使已经停止显示加载,
+    /// 也不能再发起第二次请求——否则每点一次都会多留一条永远等不到结果的调用。
+    @MainActor
+    private struct AuthorizationRequest {
+        let id: UUID
+        let force: Bool
+        let task: Task<Bool, any Error>
+    }
+
+    @MainActor private var authorizationRequest: AuthorizationRequest?
 
     /// 需要问的时候才问,返回这次有没有真的弹窗。
     ///
@@ -188,6 +228,46 @@ final class HealthStore: Sendable {
     @MainActor
     @discardableResult
     func requestAuthorizationIfNeeded(force: Bool = false) async throws -> Bool {
+        if let active = authorizationRequest {
+            let didAsk = try await finishAuthorizationRequest(active)
+
+            // 启动时那次只问日常类型。若设置页在它结束前要求 force,先共用正在进行的
+            // 系统请求,等它结束后再补问按需类型;两张授权面板绝不并发出现。
+            if force && !active.force {
+                return try await requestAuthorizationIfNeeded(force: true)
+            }
+            return didAsk
+        }
+
+        let request = AuthorizationRequest(
+            id: UUID(),
+            force: force,
+            task: Task { @MainActor [self] in
+                try await performAuthorizationRequestIfNeeded(force: force)
+            }
+        )
+        authorizationRequest = request
+        return try await finishAuthorizationRequest(request)
+    }
+
+    @MainActor
+    private func finishAuthorizationRequest(_ request: AuthorizationRequest) async throws -> Bool {
+        do {
+            let didAsk = try await request.task.value
+            if authorizationRequest?.id == request.id {
+                authorizationRequest = nil
+            }
+            return didAsk
+        } catch {
+            if authorizationRequest?.id == request.id {
+                authorizationRequest = nil
+            }
+            throw error
+        }
+    }
+
+    @MainActor
+    private func performAuthorizationRequestIfNeeded(force: Bool) async throws -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw HealthStoreError.healthDataUnavailable
         }
@@ -196,9 +276,7 @@ final class HealthStore: Sendable {
         }
         Self.hasRequestedThisLaunch = true
 
-        // force 时把按需那几类也一起问了:设置页那个按钮是用户主动点的,
-        // 一次问全比让他们各点一遍强。
-        let requested = force ? readTypes.union(bloodPressureReadTypes).union(clinicalReadTypes) : readTypes
+        let requested = Self.requestedTypes(force: force, supportsHealthRecords: supportsHealthRecords)
         let status = try await store.statusForAuthorizationRequest(toShare: [], read: requested)
         guard status == .shouldRequest else { return false }
 
@@ -220,7 +298,7 @@ final class HealthStore: Sendable {
     /// "先打开 Vana",而不是查出一片空然后报"最近没有数据"——后者是在撒谎。
     func readAccess() async -> ReadAccess {
         guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
-        let status = try? await store.statusForAuthorizationRequest(toShare: [], read: readTypes)
+        let status = try? await store.statusForAuthorizationRequest(toShare: [], read: Self.readTypes)
         return status == .shouldRequest ? .notRequested : .ready
     }
 
@@ -639,7 +717,7 @@ final class HealthStore: Sendable {
     }
 
     func bloodPressureSummary(days: Int) async throws -> [DayBloodPressure] {
-        await requestOnDemand(bloodPressureReadTypes, key: "bloodPressure")
+        await requestOnDemand(Self.bloodPressureReadTypes, key: "bloodPressure")
 
         let dayCount = min(max(days, 1), 90)
         let today = calendar.startOfDay(for: Date())
@@ -806,8 +884,14 @@ final class HealthStore: Sendable {
     /// 只有用户在「健康」App 里连过医院或诊所才会有;没连过就是空的,跟血压一样属于
     /// "没有很正常"。这里只取化验结果和体征两类——诊断和用药涉及的解读责任太重。
     func clinicalRecords(days: Int) async throws -> [ClinicalItem] {
+        // 这台设备上根本没有「健康记录」这套东西时直接说清楚,不去问授权也不去查:
+        // 对着一个不存在的功能请求授权,那次请求可能一句话都不回(见 `supportsHealthRecords`)。
+        guard supportsHealthRecords else {
+            throw HealthStoreError.healthRecordsUnavailable
+        }
+
         // 用户真的问到化验单了,这时候申请授权才说得过去。
-        await requestOnDemand(clinicalReadTypes, key: "clinical")
+        await requestOnDemand(Self.clinicalReadTypes, key: "clinical")
 
         let dayCount = min(max(days, 1), 3650)
         let today = calendar.startOfDay(for: Date())
@@ -973,11 +1057,15 @@ final class HealthStore: Sendable {
 
 enum HealthStoreError: LocalizedError {
     case healthDataUnavailable
+    /// 这台设备(或这个地区)上没有「健康记录」。和「没有记录」是两件事,得分开说。
+    case healthRecordsUnavailable
 
     var errorDescription: String? {
         switch self {
         case .healthDataUnavailable:
             "此设备不支持健康数据"
+        case .healthRecordsUnavailable:
+            "此设备上没有「健康记录」功能"
         }
     }
 }

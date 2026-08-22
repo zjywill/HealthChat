@@ -12,6 +12,26 @@
         }
       }
     },
+    "%@。新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > Vana。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Newly added data types (blood pressure, blood oxygen, respiratory rate, body temperature) need a fresh request before they can be read. iOS never asks again about types you've already decided on — to turn them on or off, go to the Health app > Sharing > Apps > Vana."
+          }
+        }
+      }
+    },
+    "系统的授权面板没有响应。请直接到“健康”App > 共享 > App > Vana 里管理。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The system permission sheet didn't respond. Manage access directly in the Health app > Sharing > Apps > Vana."
+          }
+        }
+      }
+    },
     "，原图会一起发出去": {
       "localizations": {
         "en": {

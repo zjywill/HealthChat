@@ -305,6 +305,10 @@ entitlement 里申请了 `com.apple.developer.healthkit.access: health-records`�
 不出售给任何第三方，也不保存到 iCloud（相关文件已排除出设备备份）。
 ```
 
+**这一项在不支持的设备上必须整个让开。** Health Records 按地区开放,`supportsHealthRecords()`
+为 false 时**连授权都不能申请**——2026-08-21 那次被拒(iPad Air M4,「Apple Health」按钮一直转)
+就是这么来的,详见 CLAUDE.md 里「HealthKit 授权」那一节。entitlement 照留,它只是允许申请。
+
 ## 出口合规
 
 `ITSAppUsesNonExemptEncryption = false` 已经写进 Info.plist，上传时不会再被问。只用 HTTPS 和系统

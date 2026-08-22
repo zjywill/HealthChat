@@ -166,8 +166,12 @@ enum HealthTools {
         ) { days, _ in
             // 化验单不是每周都有,窗口默认放到一年。
             let dayCount = max(days, 365)
-            let items = try await HealthStore.shared.clinicalRecords(days: dayCount)
-            return renderClinical(items, days: dayCount)
+            do {
+                let items = try await HealthStore.shared.clinicalRecords(days: dayCount)
+                return renderClinical(items, days: dayCount)
+            } catch HealthStoreError.healthRecordsUnavailable {
+                return healthRecordsUnavailableReport
+            }
         }
     ]
 
@@ -730,6 +734,18 @@ enum HealthTools {
         ]
         return report
     }
+
+    /// 这台设备上根本没有「健康记录」时的那份输出。
+    ///
+    /// **和「没有记录」是两件事**,分开说(同没授权和没数据要分开说):那边该让用户去
+    /// 「健康」App 里连医院,这边连都没得连,该说的是让他拍一张。也**不是错误**——
+    /// 报成错误模型会以为工具坏了,换个说法再调一次,白花一轮。
+    static let healthRecordsUnavailableReport = HealthReport.empty(
+        title: "化验与体检记录",
+        note: "这台设备上没有「健康记录」功能（它按地区开放，并非所有设备和地区都有），"
+            + "所以这条路上读不到任何化验或体检数据。"
+            + "要看化验单的话，请用户在输入框那颗「+」里拍一张、或者选一份报告文件。"
+    )
 
     private static func renderClinical(_ items: [ClinicalItem], days: Int) -> HealthReport {
         guard !items.isEmpty else {

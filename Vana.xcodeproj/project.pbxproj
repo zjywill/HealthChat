@@ -97,6 +97,7 @@
 		91AD44E57679D5E4ECD9AE7E /* ChatTopic.swift in Sources */ = {isa = PBXBuildFile; fileRef = EABA366AC7D33E8DEB21BD93 /* ChatTopic.swift */; };
 		950C62118D8FB14975E05D20 /* ToolResultPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A7096577BEF7F47898D2E9 /* ToolResultPanel.swift */; };
 		95D1D4855503BE3DDAA196F1 /* SessionStorePerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79892E29E77A31DCAB604F7 /* SessionStorePerformanceTests.swift */; };
+		9A93AD7297E04EA0F80A4D7B /* HealthAuthorizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB99FB2A4350D0133261BCD /* HealthAuthorizationTests.swift */; };
 		9AD0370E4F44B21287FAE206 /* AssistantPersona.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44D4694D8C62823FFA5928D /* AssistantPersona.swift */; };
 		9C6AC4558C11C4A8555DCEBA /* FollowUpSuggestionHook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BD78C05C53584C2AF2636A /* FollowUpSuggestionHook.swift */; };
 		A02215E33E1197DFAB140A35 /* SessionRecallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB916F5D247141CF581C1F2 /* SessionRecallTests.swift */; };
@@ -229,6 +230,7 @@
 		56EDB6D216E4C798453B3F39 /* ModelCapabilityTags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCapabilityTags.swift; sourceTree = "<group>"; };
 		58EC53F1064F15A9EB658B61 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = en; path = en.lproj/PrivacyPolicy.html; sourceTree = "<group>"; };
 		596D541CBA67458F0A43D761 /* HealthSituation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSituation.swift; sourceTree = "<group>"; };
+		5AB99FB2A4350D0133261BCD /* HealthAuthorizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthAuthorizationTests.swift; sourceTree = "<group>"; };
 		5D103188F48FDAA2E06EA301 /* BackgroundDigest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDigest.swift; sourceTree = "<group>"; };
 		5EF735A49053191B3A4DF699 /* HealthTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTools.swift; sourceTree = "<group>"; };
 		5F8C140E082671E703B3D869 /* ConnectionTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionTest.swift; sourceTree = "<group>"; };
@@ -543,6 +545,7 @@
 				764E7E914A37E40A2DBBE8A4 /* FollowUpRunnerTests.swift */,
 				A4517D000B6BCD077B693E78 /* GoalDigestTests.swift */,
 				D6362D6CDF0813373080EF3E /* GoalThreadTests.swift */,
+				5AB99FB2A4350D0133261BCD /* HealthAuthorizationTests.swift */,
 				56BEC630EF5CCF8814029DEF /* JumpToBottomTests.swift */,
 				B3D866D076AD5A9DDB94F5F0 /* LocationTests.swift */,
 				0C7570377904851D38885188 /* MarkdownTests.swift */,
@@ -782,6 +785,7 @@
 				D87B90216DFC2EB9B2740462 /* FollowUpRunnerTests.swift in Sources */,
 				08326C1CE2831FC266E7814D /* GoalDigestTests.swift in Sources */,
 				886A2D1BE0B93689B48A4D3F /* GoalThreadTests.swift in Sources */,
+				9A93AD7297E04EA0F80A4D7B /* HealthAuthorizationTests.swift in Sources */,
 				8A58F0294FBA5A4625218921 /* JumpToBottomTests.swift in Sources */,
 				444B7D47827BF8683F92D1A2 /* LocationTests.swift in Sources */,
 				B5E2E725E8889B4CC35E5EBB /* MarkdownTests.swift in Sources */,
@@ -943,7 +947,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Vana/Vana.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Vana/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vana;
@@ -1138,7 +1142,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Vana/Vana.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Vana/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Vana;

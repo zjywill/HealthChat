@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var connectionResult: ConnectionTest.Result?
     @State private var isShowingClearConfirmation = false
     @State private var isRequestingHealth = false
+    @State private var isHealthRequestInFlight = false
     @State private var healthStatus: HealthAuthStatus?
     @State private var location = LocationProvider.shared
     @State private var dictation = VoiceDictation.shared
@@ -365,7 +366,7 @@ struct SettingsView: View {
                         systemImage: "heart.text.square"
                     )
                 }
-                .disabled(isRequestingHealth)
+                .disabled(isHealthRequestInFlight)
 
                 if let healthStatus {
                     Label(healthStatus.message, systemImage: healthStatus.icon)
@@ -386,11 +387,7 @@ struct SettingsView: View {
             } footer: {
                 // iOS 从不告诉 app 读取权限被拒了(拒绝和"没数据"长得一样),所以这里
                 // 不假装能显示授权状态,只说清楚该去哪儿改。
-                Text(HealthKitAttribution.panelNote + """
-                    。\
-                    新增的数据类型（血压、血氧、呼吸频率、体温）需要重新请求才能读取。\
-                    已经做过选择的项 iOS 不会再问，要打开或关闭请到“健康”App > 共享 > App > Vana。
-                    """)
+                Text(HealthKitAttribution.settingsFooter)
             }
 
             Section {
@@ -727,22 +724,30 @@ struct SettingsView: View {
         )
     }
 
+    /// 授权面板是系统的,推上来之后这一侧只能等它回话——而**等不到的时候必须还有下一步**。
+    ///
+    /// 2026-08-21 审核在 iPad 上按了这颗按钮,那一行就一直停在「正在请求…」:按钮自己
+    /// disable 着,屏幕上没有一句话解释,也没有第二次机会。根因修在 `HealthStore`
+    /// (病历类型不该在不支持的设备上问),但「一个永远转下去的指示器」这种形状本身不能留:
+    /// 系统那一侧回不回话不归我们管,但这一行不能永远显示成正在加载。
+    private static let healthRequestTimeout = Duration.seconds(20)
+
     /// 再请求一次授权。iOS 只会为"还没问过"的类型弹窗——新增数据类型后靠这个补上,
     /// 已经拒过的项它不会再问,那种情况只能去「健康」App 改。
     private func requestHealthAuthorization() {
-        guard !isRequestingHealth else { return }
+        guard !isHealthRequestInFlight else { return }
+        isHealthRequestInFlight = true
         isRequestingHealth = true
         healthStatus = nil
 
-        Task {
-            defer { isRequestingHealth = false }
+        // `.owner` 而不是 `.shared`:设置页说的是「这台设备怎么工作」(provider、
+        // model、key、通知时间全是这一类),而 HealthKit 授权本来就是这台设备机主的
+        // 授权,和此刻正在看哪位成员没关系。这一节也因此不随成员消失——切到妈妈就少
+        // 一节设置,用户只会以为设置丢了。
+        let request = Task { @MainActor () -> HealthAuthStatus in
             do {
-                // `.owner` 而不是 `.shared`:设置页说的是「这台设备怎么工作」(provider、
-                // model、key、通知时间全是这一类),而 HealthKit 授权本来就是这台设备机主的
-                // 授权,和此刻正在看哪位成员没关系。这一节也因此不随成员消失——切到妈妈就少
-                // 一节设置,用户只会以为设置丢了。
                 let didAsk = try await HealthStore.owner.requestAuthorizationIfNeeded(force: true)
-                healthStatus = HealthAuthStatus(
+                return HealthAuthStatus(
                     message: didAsk
                         ? String(localized: "已弹出授权面板，你的选择已保存。")
                         : String(localized: "这些数据类型都已经问过了。要打开或关闭，请到“健康”App 里改。"),
@@ -750,12 +755,35 @@ struct SettingsView: View {
                     isError: false
                 )
             } catch {
-                healthStatus = HealthAuthStatus(
+                return HealthAuthStatus(
                     message: String(localized: "请求失败：\(error.localizedDescription)"),
                     icon: "exclamationmark.triangle.fill",
                     isError: true
                 )
             }
+        }
+
+        Task { @MainActor in
+            // 看门狗**不取消那次请求**:HealthKit 没有取消 API。它只停止显示加载,
+            // 请求按钮在底层调用真正结束前仍然禁用,避免超时后反复点击叠出并发请求。
+            // 旁边「在“健康”App 中管理」那颗按钮始终可用。
+            let watchdog = Task { @MainActor in
+                try? await Task.sleep(for: Self.healthRequestTimeout)
+                guard !Task.isCancelled, isRequestingHealth else { return }
+                isRequestingHealth = false
+                healthStatus = HealthAuthStatus(
+                    // 下面就是「在“健康”App 中管理」那一行,这句话指的是它。
+                    message: String(localized: "系统的授权面板没有响应。请直接到“健康”App > 共享 > App > Vana 里管理。"),
+                    icon: "exclamationmark.triangle.fill",
+                    isError: true
+                )
+            }
+
+            let status = await request.value
+            watchdog.cancel()
+            isRequestingHealth = false
+            isHealthRequestInFlight = false
+            healthStatus = status
         }
     }
 

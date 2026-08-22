@@ -1372,6 +1372,33 @@ app 是现成的:用药表里的药名、记忆里他惯用的说法、`HealthTo
 - 触发点识别复用 `HealthSituation.detect()`,和 check-in 通知、首屏建议同一套。同一份数据
   在三个地方说出三种结论,用户只会觉得这 app 自己都没想清楚。
 
+## HealthKit 授权(`HealthStore.requestAuthorizationIfNeeded`)
+
+**要读的东西不在这台设备上,就不要去问。** 病历(FHIR)那两个 `HKClinicalType` 属于
+Health Records,它按地区开放,设备和账号状态也算数——SDK 头文件里写得很直白:
+"Call supportsHealthRecords before attempting to request authorization for any clinical types."
+不问这一句就去申请,拿到的不是一个错误,而是**一句话都没有**:面板不弹,请求不回话,
+`await` 停在那儿。
+
+2026-08-21 那次审核就栽在这条上:iPad Air (M4) 上按设置页那颗「请求读取 Apple 健康」,
+那一行一直停在「正在请求…」。同一台设备上启动时那次请求照常弹了面板——两次的差别只有一处,
+设置页那次多带了病历那两类(`force` 才带)。
+
+两条不要破坏的:
+
+- **`supportsHealthRecords` 每次现问,不缓存**。文档明写它会随着账号在恢复、同步过程中变化。
+  查不到病历时那份输出说的是「这台设备上没有『健康记录』功能,要看化验单请拍一张」,
+  **不是**「没有找到记录,去『健康』App 里连接医院」——后者在这条路上是让用户白跑一趟。
+  按老规矩,这不是错误(报成错误模型会以为工具坏了,换个说法再调一次)。
+- **界面上不许有转不完的指示器,底层也不许叠授权请求**。设置页那颗按钮挂一条看门狗
+  (20 秒),到点就停止显示「正在请求」并说明去「健康」App 里改。看门狗**不取消那次请求**
+  (HealthKit 没有取消 API),所以底层调用真正结束前请求按钮仍然禁用;`HealthStore` 里再用
+  single-flight 守住所有入口,即使关掉设置页再打开也只会等同一条系统请求。判断类型的那一步
+  (`requestedTypes(force:supportsHealthRecords:)`)是纯函数,那个 Bool 从外面传进来:
+  真机上的地区状态测试里造不出来。
+
+`VanaTests/HealthAuthorizationTests` 盯着这一套。
+
 ## 架构:合规(`Vana/Legal`)
 
 上架要的那几样东西。它们看起来是"贴几段文字",实际上每一条都在声明 app 的行为,而**声明和
